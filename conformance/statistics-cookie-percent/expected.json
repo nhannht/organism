@@ -1,0 +1,28 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": null,
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "Task list "
+        },
+        {
+          "type": "statistics-cookie",
+          "value": "[50%]",
+          "postBlank": 0
+        }
+      ],
+      "preBlank": 0,
+      "children": [],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

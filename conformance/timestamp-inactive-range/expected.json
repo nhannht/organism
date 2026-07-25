@@ -1,0 +1,45 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "timestamp",
+              "kind": "inactive-range",
+              "start": {
+                "year": 2026,
+                "month": 7,
+                "day": 25,
+                "dayname": "Sat",
+                "hour": null,
+                "minute": null
+              },
+              "end": {
+                "year": 2026,
+                "month": 7,
+                "day": 27,
+                "dayname": "Mon",
+                "hour": null,
+                "minute": null
+              },
+              "repeater": null,
+              "delay": null,
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

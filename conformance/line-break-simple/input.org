@@ -1,0 +1,2 @@
+First part of line.\\
+Second part after a hard break.

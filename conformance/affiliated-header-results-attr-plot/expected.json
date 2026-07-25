@@ -1,0 +1,44 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "src-block",
+          "language": "emacs-lisp",
+          "params": null,
+          "value": "(+ 1 2)\n",
+          "postBlank": 1,
+          "affiliated": {
+            "NAME": "mysrc",
+            "HEADER": [
+              ":var x=1",
+              ":results output"
+            ],
+            "PLOT": "title:\"demo\"",
+            "ATTR_HTML": [
+              ":width 100"
+            ],
+            "ATTR_LATEX": [
+              ":scale 0.8"
+            ]
+          }
+        },
+        {
+          "type": "fixed-width",
+          "value": "3",
+          "postBlank": 1,
+          "affiliated": {
+            "RESULTS": {
+              "value": "mysrc",
+              "hash": "abc123"
+            }
+          }
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

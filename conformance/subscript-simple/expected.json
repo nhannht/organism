@@ -1,0 +1,50 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Water is H"
+            },
+            {
+              "type": "subscript",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "2O"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "and a"
+            },
+            {
+              "type": "subscript",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "long"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "too.\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

@@ -15,21 +15,21 @@ import OrgSwift
 /// A match proves `org-element`'s parse tree - properties, contents, and `:post-blank`, but
 /// explicitly NOT buffer positions, since `org-element-interpret-data` never reads those - carries
 /// enough information to reconstruct the source exactly. That is the empirical foundation this
-/// project needed before minting 52 `expected.json` answer keys under the reference-faithful rule.
+/// project needed before minting the `expected.json` answer keys under the reference-faithful rule.
 ///
 /// Scope note (see SCHEMA.md section 9 for the fuller version): this does not prove orgswift's own
 /// `OrgJSON` tree round-trips - only that `org-element`'s tree does. `OrgJSON` never passes through
 /// `org-element-interpret-data` at all, so a property this schema drops that `interpret-data`
 /// never needed either (`:pre-blank`, `src-block`'s `:switches`, ...) would not be caught here.
 ///
-/// Every file in this corpus (52 conformance `input.org` + 13 vendored real-world files, 65 total)
-/// is run through the check. 41/65 match byte-for-byte; the other 24 do not -- `compare-strings`
+/// Every file in this corpus (71 conformance `input.org` + 13 vendored real-world files, 84 total)
+/// is run through the check. 57/84 match byte-for-byte; the other 27 do not -- `compare-strings`
 /// (the elisp comparison) reports only the FIRST point of divergence, so what was actually
-/// verified is scoped precisely: the first divergence in each of the 24 was inspected in full
+/// verified is scoped precisely: the first divergence in each of the 27 was inspected in full
 /// (complete reconstructed text, not just the 20-character context window this script reports).
-/// Every one of those 24 first-divergences traces to a known `org-element-interpret-data`
+/// Every one of those 27 first-divergences traces to a known `org-element-interpret-data`
 /// re-emit convention, but -- corrected here, an earlier draft of this paragraph got this wrong
-/// -- the 24 are NOT all the same kind of divergence. Direct `org-element` sexp inspection
+/// -- the 27 are NOT all the same kind of divergence. Direct `org-element` sexp inspection
 /// (Rule D; see SCHEMA.md's round-trip section for the full evidence) splits them in two:
 ///   - Genuinely lost from the parse tree, not just an `interpret-data` re-emit quirk:
 ///     keyword-name case-folding (`#+TODO:` -> `#+todo:`), keyword/property value alignment
@@ -50,7 +50,7 @@ import OrgSwift
 ///     tree retains the original indentation and counters as literal string content (`:value`,
 ///     `:bullet`), so `renderOrg` both CAN and MUST reproduce them byte-exact. Layer 2's bar here
 ///     is stricter than `interpret-data`'s own output, not equal to it -- reading this suite's
-///     24-file divergence set as "the Layer 2 exception list" would wrongly excuse these two.
+///     27-file divergence set as "the Layer 2 exception list" would wrongly excuse these two.
 ///     `RoundTripTests` holds the actual (6-item) exception list; this suite is evidence about
 ///     `org-element`'s own serializer, not a definition of `renderOrg`'s target.
 /// Every conformance case (small, single-purpose fixtures) was verified this way in full; for
@@ -62,7 +62,7 @@ import OrgSwift
 ///
 /// `knownReformattingDivergences` below is a hand-verified BASELINE SNAPSHOT, not a correctness
 /// gate: `org-element-interpret-data` cannot itself distinguish "reformatted" from "genuinely
-/// lost," a human inspecting the diff did that, once, for these 24 files. Treat this suite as a
+/// lost," a human inspecting the diff did that, once, for these 27 files. Treat this suite as a
 /// change-detector against that baseline - a file leaving the set (starts matching) or a new file
 /// entering it (starts diverging) is a signal to re-inspect, not to silently update the set.
 ///
@@ -110,7 +110,7 @@ struct InterpretDataRoundTripTests {
     /// convention (see the suite docstring), not information missing from the parse tree. Unlike
     /// `RoundTripTests`/`OracleDiffTests`, where EVERY case is uniformly "known broken" (parser
     /// not implemented yet) and so the whole suite can wrap every case in one blanket
-    /// `withKnownIssue`, this check's divergences are NOT uniform: 41 of 65 files already
+    /// `withKnownIssue`, this check's divergences are NOT uniform: 57 of 84 files already
     /// round-trip exactly. `withKnownIssue` fails its own case when the wrapped code does NOT
     /// fail ("known issue was not recorded"), so wrapping every file unconditionally is wrong --
     /// only a file's presence in this set means a mismatch is the expected, permanent outcome.
@@ -127,12 +127,19 @@ struct InterpretDataRoundTripTests {
         "conformance/block-src-literal", "conformance/block-src-with-params",
         "conformance/property-drawer-after-planning", "conformance/property-drawer-simple",
         "real/org-mode-samples/blocks.org",
-        // Keyword-name case-folding (`#+TODO:` -> `#+todo:`, etc.).
+        // Keyword-name case-folding (`#+TODO:` -> `#+todo:`, etc.). Affiliated keywords and the
+        // dynamic-block `#+BEGIN:`/`#+END:` pair fold the same way, for the same reason.
         "conformance/easy-keyword-simple", "conformance/keyword-name-attaches-to-table",
         "conformance/keyword-nonaffiliated-does-not-attach", "conformance/keyword-title-document-level",
         "conformance/todo-runtime-custom",
+        "conformance/affiliated-caption-forms", "conformance/dynamic-block-simple",
         "real/doomemacs-docs/contributing.org", "real/doomemacs-docs/getting_started.org",
         "real/doomemacs-docs/index.org", "real/org-mode-samples/keywords.org",
+        // Keyword-name case-folding PLUS src-block body reindentation - both conventions already
+        // listed separately above, combined in one file. Verified by hand on Emacs 30.2: the
+        // affiliated keywords lowercase, and the `(+ 1 2)` body gains two leading spaces, which
+        // is the whole of this file's 200 -> 202 byte growth. No third divergence is present.
+        "conformance/affiliated-header-results-attr-plot",
         // Keyword-name case-folding PLUS extra keyword-value whitespace collapse (multi-space
         // `#+title:    X` -> single-space `#+title: X`).
         "real/doomemacs-docs/appendix.org", "real/doomemacs-docs/examples.org",

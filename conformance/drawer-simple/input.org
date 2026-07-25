@@ -1,0 +1,3 @@
+:MYDRAWER:
+Contents inside the drawer.
+:END:
