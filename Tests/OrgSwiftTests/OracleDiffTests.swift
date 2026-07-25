@@ -17,17 +17,30 @@ extension HarnessSupport.RealFileOnDisk: CustomTestStringConvertible {
 /// green rather than red. Per file, if `oracle-dump.el` itself fails for that file (script bug,
 /// an unmapped org-element type, a JSON decode failure) that file's case also skips gracefully
 /// rather than failing outright: oracle-dump.el's own correctness is not what this suite
-/// exists to check, and a broken oracle answer is not evidence the parser is wrong. Once both
-/// pieces are real, the actual comparison is wrapped in `withKnownIssue`, exactly like
+/// exists to check, and a broken oracle answer is not evidence the parser is wrong. The actual
+/// comparison for files NOT in `implementedFiles` is wrapped in `withKnownIssue`, exactly like
 /// ConformanceTests.swift and RoundTripTests.swift, because `parseOrg` still throws
-/// `OrgError.notImplemented` today.
+/// `OrgError.notImplemented` for the constructs those files use.
 @Suite(
-    "Oracle diff against real Emacs (pending parser + working oracle-dump.el)",
+    "Oracle diff against real Emacs (parser implemented case-by-case)",
     .enabled(if: HarnessSupport.emacsAvailable)
 )
 struct OracleDiffTests {
 
     static let realFiles: [HarnessSupport.RealFileOnDisk] = HarnessSupport.realFilesOnDisk()
+
+    /// Real-world files whose entire content falls inside the parser's implemented subset (see
+    /// `parseOrg`'s doc comment), so their live-oracle comparison asserts normally -- same
+    /// mechanism, and same forcing function, as `ConformanceTests.implementedCases`:
+    /// `withKnownIssue` fails a wrapped case the moment it starts genuinely passing, and moving
+    /// the name here (nothing else) is the correct fix.
+    ///
+    /// `pathological.org` entered this set with the first parser increment: it is nothing but
+    /// headlines with skipped levels and NUL-byte paragraph lines, all inside the
+    /// skeleton-plus-emphasis subset, and `parseOrg`'s tree matches Emacs's own parse for it.
+    static let implementedFiles: Set<String> = [
+        "real/org-mode-samples/pathological.org",
+    ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)
     func matchesOracle(_ file: HarnessSupport.RealFileOnDisk) throws {
@@ -42,9 +55,14 @@ struct OracleDiffTests {
         }
 
         let text = try String(contentsOf: file.url, encoding: .utf8)
-        withKnownIssue("parser not yet implemented: \(file.name)") {
+        if Self.implementedFiles.contains(file.name) {
             let actual = try parseOrg(text)
             #expect(actual == oracleTree, "\(file.name): parseOrg tree does not match Emacs's own org-element parse")
+        } else {
+            withKnownIssue("parser not yet implemented: \(file.name)") {
+                let actual = try parseOrg(text)
+                #expect(actual == oracleTree, "\(file.name): parseOrg tree does not match Emacs's own org-element parse")
+            }
         }
     }
 }
