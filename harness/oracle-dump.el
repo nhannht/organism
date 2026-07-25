@@ -1,10 +1,14 @@
 ;;; oracle-dump.el --- Dump org-element's own parse of a file as orgswift's normalized JSON  -*- lexical-binding: t; -*-
 
-;; STATUS (updated after the first real run, Emacs 30.2 / org-mode 9.7.11):
-;; this file HAS been run for real, not left untested. A full sweep against
-;; all 52 conformance/*/input.org cases produces 52 valid JSON documents, 0
-;; process failures, 0 stderr warnings, and 0 "unmapped org-element type"
-;; messages (harness/verify-corpus.sh reports the same result: 52/52 PASS).
+;; STATUS (re-verified 2026-07-25 on a clean run, Emacs 30.2 / org-mode
+;; 9.7.11): this file HAS been run for real, not left untested. A full sweep
+;; against all 71 conformance/*/input.org cases produces 71 valid JSON
+;; documents and 0 process failures. 70 of the 71 emit nothing on stderr. The
+;; single exception is `table-el-flavour', which warns loudly BY DESIGN
+;; because this schema does not represent table.el tables at all (see the
+;; `table' mapping below); that case exists precisely to pin the warning, so
+;; the degradation cannot go quiet without a test going red.
+;; harness/verify-corpus.sh reports the same result: 71/71 PASS.
 ;; SCHEMA.md section 9 records the first live run in more detail, including
 ;; two real bugs that run caught and this file has since fixed (a spurious
 ;; "type" key on nested date/rep objects, and a UTF-8 double-encoding bug in
@@ -32,20 +36,28 @@
 ;; The compensating control for that gap is a focused, line-by-line human
 ;; review of this file's per-type property mappings (the `pcase' inside
 ;; `org-swift--dump-typed-node' below) against org-element.el's own source,
-;; one type at a time. That review has NOT been done yet. Until it has, judge
-;; each per-type mapping below on its own merits, not as "must be right
-;; because the suite is green": the inline "UNTESTED:" comments below flag the
-;; specific mappings no conformance fixture exercises yet, and were swept
-;; after the first live run to drop any that the 52-case corpus now actually
-;; confirms - the ABSENCE of such a comment on a mapping means a corpus case
-;; exercises it and it matched, not that it has passed the still-outstanding
-;; source-level review.
+;; one type at a time. That review HAS now been done, and AUDIT.md at the repo
+;; root is its receipt. It was not a formality: it found three defects nothing
+;; in this repo could have caught, including table.el tables silently losing
+;; every byte while still producing valid, schema-valid, warning-free output.
+;; Read AUDIT.md before trusting any individual mapping below - it names which
+;; ones it checked and how.
 ;;
-;; PENDING REGENERATION (added during the oracle-auditor pass, not yet
-;; resolved as of this comment): the "52/52 PASS" claim above describes this
-;; file's behavior BEFORE a round of confirmed-bug fixes, deliberately
-;; scoped narrow - fix what is broken, complete what this schema already
-;; claims, add no new type claims:
+;; Still judge each per-type mapping on its own merits rather than as "must be
+;; right because the suite is green". The audit proved correctness at ONE
+;; MOMENT with no alarm attached; only a fixture detects later drift. The
+;; inline "UNTESTED:" comments below flag mappings no conformance fixture
+;; exercises, and were swept after the first live run - the ABSENCE of such a
+;; comment means a corpus case exercises that mapping and it matched.
+;;
+;; REGENERATION: RESOLVED. This block previously warned that regeneration was
+;; pending and that harness/verify-corpus.sh "will report mismatches until
+;; regeneration happens". Both statements are now false and were left stale
+;; for a while, which is the exact failure this file's own closing paragraph
+;; predicted. Regeneration landed, and verify-corpus.sh reports 71/71 PASS on
+;; a clean run. The list below is kept as the historical record of WHAT was
+;; fixed in that pass, because each item is still the reason a mapping looks
+;; the way it does:
 ;;   - A crash on any `CLOCK:' line (the generic fallback assumed :value was
 ;;     always a string or nil; a clock's :value is a whole timestamp node).
 ;;     Fixed at the root: the fallback now only ever hands a STRING :value
@@ -75,22 +87,28 @@
 ;;     same not-tracked-there reason as `preBlank').
 ;;   - A `text' node that inconsistently carried `postBlank' depending on
 ;;     whether it came from a hard line break or ordinary text.
-;; Those are now fixed, which means this file's output has genuinely
-;; changed for `headline'/`item' nodes (the `preBlank' addition) -
-;; `conformance/*/expected.json' was generated from the OLD behavior and
-;; has deliberately NOT been regenerated yet (that is a separate, reviewed
-;; step, not automatic). Every other fix above is predicted to touch ZERO
-;; of the 52 checked-in fixtures, since the corpus contains no `CLOCK:'
-;; line, no `entity', no `table.el' table, no HEADER/PLOT/RESULTS/ATTR_*
-;; keyword, no repeated `#+CAPTION:', and no diary timestamp.
-;; `harness/verify-corpus.sh' will report mismatches against the corpus
-;; until regeneration happens - that is the expected, intended signal that
-;; the `preBlank' fix took effect, not a new bug; any mismatch beyond a
-;; `preBlank' addition on a `headline'/`item' node is NOT expected and is
-;; worth investigating before trusting this pass. Once regeneration is
-;; reviewed and lands, this whole STATUS block should be re-verified
-;; against a fresh clean run and updated to match, rather than trusted as
-;; still describing current behavior.
+;; Those fixes landed, `conformance/*/expected.json' was regenerated from
+;; the fixed oracle, and the corpus has since grown from 52 cases to 71.
+;;
+;; That growth invalidated a prediction this block used to make. It said
+;; every fix except `preBlank' would touch ZERO fixtures, "since the corpus
+;; contains no `CLOCK:' line, no `entity', no `table.el' table, no
+;; HEADER/PLOT/RESULTS/ATTR_* keyword, no repeated `#+CAPTION:', and no
+;; diary timestamp". Measured on the current corpus, that sentence is now
+;; half wrong:
+;;   - still absent: `CLOCK:' lines, `entity'
+;;   - now PRESENT and fixtured: a `table.el' table
+;;     (conformance/table-el-flavour), HEADER/PLOT/RESULTS/ATTR_*
+;;     (conformance/affiliated-header-results-attr-plot), repeated
+;;     `#+CAPTION:' (conformance/affiliated-caption-forms), and a diary
+;;     timestamp (conformance/timestamp-diary-sexp).
+;; Those four fixes are no longer untested predictions. They are pinned by
+;; fixtures, which is strictly better - a prediction cannot go red.
+;;
+;; Standing instruction, restated because ignoring it is what made this
+;; block stale: whenever this file's behavior or the corpus changes,
+;; re-verify this STATUS block against a fresh clean run and update it.
+;; Do not trust it as still describing current behavior on faith.
 ;;
 ;; Purpose: this is the answer key for Layer 3 (OracleDiffTests.swift). It
 ;; asks Emacs's own `org-element-parse-buffer' to parse a file, then walks
