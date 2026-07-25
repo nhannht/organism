@@ -20,8 +20,8 @@ fix and the corpus regeneration that followed it - and its numbers are the numbe
 52 fixtures. They are left at 52 deliberately, because rewriting them to today's count would make
 a true historical record into a false one.
 
-The corpus is now **71 fixtures**, all still **71/71 valid, 0 invalid** against this schema. The
-19 cases added since exercise several things the text below correctly reported as unexercised AT
+The corpus is now **79 fixtures**, all still **79/79 valid, 0 invalid** against this schema. The
+27 cases added since exercise several things the text below correctly reported as unexercised AT
 THE TIME. Four statements no longer describe the current corpus:
 
 | Statement below | Still true? |

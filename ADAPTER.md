@@ -104,7 +104,7 @@ parser does not exist yet either:
 bash harness/verify-corpus.sh
 ```
 
-Run against this corpus, it reports `71/71 passed`. That is the exact shape your own parser's
+Run against this corpus, it reports `79/79 passed`. That is the exact shape your own parser's
 Layer 1 test loop should have once you point it at your `parseOrg` instead of at Emacs.
 
 ### Layer 2: round-trip fidelity (only if you also write a renderer)
@@ -169,7 +169,7 @@ mapped at all yet (`clock`, `entity`, and `special-block` are the three most lik
 an ordinary file - README ranks all 15 by how likely your own files contain one). Of the types
 that ARE mapped, 14 carry no conformance fixture at all and rest solely on the one-time audit
 (`footnote-reference` and `footnote-definition` among them), and 6 further gaps sit inside
-otherwise-fixtured types - a variant or property the 71 fixtures never happen to exercise, such
+otherwise-fixtured types - a variant or property the 79 fixtures never happen to exercise, such
 as `table.el`-flavour tables or the `diary` timestamp kind. None of this shows up as a Layer 1
 failure today, because nothing in this corpus asserts it either way - treat every item on
 README's list as "not yet checked," not "confirmed correct."
@@ -185,9 +185,11 @@ field).
 
 `SCHEMA.md` section 10 is the single authoritative, maintained list of every confirmed byte that
 `renderOrg(parseOrg(source))` cannot reproduce. Treat what follows as a description of the SHAPE
-of that list, not a copy of it - section 10 has already grown once, from 6 entries to 15, when an
-audit went back and checked areas nobody had looked at yet. A list like this grows whenever
-someone actually checks, so do not memorize a count from this document; read section 10 itself.
+of that list, not a copy of it - section 10 has already moved twice: an audit grew it from 6
+entries to 15 by checking areas nobody had looked at, and a later pass shrank it again by reading
+the properties eight of those entries named, while surfacing two new losses in the process. It
+moves in both directions whenever someone actually checks, so do not memorize a count from this
+document; read section 10 itself.
 
 **Reason A - unrecoverable from any string property.** Either a pure buffer-position loss (this
 schema strips `:begin`/`:end` per `SCHEMA.md` section 1, and no other property carries the byte),
@@ -197,12 +199,14 @@ source's original case is gone), and an affiliated-keyword alias (`#+TBLNAME:` n
 `NAME` before the tree is built, so which spelling the author typed is gone too).
 
 **Reason B - a chosen non-capture.** The byte IS present somewhere in `org-element`'s own parse
-tree, just not in a property this schema's curated field set reads. Two examples: a malformed
-lowercase checkbox `- [x]` (org-element only recognizes uppercase `X`, a space, or `-` as valid
-checkbox states - the raw `"[x]"` text survives only in the list's own `:structure` vector, which
-this schema's `item` node does not read), and a `src-block`'s `:switches` flag string (the `-n -r`
-after the language on a `#+begin_src elisp -n -r` line, folded into the element but never
-surfaced as a schema field).
+tree, just not in a property this schema's curated field set reads. Both current entries are the
+same family, the plain-list `:structure` vector: a malformed lowercase checkbox `- [x]`
+(org-element only recognizes uppercase `X`, a space, or `-` as valid checkbox states, and the raw
+`"[x]"` survives only in that vector), and an alphabetical list counter `1. [@c]` (whose raw
+letter survives in the same tuple, since `:counter` itself is an integer). Both are declined on
+value rather than difficulty, and section 10 records the design that was rejected and why. Note
+`src-block`'s `:switches` used to be the textbook example here and no longer is - it is captured
+now, as are six other former entries.
 
 `renderOrg` must be byte-exact on everything else, including block content indent, headline body
 indent, list numbering, multi-blank lines, inline spacing (via `postBlank`), and NUL bytes -
@@ -228,12 +232,11 @@ The REAL gap is narrower and different in kind: which SOURCE FORM produced that 
 has two ways to write it - a single timestamp with an internal time-time contraction,
 `<2026-01-01 Thu 10:00-12:00>`, and a genuine two-full-timestamp range,
 `<2026-01-01 Thu 10:00>--<2026-01-01 Thu 12:00>` - and `org-element` tracks which one via its own
-`:range-type` property. This schema does not read `:range-type`, so both source forms normalize
-to the identical `active-range`/`inactive-range` tree; a renderer cannot tell them apart and so
-cannot reproduce the source form byte-for-byte. This is not a missing field in the parsed tree -
-it is a Layer 2 round-trip loss, tracked as such in `SCHEMA.md` section 10, Reason B, item 12. If
-your own parser needs to preserve which form the author wrote, you will need to add a field for
-`:range-type` yourself; this schema does not carry one today.
+`:range-type` property. This schema now reads it and carries it as the `timestamp` node's
+`rangeType` field (`"timerange"` / `"daterange"` / `null`), so the two source forms are explicitly
+distinguished and a renderer can reproduce either. Your own parser must populate it. This entry
+used to say the opposite - that both forms normalized to an identical tree and the distinction was
+an unavoidable Layer 2 loss - which was true when written and is no longer.
 
 ## Worked example: `keyword-name-attaches-to-table`
 

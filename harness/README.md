@@ -54,8 +54,8 @@ going reference-faithful in the first place (`SCHEMA.md` section 1): if buffer p
 are redundant here, a schema that keeps everything else BUT positions can, in principle,
 round-trip too.
 
-Run across all 71 conformance inputs plus the 13 vendored real-world files (84 total), 57/84
-matched byte-for-byte on a live Emacs 30.2 run. The 27 that did not are documented and classified
+Run across all 79 conformance inputs plus the 13 vendored real-world files (92 total), 61/92
+matched byte-for-byte on a live Emacs 30.2 run. The 31 that did not are documented and classified
 in `Tests/OrgSwiftTests/InterpretDataRoundTripTests.swift` (`knownReformattingDivergences`) and
 in `SCHEMA.md` section 10 - each traces to a known `org-element-interpret-data` re-emit
 convention (keyword-name case-folding, block/property-drawer reindentation, and so on), not to a

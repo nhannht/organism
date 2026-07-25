@@ -18,7 +18,7 @@ import OrgSwift
 /// That independence is gone now that `expected.json` IS the oracle's own output. This suite
 /// still runs `oracle-dump.el` fresh on every `input.org` and compares it against the checked-in
 /// `expected.json` -- but the oracle is now being compared against a snapshot of itself, so a
-/// green run only proves `oracle-dump.el`'s output for these 71 cases has not changed since the
+/// green run only proves `oracle-dump.el`'s output for these 79 cases has not changed since the
 /// fixtures were minted (e.g. across an Emacs/org-mode version bump on CI, or a future edit to
 /// this elisp file). It says nothing about whether that output is actually correct org-mode
 /// behavior -- that question now belongs entirely to `harness/interpret-data-check.el` (see

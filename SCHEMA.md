@@ -118,9 +118,13 @@ Rules:
 - `document` -- root. `children`: `[section?, headline*]` (see section 3).
 - `headline` -- `level` (int, `org-element`'s own `:level` value - normally the number of leading
   `*`, but `org-element` REDUCES it under `#+STARTUP: odd` / `org-odd-levels-only`: a headline
-  written `*** B` then reports `level: 2`, not 3, confirmed live against Emacs 30.2. `org-element`
-  keeps the raw star count separately as `:true-level`; this schema does not carry a matching
-  field, so the raw count is lost whenever odd-levels mode is active - see section 10, Reason B),
+  written `*** B` then reports `level: 2`, not 3, confirmed live against Emacs 30.2),
+  `trueLevel` (int, `org-element`'s `:true-level` - the RAW leading-star count, always present,
+  always an integer. Equal to `level` in ordinary files; the two diverge only under odd-levels
+  mode. Both are carried because `level` alone is genuinely ambiguous there: with odd-levels
+  active, `** B` reports `level: 2, trueLevel: 2` and `*** B` reports `level: 2, trueLevel: 3`,
+  so two different star counts collapse onto one `level` and the source cannot be reconstructed
+  from it),
   `todo` (string or null), `priority`
   (string or null, e.g. `"A"`), `commented` (bool, true if the `COMMENT` keyword is present
   right after TODO/priority -- `COMMENT` itself is stripped and does NOT appear in `title`),
@@ -140,12 +144,13 @@ Rules:
 - `center-block` -- `children`: element nodes.
 - `verse-block` -- `children`: **object** nodes directly (not elements). Verse is unique among
   blocks: its contents are parsed as objects (text markup, links, timestamps, ...), matching the
-  spec's "CONTENTS will contain Org objects" for verse blocks specifically. Line breaks between
-  verse lines are **not** a separate node type in Layer 1 -- there is no dedicated `line-break`
-  node (the `\\` hard-line-break object is out of scope for Layer 1). A verse line boundary is
-  preserved as a literal `"\n"` character inside whatever `text` node value spans it. The same
-  convention applies to a soft line break inside an ordinary multi-line `paragraph` (a plain
-  newline with no blank line and no trailing `\\` is just part of the text content, not a node).
+  spec's "CONTENTS will contain Org objects" for verse blocks specifically. Note the two kinds of
+  line break inside a verse block are represented differently, and the distinction is the whole
+  point: an ORDINARY line boundary is preserved as a literal `"\n"` character inside whatever
+  `text` node value spans it, while a FORCED break (a line ending in `\\`) is its own
+  `line-break` node. The same split applies inside an ordinary multi-line `paragraph`. An earlier
+  version of this schema had no `line-break` node and flattened forced breaks into a `"\n"` text
+  node, which made the two indistinguishable; that was section 10's old item 15 and is now closed.
 
 ### Text-level container objects
 
@@ -159,29 +164,55 @@ Rules:
 ### Links
 
 - `link` -- `linkType`: `"regular"` (`[[path][description]]` or `[[path]]`), `"angle"`
-  (`<https://...>`), or `"plain"` (bare `https://...` with no brackets). `path`: string (the
+  (`<https://...>`), or `"plain"` (bare `https://...` with no brackets). `pathType`: string,
+  always present, `org-element`'s own `:type` - how the PATH is to be read: `"https"`,
+  `"mailto"`, `"file"`, `"id"`, `"custom-id"`, `"fuzzy"`, `"coderef"`, `"radio"`, or any other
+  registered link type. `path`: string (the
   raw link target, without brackets/protocol wrapper stripped further). `description`:
   [object-nodes] or `null` when there is no description (angle links never have one; `[[path]]`
   without a second bracket pair also has `null`). A bare `plain` link is usually description-less
-  too, but NOT always: a radio link - plain text that later matches an earlier `<<<target>>>` - is
-  `org-element`'s own `:type "radio"`, folded into this schema's `"plain"` `linkType` for lack of
-  a dedicated category, and it DOES carry a description. See section 10, Reason B, for the
-  round-trip consequence of collapsing that distinction.
+  too, but NOT always: a radio link - plain text that later matches an earlier `<<<target>>>` -
+  DOES carry a description. That is exactly what `pathType` disambiguates: a radio link is
+  `linkType: "plain"` with `pathType: "radio"`, so it stays distinguishable from an ordinary
+  plain link instead of being folded into it.
+
+  **Naming wart, stated rather than hidden.** `org-element` calls `:type` the link type and
+  `:format` the bracket form; this schema's `linkType` carries `:format`, so it is named after
+  the wrong property, and the reference-faithful names would have been `linkType` for `:type` and
+  `format` for `:format`. Renaming was rejected deliberately: silently changing what an
+  already-published field name MEANS is worse for every consumer than adding one imperfectly
+  named field. `pathType` is that field.
+- `radio-target` -- `<<<target>>>`, the anchor a radio link matches against. `children`: object
+  nodes. Carries `children` only and never `value`, although `org-element` gives a radio-target
+  BOTH at once (a `:value` holding the raw text, and parsed contents): section 1 forbids one node
+  having both, and `children` is the lossless choice, since the children re-emit to exactly the
+  `:value` text and nested markup inside the target survives, which `:value` would flatten.
 
 ### Lists
 
 - `list` -- `kind`: `"ordered"` | `"unordered"` | `"descriptive"`. `children`: `[item*]`.
 - `item` -- `bullet` (string, the literal bullet text actually used, e.g. `"-"`, `"+"`, `"1."`,
   `"a)"`), `checkbox` (`"on"` | `"off"` | `"trans"` | `null` for `[X]`/`[ ]`/`[-]`/none),
+  `counter` (int or `null`, `org-element`'s `:counter` - the explicit `[@N]` override, e.g. the
+  `5` in `1. [@5] five`. Always present. Set on unordered items too, so `- [@5]` reports `5`.
+  Note it is an INTEGER, not the source text: `1. [@c]` reports `3`, because `org-element`
+  converts a letter to its alphabet index - see section 10, item 9),
   `tag` ([object-nodes] or `null`, only meaningful for `descriptive` lists, the text before
   `" :: "`), `children`: element nodes (an item's body -- typically a `paragraph`, and may
   contain a nested `list`).
 
 ### Blocks
 
-- `src-block` -- `language` (string or null), `params` (string or null, the rest of the
-  `#+begin_src` line after the language), `value` (string, **literal**, never parsed).
-- `example-block` -- `value` (string, literal).
+- `src-block` -- `language` (string or null), `switches` (string or null), `params` (string or
+  null), `value` (string, **literal**, never parsed). The three head fields appear in source
+  order, matching how the `#+begin_src` line is written: `#+begin_src elisp -n -r :tangle yes`
+  gives `language: "elisp"`, `switches: "-n -r"`, `params: ":tangle yes"`. `switches` is
+  `org-element`'s `:switches` (the flag block) and `params` is its `:parameters` (the header
+  arguments); they are independent, and either can be null while the other is set.
+- `example-block` -- `switches` (string or null, same meaning and convention as `src-block`'s,
+  e.g. `#+begin_example -n`), `value` (string, literal). `src-block` and `example-block` are the
+  only two block types `org-element` tracks `:switches` on -- quote, verse, center, comment and
+  export blocks all report nil, confirmed live.
 - `export-block` -- `backend` (string or null), `value` (string, literal).
 - `comment-block` -- `value` (string, literal).
 
@@ -206,13 +237,34 @@ Rules:
 ### Misc leaves / small containers
 
 - `horizontal-rule` -- leaf, no `value`, no `children`. A line of 5+ consecutive `-`.
+- `line-break` -- leaf, no `value`, no `children`, exactly like `horizontal-rule`: the whole
+  meaning is the type. A FORCED break, i.e. a line ending in `\\`. `org-element` builds this node
+  with only `:begin`, `:end` and `:post-blank` (always `0`), so there is genuinely no other
+  property to carry. Distinct from an ordinary soft newline, which stays a literal `"\n"` inside
+  a `text` node. Where it may appear is not universal: `org-element`'s own object restrictions
+  permit it inside `bold`, `footnote-reference`, `italic`, `keyword`, `paragraph`,
+  `strikethrough`, `subscript`, `superscript`, `underline` and `verse-block` -- and NOT in a
+  headline title or a table cell, both confirmed live. **Renderer note:** the newline belongs to
+  this node. `org-element`'s own line-break interpreter emits `\\` followed by a newline, so a
+  renderer emits all three characters here and must not also emit a line ending for the line this
+  node terminates.
 - `fixed-width` -- `value`: string (a `: ...` line).
 - `statistics-cookie` -- leaf. `value`: string, e.g. `"[1/3]"` or `"[50%]"`.
-- `subscript`, `superscript` -- `children`: object nodes (`a_{b}`, `a^{b}`).
+- `subscript`, `superscript` -- `useBrackets` (bool, always present, `org-element`'s
+  `:use-brackets-p`: `false` for `a_b`, `true` for `a_{b}`. Without it the braced and unbraced
+  source forms produce an identical tree. The field name drops the Lisp predicate `-p`, following
+  `commented` from `:commentedp` on `headline`), `children`: object nodes.
 
 ### Tables
 
-- `table` -- `children`: `[table-row*]`.
+- `table` -- `tblfm` (array of strings or `null`), `children`: `[table-row*]`. `tblfm` is
+  `org-element`'s `:tblfm`, one entry per `#+TBLFM:` line -- `org-element` folds those lines INTO
+  the table element rather than leaving them as sibling `keyword` nodes, so no `keyword` node is
+  produced for a TBLFM line at all. **The array is in REVERSE source order**, and is kept that way
+  deliberately per section 1: `org-element`'s table parser builds it with `push` during a forward
+  scan, and Emacs's own interpreter re-emits it through an explicit `(reverse ...)`, so a renderer
+  must do the same. Trailing spaces after a formula are captured inside the string. `table.el`
+  tables carry `tblfm` as well as org tables, so both table shapes require the field.
 - `table-row` -- `kind`: `"standard"` | `"rule"` (a `|---+---|` separator row). `children`:
   `[table-cell*]` (empty array for a `"rule"` row).
 - `table-cell` -- `children`: object nodes. Convention: the single formatting space immediately
@@ -223,8 +275,19 @@ Rules:
 ### Timestamps
 
 - `timestamp` -- `kind`: `"active"` | `"inactive"` | `"active-range"` | `"inactive-range"` |
-  `"diary"`. `start`: a `date` object. `end`: a `date` object or `null` (only non-null for the
+  `"diary"`. `rangeType`: `"timerange"` | `"daterange"` | `null` (`org-element`'s `:range-type`,
+  always present; which SOURCE form produced a range. `"timerange"` is one timestamp with an
+  internal time-time contraction, `<2026-01-01 Thu 10:00-12:00>`; `"daterange"` is a genuine
+  two-full-timestamp range, `<date>--<date>`; `null` for the non-range kinds and for `diary`).
+  `start`: a `date` object. `end`: a `date` object or `null` (only non-null for the
   two `-range` kinds). `repeater`: a `rep` object or `null`. `delay`: a `rep` object or `null`.
+  - **Why `end.dayname` can be `null` while `start.dayname` is set**, which used to look like an
+    inconsistency (it was AUDIT.md finding 16): the two halves of a `date` have different
+    provenance. `year`/`month`/`day`/`hour`/`minute` come from `org-element`'s own `:*-end`
+    properties, but `dayname` alone is scraped out of `:raw-value`, which is split on `--`. A
+    `"timerange"` raw value has no `--` and carries exactly one dayname token, so a null end
+    dayname is the reference-faithful answer rather than a gap. A `"daterange"` written with
+    daynames reports both. With `rangeType` present this is derivable instead of surprising.
   - `date` = `{ "year": int, "month": int, "day": int, "dayname": string|null, "hour":
     int|null, "minute": int|null }`.
   - `rep` = `{ "type": string, "value": int, "unit": string }`. `type` is one of `"+"`
@@ -381,11 +444,11 @@ matches.
   `oracle-dump.el`'s per-type property mappings against `org-element`'s own source, not a test.
 
   Independent, non-circular support: `org-element-interpret-data(org-element-parse-buffer(file))`
-  was run against all 71 conformance inputs plus the 13 vendored real-world files (84 total) -
-  57/84 matched the original bytes exactly. `compare-strings` reports only the FIRST point of
+  was run against all 79 conformance inputs plus the 13 vendored real-world files (92 total) -
+  61/92 matched the original bytes exactly. `compare-strings` reports only the FIRST point of
   divergence, so the claim below is scoped to what was actually checked: the first divergence in
-  each of the 27 non-matching files was inspected (full before/after text, not just the 20-char
-  context window), and every one of those 27 first-divergences traces to a known
+  each of the 31 non-matching files was inspected (full before/after text, not just the 20-char
+  context window), and every one of those 31 first-divergences traces to a known
   `org-element-interpret-data` re-emit convention (keyword-name case-folding, block/property-drawer
   reindentation, headline-tag column alignment, planning-line keyword reordering, list-counter
   renumbering) -- terminology note: "keyword-name case-folding" here and "keyword/property value
@@ -399,9 +462,11 @@ matches.
   round-trips through `org-element-interpret-data` at all. Scope note: this schema keeps a curated
   per-type field set plus `postBlank` and, on `headline`/`item`/`footnote-definition`, `preBlank`
   (the only three types `org-element` tracks `:pre-blank` on) - not literally every `org-element`
-  property (`src-block`'s `:switches` and the rest of section 10's Reason B list are still not
-  carried); the interpret-data check cannot catch a property dropped this way, since a property
-  never captured in `OrgJSON` never passes through it either.
+  property. That curated set has since grown: `:switches`, `:tblfm`, `:counter`,
+  `:use-brackets-p`, `:range-type`, a link's `:type` and `:true-level` are all carried now, and
+  what remains uncaptured is section 10's two declined `:structure` entries. The interpret-data
+  check cannot catch a property dropped this way, since a property never captured in `OrgJSON`
+  never passes through it either.
 
   This resolution is about the Layer 1 tree shape only. The related question of what `renderOrg`
   is held to -- whether reference-faithful (this section) also means byte-exact round-trip is
@@ -416,17 +481,28 @@ matches.
   generated by the same oracle it is checked against - but the generator has now been checked
   against `org-element`'s source directly, which the circular cross-check alone could never
   supply. The Rule D losses that review surfaced are folded into section 10's loss list below.
-- **Same-day time range, source-form ambiguity (corrected)**: an earlier draft of this entry
-  claimed this schema's `timestamp` node "has no field for one date, two times." That was wrong:
-  `start`/`end` as full dates already represents a same-day time range fine (`start` and `end`
-  share the same year/month/day, differing only in `hour`/`minute`). The actual gap is different.
-  `org-element` distinguishes a single timestamp with an internal time-time contraction
-  (`<2026-01-01 Thu 10:00-12:00>`) from a genuine two-full-timestamp range (`<date>--<date>`) via
-  its own `:range-type` property, and this schema does not read that property, so both source
-  forms normalize to a structurally identical `active-range`/`inactive-range` tree. This is now
-  tracked as a Rule D loss - see section 10, Reason B, `:range-type`. The Layer 1 corpus's
-  mandatory "range" case uses the unambiguous two-full-timestamp form, so it does not exercise
-  this ambiguity.
+- **RESOLVED: same-day time range, source-form ambiguity.** Two corrections landed here in
+  sequence, and both are worth keeping so the record shows what was actually wrong each time.
+  First, an early draft claimed this schema's `timestamp` node "has no field for one date, two
+  times." That was wrong: `start`/`end` as full dates already represents a same-day time range
+  fine (they share year/month/day and differ only in `hour`/`minute`). Second, the replacement
+  entry said the real gap was that a time-time contraction (`<2026-01-01 Thu 10:00-12:00>`) and a
+  two-full-timestamp range (`<date>--<date>`) "normalize to a structurally identical tree" - true
+  only in the narrower case where NO dayname is written. With a dayname the two already differed
+  on `end.dayname`, for the provenance reason spelled out under `timestamp` in section 4.
+  Both are now moot: this schema reads `:range-type` and carries it as `rangeType`, so the two
+  source forms are explicitly distinguished in every case. `conformance/timestamp-timerange-contraction`
+  pins the `"timerange"` value and `conformance/timestamp-active-range` pins `"daterange"`.
+
+  One piece of evidence here is MEASURED, not fixtured, and is labelled that way on purpose (see
+  README.md's "What protects each claim" for why the distinction is kept): strip `rangeType` from
+  the two NO-DAYNAME forms and their trees are byte-identical, keep it and they differ on exactly
+  that one key. That is the sharpest demonstration the loss is closed, but no fixture pins it,
+  because a no-dayname timestamp triggers a separate `org-element-interpret-data` re-emit
+  convention -- it INSERTS the canonical dayname -- which is not yet classified in
+  `InterpretDataRoundTripTests.knownReformattingDivergences`. Adding the fixture and classifying
+  that convention is tracked as ORG-12; until it lands, this claim carries a one-time measurement
+  behind it rather than a regression guard.
 - **Diary timestamps** (`<%%(SEXP)>`) are documented in section 4 but not exercised by any
   Layer 1 corpus case -- no `start` date exists for a diary sexp, and the org-syntax spec
   itself gives this form minimal treatment. Deferred.
@@ -445,25 +521,28 @@ matches.
   `oracle-dump.el`'s per-type mappings, task #23): both are now MAPPED in `oracle-dump.el` --
   `latex-fragment` as a leaf (`value`: the fragment's literal text, delimiters included, e.g.
   `"$x^2$"`); `dynamic-block` as a container (`blockName`: the `#+BEGIN:` name token,
-  `arguments`: the raw unparsed rest-of-line text or `null`, `children`). Neither has a Layer 1
-  conformance case yet -- no fixture in this corpus exercises either type, so the mapping is
-  verified only by direct `emacs --batch` testing at the time it was written, not by a checked-in
-  answer key. Deferred: add one conformance case per type once Layer 1 picks this back up.
+  `arguments`: the raw unparsed rest-of-line text or `null`, `children`). Both are now pinned by a
+  checked-in fixture -- `conformance/latex-fragment-inline` and `conformance/dynamic-block-simple`
+  -- so neither rests on one-off `emacs --batch` testing any more. (This paragraph previously said
+  the opposite, that neither had a conformance case and one per type was "deferred". That was
+  stale: both fixtures had already landed and the note was never struck out. It was the only text
+  left in this repo disputing the count of unfixtured mapped types, which is 2 --
+  `strike-through` and `underline` -- see README.md's "What protects each claim".)
 - **Malformed checkbox `- [x]` (lowercase)** is a documented Layer 2 loss, but of a DIFFERENT kind
-  than section 10's Reason A items -- reviewer's exact wording, adopted verbatim rather than
-  lumped in as a "genuine loss" of the same kind: org-element does not recognize lowercase `x` as
+  than section 10's Reason A items: org-element does not recognize lowercase `x` as
   a checkbox state (only `X`, ` `, `-` are valid) -- `:checkbox` comes back `nil`, exactly as for
   a plain, non-checkbox item, and the literal `"[x] "` text is ALSO gone from the item's own
   paragraph content (`"not a checkbox?\n"`, not `"[x] not a checkbox?\n"`). The raw `"[x]"`
-  survives ONLY as literal content in the plain-list's own `:structure` vector (the per-item
-  tuple's checkbox slot, positional bookkeeping shared across the whole list, redundant with
-  `:checkbox` for every VALID checkbox). This is a CHOSEN non-capture, not a pure-position loss
-  like section 10's Reason A items: the byte IS present in the tree, in `:structure`, and this
-  schema's `item` node deliberately does not read `:structure` (list-wide, position-keyed, not
-  worth the schema surface for one malformed-input edge case that the all-files oracle sweep
-  found in zero Layer 1 fixtures). See section 10 for the full framing of both categories
-  together (Reason A: pure buffer-position losses vs. Reason B: this one, a design choice not to
-  read available bookkeeping).
+  survives ONLY in the plain-list's own `:structure` vector, in the per-item tuple's checkbox
+  slot. So the byte IS present in the tree and this schema declines to read it.
+
+  An earlier version of this entry justified the decline by saying `:structure` is "list-wide,
+  position-keyed, not worth the schema surface". The first half of that is a bad argument and has
+  been withdrawn: capturing this needs ONE slot of the item's own tuple and one string field, and
+  emits no buffer positions at all. The decline stands on the second half alone -- value, not
+  difficulty -- and section 10 item 8 now carries the measured version of that argument, together
+  with the evidence that `[y]`, `[XX]` and `[]` are not losses at all. Read section 10 for the
+  decision; this entry exists to record the org-element behavior that causes it.
 
 ## 10. Layer 2 round-trip contract (Rule D)
 
@@ -474,10 +553,21 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 15 known instances,
+read (per-type properties outside this schema's curated field set). 9 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
-not one uniform "genuine loss" bucket:
+not one uniform "genuine loss" bucket.
+
+**This list used to have 15 entries. Eight of them are now closed**, and the closures are the
+substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:use-brackets-p`,
+`:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
+read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
+`rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
+each pinned by a conformance fixture. What remains below is 7 items that no tree built on
+`org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
+recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
+and 9 below -- which is the ordinary result of actually checking, and they are listed here rather
+than quietly omitted.
 
 **Reason A -- unrecoverable from ANY string property (a pure buffer-position loss, or an
 upstream normalization that happens before this schema ever sees the buffer; nothing else in the
@@ -499,41 +589,50 @@ tree carries the byte):**
    `#+TBLNAME:` becomes `NAME`, `#+RESULT:` becomes `RESULTS`, `#+HEADERS:` becomes `HEADER`. The
    spelling the author actually typed is gone before the tree is built -- the same kind of pure,
    upstream loss as item 1's keyword-name case-folding.
+7. Whitespace between a hard line break's `\\` and the newline -- `one\\   ` followed by a
+   newline keeps its three spaces nowhere. This is NEW, surfaced by closing the old item 15
+   (the `\\` itself is now carried by a dedicated `line-break` node, see section 4). It is
+   distinct from item 5 above, which covers otherwise-BLANK lines; this is trailing whitespace on
+   a line with content on it. Confirmed against `org-element`'s own source:
+   `org-element-line-break-parser` matches `\\\\[ \t]*$` and builds the node with only `:begin`,
+   `:end` and `:post-blank` (hardcoded `0`), setting `:end` to the start of the NEXT line. So the
+   spaces sit inside `[begin, end)` with no property carrying them, and `[begin, end)` is exactly
+   what section 1 strips. Measured: `one\\   ` + newline gives `begin 4, end 10, post-blank 0`.
 
 **Reason B -- a CHOSEN non-capture (the byte IS present in the tree, just not in a property this
-schema reads):**
+schema reads). Both remaining entries are the same family: the plain-list `:structure` vector.**
 
-7. Malformed lowercase checkbox `- [x]` (see section 9 for the full writeup) -- the raw `"[x]"`
-   survives in the plain-list's own `:structure` vector, which this schema's `item` node does
-   not read. Unlike the Reason A items, this one is not a pure-position loss: the information
-   exists in the tree, reachable, just deliberately not captured, because capturing it would mean
-   modeling `:structure` (list-wide, position-keyed bookkeeping) for one malformed-input edge
-   case that the all-files oracle sweep found in zero Layer 1 fixtures.
-8. `:switches` on `src-block` and `example-block` -- the flag string after the language on a
-   `#+begin_src` line, e.g. `#+begin_src elisp -n -r` loses the `-n -r`.
-9. `:tblfm` on `table` -- the whole `#+TBLFM:` formula line, which `org-element` folds into the
-   table element itself rather than keeping as a sibling keyword.
-10. `:counter` on `item` -- an explicit ordered-list counter override, the `[@5]` in
-    `2. [@5] five`.
-11. `:use-brackets-p` on `subscript`/`superscript` -- `a_b` and `a_{b}` normalize to the same
-    tree; which source form used braces is gone.
-12. `:range-type` on `timestamp` -- a single timestamp with an internal time-time contraction
-    (`<2026-01-01 Thu 10:00-12:00>`) and a genuine two-full-timestamp range (`<date>--<date>`)
-    normalize to the same `active-range`/`inactive-range` shape. See section 9's corrected
-    "same-day time range" entry.
-13. Radio link `:type` -- a link matching an earlier `<<<target>>>` is `org-element`'s own
-    `:type "radio"`, folded into this schema's `"plain"` `linkType` for lack of a dedicated
-    category. Unlike an ordinary plain link, a radio link DOES carry a description; section 4's
-    link description rule is corrected to name this exception.
-14. Headline `:true-level` -- this schema's `level` field is `org-element`'s own `:level`, which
-    is already REDUCED under `#+STARTUP: odd` (`org-odd-levels-only`), confirmed live against
-    Emacs 30.2: a headline written with three stars, `*** B`, reports `level: 2`, not 3. The raw
-    star count, `:true-level`, is gone; section 4's `level` definition is corrected to say so.
-15. The `\\` of a hard line break -- a line explicitly ended with `\\` (a forced break, distinct
-    from an ordinary soft newline) renders identically to a plain newline in this schema's `text`
-    handling; which lines were forced breaks is gone. Consistent with Layer 1's own scoping
-    decision to leave the dedicated `line-break` object out (see section 4, verse-block entry) --
-    this is that same decision showing up as a Layer 2 consequence, not a new gap it introduces.
+8. Malformed lowercase checkbox `- [x]`. `org-element` does not accept lowercase `x` as a
+   checkbox state -- its item parser compares the bracket text with a case-sensitive `equal`
+   against `"[X]"`, `"[ ]"` and `"[-]"` -- so `:checkbox` comes back `nil`, exactly as for a
+   plain non-checkbox item. But `org-list`'s own structure scan DOES capture it, case-insensitively,
+   into the per-item tuple's CHECKBOX slot, and the literal `"[x] "` is stripped out of the item's
+   paragraph content. So the bytes exist in the tree and this schema declines to read them.
+
+   **The decision, and the design that was rejected.** Capturing this is FEASIBLE and cheap: the
+   raw `"[x]"` is reachable in the item's own `:structure` tuple, and surfacing it would need one
+   string field on `item` (call it `rawCheckbox`) and would emit no buffer positions whatsoever.
+   An earlier draft of this schema argued the opposite -- that capturing it "would mean modeling
+   `:structure`", i.e. the whole list-wide, position-keyed vector. That argument was wrong and is
+   withdrawn; only one slot of one tuple is needed.
+
+   It is declined on VALUE, not on difficulty. The entire closable surface is ONE input form.
+   Measured across all seven bracket shapes: `[X]`, `[ ]` and `[-]` are valid and already fully
+   carried by `checkbox`; `[x]` is the only malformed form org's list scan consumes, so it is the
+   only one whose bytes go missing; and `[y]`, `[XX]` and `[]` are not consumed at all -- their
+   bytes survive verbatim in the item's paragraph text (`"[y] text\n"`), so they were never losses
+   to begin with. A `rawCheckbox` field would therefore sit on every `item` node in every
+   conformant tree, be 100% redundant with `checkbox` on every well-formed input, and exist for a
+   single malformed spelling that the all-files oracle sweep finds in zero of the corpus files.
+   That trade is not worth a permanent field in a schema other implementations must satisfy.
+9. Alphabetic list counters -- `1. [@c]`. NEW, surfaced by closing the old item 10 (`:counter` is
+   now carried by the `counter` field, see section 4). `:counter` is an INTEGER, and
+   `org-element`'s item parser converts a letter to its alphabet index, so `1. [@c]` and
+   `1. [@C]` both report `3`, indistinguishable from `1. [@3]`. The raw `"c"`/`"C"` survives only
+   in the same `:structure` tuple as item 8, in its COUNTER slot, and is declined for the same
+   reason: a second permanently-redundant field for a second single input form. (Note the example
+   deliberately uses a NUMERIC bullet. `a. [@c]` produces no `item` node at all, because
+   alphabetical bullets require `org-list-allow-alphabetical`, which is `nil` by default.)
 
 `renderOrg` MUST be byte-exact on everything else -- including block content indent, headline
 body indent, list numbering, multi-blank lines, inline spacing (`postBlank`), all text, and NUL
@@ -544,11 +643,33 @@ lines" claim specifically depends on `preBlank`, now emitted on `headline`, `ite
 lines immediately before one of those three node types were not recoverable before that field
 was added, so this claim did not hold then; it holds now.)
 
+**Two renderer obligations the newly-closed fields create.** Both are places where carrying
+`org-element`'s own representation faithfully means the renderer must do something specific, and
+getting either wrong produces output that looks plausible and is wrong:
+
+- **`tblfm` is stored in REVERSE source order**, so a renderer emits the formula lines in reverse
+  of the array. This is not a quirk of this schema: `org-element`'s table parser builds the list
+  with `push` during a forward scan, and Emacs's own table interpreter re-emits it through an
+  explicit `(reverse ...)`. Emit the array in order and every multi-formula table comes out
+  backwards.
+- **A `line-break` node owns its newline.** The renderer emits `\\` plus the newline FROM that
+  node, and must not also emit a line ending for the line it terminates, or the newline is
+  doubled. Again this is `org-element`'s own convention, not an invention here: its line-break
+  interpreter returns the literal three-character string `\\` followed by a newline.
+
+**Byte-exactness itself is not yet asserted anywhere, and that is deliberate.** `renderOrg` is
+still a stub that throws `OrgError.notImplemented` (section 2), so no test in this repository
+currently checks the contract this section states. Everything above is a claim about what the
+TREE retains, established by inspecting `org-element` and by the conformance fixtures that pin
+each field -- not by a passing round-trip. Wiring the actual byte-exact assertion is ORG-4's work,
+once a renderer exists. Read this section as the specification a renderer will be held to, not as
+a result already demonstrated.
+
 **Why this is not "parity with `org-element-interpret-data`'s output".** `InterpretDataRoundTripTests`
 (see that suite's docstring) characterizes `org-element`'s OWN serializer, `org-element-interpret-data`
 -- it is evidence about Emacs's unparser, not a definition of what `renderOrg` must produce. Its
-24-file divergence set mixes two different things: items 1 through 5 above (genuinely
-unrecoverable from any tree built on `org-element`, this schema included) AND two re-emit
+divergence set mixes two different things: Reason A items above (genuinely
+unrecoverable from any tree built on `org-element`, this schema included) AND re-emit
 conventions that are
 NOT information loss -- block/property-drawer reindentation and ordered-list counter renumbering.
 This schema's tree retains both of those as literal string content, so `renderOrg` both can and

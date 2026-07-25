@@ -22,11 +22,14 @@ extension CorpusLoader.RealFile: CustomTestStringConvertible {
 /// the tree but this schema does not read it (e.g. the malformed lowercase checkbox `- [x]`,
 /// which survives only in the plain-list's `:structure` vector).
 ///
-/// This docstring deliberately does NOT re-enumerate the list. It used to, and that is exactly
-/// how it went stale: the contract was duplicated across SCHEMA.md, README.md, ADAPTER.md and
-/// here, an audit grew it from 6 entries to 15, and two of the four copies were left behind --
-/// including this test's own display name, which printed the wrong count on every `swift test`
-/// run. A contract enumerated in four places drifts in four places. Read SCHEMA.md section 10.
+/// This docstring deliberately does NOT re-enumerate the list, and does not state its length
+/// either. It used to, and that is exactly how it went stale: the contract was duplicated across
+/// SCHEMA.md, README.md, ADAPTER.md and here, an audit grew it from 6 entries to 15, and two of
+/// the four copies were left behind -- including this test's own display name, which printed the
+/// wrong count on every `swift test` run. The list has since moved again, in the other direction,
+/// when eight of those entries were closed by reading the properties they named. That is the
+/// point: it moves. A contract enumerated in four places drifts in four places. Read SCHEMA.md
+/// section 10.
 ///
 /// `renderOrg` MUST be byte-exact on everything else -- INCLUDING block content indent,
 /// headline body indent, list numbering, multi-blank lines, inline spacing (`postBlank`), all

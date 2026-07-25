@@ -119,11 +119,13 @@ limit, not a defect. See README.md's `table.el` note under "Type coverage".
    All entries are now kept, including the long/short dual form (`#+CAPTION[short]: long`).
 6. **`table`'s `:tblfm` property was dropped** - the whole `#+TBLFM:` formula line, which
    `org-element` folds into the table element itself rather than exposing as a sibling keyword.
-   Status: REMAINS. Documented as a Rule D loss - SCHEMA.md section 10, Reason B, item 9.
+   Status: FIXED. Now emitted as the `tblfm` field on both table shapes, in org-element's own
+   reverse source order, pinned by `conformance/table-tblfm-multiple`.
 7. **`src-block` and `example-block`'s `:switches` property was dropped**, and this directly
    contradicted section 10's own completeness claim ("`renderOrg` MUST be byte-exact on
-   everything else") before this audit. Status: REMAINS. Documented as a Rule D loss - SCHEMA.md
-   section 10, Reason B, item 8.
+   everything else") before this audit. Status: FIXED. Now emitted as the `switches` field on
+   both types, in source order beside `language` and `params`, pinned by
+   `conformance/block-src-switches` and `conformance/block-example-switches`.
 8. **`:pre-blank` was dropped on `headline` and `item`**, and the corpus's own shipped files
    exercise it (blank lines before a headline's body, or before a list item). Status: FIXED. Now
    emitted as `preBlank` on all three types `org-element` tracks `:pre-blank` on
@@ -136,21 +138,29 @@ limit, not a defect. See README.md's `table.el` note under "Type coverage".
 ### Medium (7)
 
 10. **`item`'s `:counter` property was dropped** - an explicit ordered-list counter override, the
-    `[@5]` in `2. [@5] five`. Status: REMAINS. Documented as a Rule D loss - SCHEMA.md section 10,
-    Reason B, item 10.
+    `[@5]` in `2. [@5] five`. Status: FIXED for the numeric form, now emitted as the `counter`
+    field and pinned by `conformance/list-counter-override`. The ALPHABETICAL form remains a
+    documented loss: `:counter` is an integer and org-element converts a letter to its alphabet
+    index, so `1. [@c]` reports 3 - SCHEMA.md section 10, item 9.
 11. **`subscript`/`superscript`'s `:use-brackets-p` property was dropped** - `a_b` and `a_{b}`
-    normalize to the same tree, so which source form used braces is gone. Status: REMAINS.
-    Documented as a Rule D loss - SCHEMA.md section 10, Reason B, item 11.
+    normalize to the same tree, so which source form used braces is gone. Status: FIXED. Now
+    emitted as the `useBrackets` boolean. The existing `subscript-simple` and `superscript-simple`
+    fixtures each already contained both the braced and unbraced form, so both values are pinned
+    without adding a fixture.
 12. **`timestamp`'s `:range-type` property was dropped** - a single timestamp with an internal
     time-time contraction and a genuine two-full-timestamp range become indistinguishable. Status:
-    REMAINS. Documented as a Rule D loss - SCHEMA.md section 10, Reason B, item 12. This finding
-    also corrected SCHEMA.md section 9, which had wrongly claimed the schema "has no field for
-    one date, two times" - the real gap is the source-form ambiguity, not a missing date/time
-    field (`start`/`end` already represents a same-day time range fine).
+    FIXED. Now emitted as the `rangeType` field ("timerange"/"daterange"/null), pinned by
+    `conformance/timestamp-timerange-contraction` against the existing `timestamp-active-range`.
+    Measured on closing: strip `rangeType` and the two no-dayname forms are byte-identical; keep
+    it and they differ on exactly that key. This finding also corrected SCHEMA.md section 9, which
+    had wrongly claimed the schema "has no field for one date, two times" - the real gap was the
+    source-form ambiguity, not a missing date/time field.
 13. **Radio links are reported as `linkType: "plain"` while still carrying a description**,
-    contradicting section 4's claim that a plain link never has one. Status: REMAINS. Documented
-    as a Rule D loss - SCHEMA.md section 10, Reason B, item 13 - and section 4's link description
-    rule is corrected to name the exception.
+    contradicting section 4's claim that a plain link never has one. Status: FIXED. org-element's
+    own `:type` is now emitted as the `pathType` field on every link, so a radio link is
+    `linkType: "plain"` with `pathType: "radio"` and stays distinguishable. Pinned by
+    `conformance/link-radio`. Closing this required mapping `radio-target` as well, since a radio
+    link cannot exist without a target in the same buffer.
 14. **Diary timestamps: `start` reported `null` and `:diary-sexp` was dropped entirely.** Status:
     PARTLY FIXED. `diarySexp` (the raw `"(SEXP ...)"` text) is now emitted for `kind: "diary"`
     timestamps. The `null` `start` is kept deliberately, confirmed correct: a diary timestamp has
@@ -159,20 +169,27 @@ limit, not a defect. See README.md's `table.el` note under "Type coverage".
 15. **`special-block`'s `:type` property was dropped** - `#+begin_note` and `#+begin_warning`
     collapse into the same generic node, with nothing recording which block it was. Status:
     REMAINS, and out of this audit's fix scope for a structural reason: `special-block` is one of
-    the 15 unmapped `org-element` types (see README.md's "Type coverage" section), so it goes
+    the unmapped `org-element` types (see README.md's "Type coverage" section), so it goes
     through the generic unmapped-type fallback, not a dedicated branch this audit could patch.
-16. **Timerange end-dayname inconsistency** - for a two-full-timestamp range on the same calendar
-    day, the start half reports a `dayname` (e.g. `"Thu"`) while the end half reports `null`, even
-    though both halves fall on the same day. Status: REMAINS.
+16. **Timerange end-dayname inconsistency.** Status: RESOLVED, and the finding as originally
+    written named the wrong source form. Measured through the oracle: a two-full-timestamp range
+    (`<2026-01-01 Thu 10:00>--<2026-01-01 Thu 12:00>`) reports `"Thu"` on BOTH halves. The
+    asymmetry belongs to the time-time contraction (`<2026-01-01 Thu 10:00-12:00>`), which reports
+    a null end dayname - and that is correct, not a defect. The two halves of a `date` have
+    different provenance: year/month/day/hour/minute come from org-element's own `:*-end`
+    properties, while `dayname` alone is regex-scraped from `:raw-value`, which is split on `--`.
+    A contraction's raw value has no `--` and exactly one dayname token, so null is the
+    reference-faithful answer. With `rangeType` now captured (finding 12) this is derivable
+    rather than surprising.
 
 ### Low (6)
 
 17. **Headline `level` is `org-element`'s own REDUCED level, not the raw star count** - under
     `#+STARTUP: odd` (`org-odd-levels-only`), `*** B` reports `level: 2`, not 3. `:true-level`
-    (the raw count) is dropped. Status: REMAINS. Documented as a Rule D loss and a corrected
-    section 4 field definition - confirmed live against Emacs 30.2 in this documentation pass
-    (`*** B` under `org-odd-levels-only` gives `level=2`, `true-level=3`) - SCHEMA.md section 10,
-    Reason B, item 14.
+    (the raw count) is dropped. Status: FIXED. Now emitted as the `trueLevel` field on every
+    headline, pinned by `conformance/headline-odd-levels`. The measurement that makes the field
+    load-bearing: under odd-levels, `** B` gives level 2 / trueLevel 2 while `*** B` gives level 2
+    / trueLevel 3, so two star counts collapse onto one `level`.
 18. **`CAPTION`'s short form was dropped** - part of finding 5's under-implementation. Status:
     FIXED as part of finding 5.
 19. **Affiliated keyword aliases are normalized away by `org-element` itself** before this schema
@@ -235,13 +252,13 @@ confirmed correct - in these areas:
 ## Coverage statement
 
 Org-mode defines 54 distinct `org-element` node types (30 elements, 24 objects).
-`harness/oracle-dump.el` maps 39 of those 54, plus `org-data` (the parse-tree root) and
-`plain-text` (the bare-string branch), which sit outside either official list. 15 types remain
+`harness/oracle-dump.el` maps 40 of those 54, plus `org-data` (the parse-tree root) and
+`plain-text` (the bare-string branch), which sit outside either official list. 14 types remain
 unmapped and fall to the fallback described in finding 1 above. Full detail, including a
 risk-ranked breakdown of the 15 and what the oracle actually emits for each, is in README.md's
 "Type coverage" section.
 
-Of the 39 mapped types, evidence splits into two different kinds, and they protect against
+Of the 40 mapped types, evidence splits into two different kinds, and they protect against
 different failure modes - see README.md's "What protects each claim" section for the full
 explanation:
 
@@ -257,7 +274,7 @@ explanation:
   "What protects each claim" is the single owner of the fixture-coverage contract, and a second
   copy in this file is exactly how the round-trip loss list drifted into four stale copies before.
   Current state, for orientation only: 12 of those 14 gained a fixture in the corpus expansion
-  that took the corpus from 52 to 71 cases; the 2 that remain are `strike-through` and
+  that took the corpus from 52 to 79 cases; the 2 that remain are `strike-through` and
   `underline`, which are a documented decision rather than an oversight (SCHEMA.md section 7).
 - **6 further gaps** sat inside otherwise-fixtured types - a variant or a property the 52 fixtures
   of the time never happened to exercise. Five are now closed by fixtures; the sixth, fallback

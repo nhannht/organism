@@ -23,8 +23,9 @@
 ;; orgswift's oracle keeps a curated per-type field set (see SCHEMA.md) plus
 ;; :post-blank, not literally every org-element property. A property this
 ;; script never exercises - because `org-element-interpret-data' does not
-;; need it, or because no fixture in this corpus triggers it (:pre-blank,
-;; src-block :switches, etc.) - could still be silently dropped by the JSON
+;; need it, or because no fixture in this corpus triggers it (the declined
+;; :structure entries in SCHEMA.md section 10, etc.) - could still be
+;; silently dropped by the JSON
 ;; projection without this check ever noticing, since it never passes
 ;; through orgswift's JSON at all.
 ;;

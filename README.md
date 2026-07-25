@@ -12,7 +12,7 @@ This suite is real and usable today. The Swift parser is not.
   repository yet.
 - `swift test` reports green, but not because the parser passes. Every case that depends on
   `parseOrg`/`renderOrg` is wrapped in Swift Testing's `withKnownIssue`, so the suite reports
-  a passing run via 124 known issues, not via 124 real passes. See "What is verified" below for
+  a passing run via 117 known issues, not via 117 real passes. See "What is verified" below for
   the exact numbers, and SCHEMA.md section 8 for how `withKnownIssue` is meant to be removed,
   case by case, once the parser actually exists.
 - If you came here looking for a working Swift org-mode parser, it is not here yet. What is
@@ -29,26 +29,28 @@ the whole verification story - run them yourself rather than taking this table's
 
 | What | Result |
 |---|---|
-| `harness/verify-corpus.sh` | 71 of 71 cases pass, 0 fail |
-| `swift test` | 11 tests, 6 suites, 0 failures, 124 known issues |
-| Layer 1 conformance cases | 71 pairs of `input.org` + `expected.json` |
+| `harness/verify-corpus.sh` | 79 of 79 cases pass, 0 fail |
+| `swift test` | 11 tests, 6 suites, 0 failures, 117 known issues |
+| Layer 1 conformance cases | 79 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
-| `org-element` types mapped by the oracle | 39 of 54 |
-| Mapped types that also have a fixture | 37 of 39 |
-| Byte-exact round-trip through `org-element` | 57 of 84 files |
-| Documented round-trip losses | 15 - see SCHEMA.md section 10 |
+| `org-element` types mapped by the oracle | 40 of 54 |
+| Mapped types that also have a fixture | 38 of 40 |
+| Byte-exact round-trip through `org-element` | 61 of 92 files |
+| Documented round-trip losses | 9 - see SCHEMA.md section 10 |
 
 Two of those numbers are easy to misread, so they are stated plainly here.
 
-**124 known issues are not 124 passes.** They are the parser-shaped hole: every case that needs
+**117 known issues are not 117 passes.** They are the parser-shaped hole: every case that needs
 `parseOrg`/`renderOrg` is wrapped in `withKnownIssue`, so the run is green because the failures
 are expected, not because they do not happen. That count goes DOWN as the parser gets written,
 and it goes UP whenever a new fixture is added ahead of the parser. Both directions are correct.
 
-**The 15 round-trip losses are two different things.** 6 are irreducible - the byte is not
+**The 9 round-trip losses are two different things.** 7 are irreducible - the byte is not
 recoverable from any tree built on `org-element`, so no parser on this foundation can fix them.
-The other 9 are properties this schema currently declines to read, and are closable. SCHEMA.md
-section 10 splits them and says which is which.
+The other 2 are properties this schema declines to read, with the decision and its measured
+reason recorded. SCHEMA.md section 10 splits them and says which is which. This list was 15 until
+eight of the closable entries were closed by actually reading the properties they named; closing
+them also surfaced two losses nobody had looked for, which are now in the 7.
 
 ## What this is
 
@@ -63,7 +65,7 @@ Two things live in the same repository, and the split matters:
 
 ```
 organism/
-├── conformance/            Layer 1: 71 cases, each a pair of input.org + expected.json
+├── conformance/            Layer 1: 79 cases, each a pair of input.org + expected.json
 ├── real/                   Layer 2/3: 13 vendored MIT real-world .org files, 2 sources
 ├── harness/                Layer 3: oracle-dump.el (the Emacs oracle), fetch-corpus.sh
 ├── schema/                 formal JSON Schema for the tree shape (companion to SCHEMA.md)
@@ -102,7 +104,7 @@ conformance/*/                    real/**/*.org                     harness/orac
   == expected.json (structural)
 ```
 
-- **Layer 1, spec conformance** (`conformance/`): 71 small, hand-written `.org` fixtures, each
+- **Layer 1, spec conformance** (`conformance/`): 79 small, hand-written `.org` fixtures, each
   isolating one rule from the spec - emphasis border rules, runtime `#+TODO:` keywords, list
   item boundaries, planning-line position, timestamps, and the rest of the cases where org-mode
   is genuinely hard. Each fixture's `expected.json` is the normalized tree a parser must
@@ -130,26 +132,28 @@ parser code against this suite - it is the contract all three layers check again
 
 Every number below was checked directly in this repository, on this commit, not assumed:
 
-- 71 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
+- 79 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 11 tests, 6 suites, 0 real failures, 124 known issues.
-- `harness/verify-corpus.sh` on this commit: 71/71 conformance cases pass (a runnable reference
+- `swift test` on this commit: 11 tests, 6 suites, 0 real failures, 117 known issues.
+- `harness/verify-corpus.sh` on this commit: 79/79 conformance cases pass (a runnable reference
   adapter that uses the Emacs oracle itself as the stand-in parser).
 - Every `conformance/*/expected.json` fixture validates against `schema/org-node.schema.json`:
-  71/71 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
+  79/79 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
 - Emacs 30.2, org-mode 9.7.11, confirmed installed. `harness/oracle-dump.el` runs clean against
-  it on all 71 conformance inputs: valid JSON, zero warnings, zero unmapped `org-element` node
-  types. This was checked by running the script directly against each input file, not inferred
+  it on all 79 conformance inputs: valid JSON, zero unmapped `org-element` node types, and
+  exactly one case emitting anything on stderr - `table-el-flavour`, which warns by design.
+  Measured by re-running the sweep with stderr captured per case. This was checked by running the script directly against each input file, not inferred
   from a passing test run - see the next section for why that distinction matters here.
 
 ## Type coverage: what the oracle maps today
 
 Org-mode defines 54 distinct `org-element` node types in total (30 elements, 24 objects).
-`harness/oracle-dump.el` maps 39 of those 54 today, plus two branches that sit outside either
-official list: `org-data` (the parse-tree root) and `plain-text` (the bare-string branch). 15
-types are not yet mapped.
+`harness/oracle-dump.el` maps 40 of those 54 today, plus two branches that sit outside either
+official list: `org-data` (the parse-tree root) and `plain-text` (the bare-string branch). 14
+types are not yet mapped. (`radio-target` left this list recently, mapped because a radio link
+cannot be fixtured without a target in the same buffer - see the round-trip loss section.)
 
 Ranked below by how likely your own `.org` files contain one, not by anything about the code
 itself:
@@ -170,17 +174,16 @@ Common within specific communities:
 Genuinely rare:
 - `citation`, `citation-reference` - `[cite:@key]`, `org-cite` (a growing but still niche
   extension).
-- `radio-target` - `<<<radio>>>`, distinct from `target` above and much rarer.
 - `diary-sexp` - `%%(diary-...)`.
 
-None of these 15 types, and no `table.el`-style table (see below), occurs anywhere in the 71
+None of these 14 types, and no `table.el`-style table (see below), occurs anywhere in the 79
 conformance inputs or the 13 vendored real-world files. This disclosure is about what happens
 when you point the oracle at your own files - the shipped corpus is unaffected either way.
 
 ### What actually happens when the oracle meets one of these
 
 Tested directly against the current script, invoking the oracle the way a reader would and
-checking exit code, stdout, and stderr: all 15 exit 0 and produce valid, parseable JSON. None of
+checking exit code, stdout, and stderr: all 14 exit 0 and produce valid, parseable JSON. None of
 them crash the script. Each produces a stderr warning naming the unmapped type - checked
 directly, e.g. a synthetic file containing a `special-block` and an `entity` produces exactly
 the two expected warnings - which a plain stdout redirect throws away, so validating the output
@@ -190,8 +193,8 @@ against `schema/org-node.schema.json` is what actually catches an unmapped type 
 What survives in the fallback node's own JSON differs by what `org-element` itself stores as
 that type's `:value`, confirmed directly for all 15:
 
-- Nine types carry a plain string `:value`, so that raw text survives in the JSON `value` field:
-  `macro`, `target`, `latex-environment`, `radio-target`, `inline-src-block`, `export-snippet`,
+- Eight types carry a plain string `:value`, so that raw text survives in the JSON `value` field:
+  `macro`, `target`, `latex-environment`, `inline-src-block`, `export-snippet`,
   `babel-call`, `inline-babel-call`, `diary-sexp`. Wrapping syntax `org-element` itself already
   strips before this schema ever sees `:value` - delimiters, the source-block language tag, the
   export backend name - does not come back with it.
@@ -210,7 +213,7 @@ that type's `:value`, confirmed directly for all 15:
 ### `table.el` tables: a fixed defect, and a deliberate limit that remains
 
 `table.el`-style ASCII tables (a `+---+` grid, distinct from org's native `| a | b |` row
-syntax) are not one of the 15 unmapped types above - they are the mapped `table` type, with
+syntax) are not one of the 14 unmapped types above - they are the mapped `table` type, with
 `:type 'table.el`. This used to be the single most dangerous gap this suite found: the mapped
 branch ignored `:type` entirely and emitted `{"type":"table","children":[]}` for a `table.el`
 table - valid JSON, exit 0, no warning, passing schema validation, while every byte of the table
@@ -233,7 +236,7 @@ Even so, do not read a passing `swift test` as proof the oracle is correct. Ever
 `conformance/*/expected.json` fixtures is generated BY running `oracle-dump.el` itself, so
 `OracleConformanceCrossCheckTests` compares the oracle against a snapshot of its own prior
 output, not against anything independent. A green run there proves only that
-`oracle-dump.el`'s output for these 71 cases has not drifted since the fixtures were minted -
+`oracle-dump.el`'s output for these 79 cases has not drifted since the fixtures were minted -
 across an Emacs or org-mode version bump, or a future edit to the script. It says nothing, on
 its own, about whether that output is actually correct org-mode behavior. This circularity is
 real, and it still stands today.
@@ -274,9 +277,9 @@ possible, and this section keeps saying so until a second, independent audit say
 
 One further independent, non-circular signal exists: `harness/interpret-data-check.el` runs
 `org-element-interpret-data(org-element-parse-buffer(file))` - Emacs's own unparser, which never
-touches `oracle-dump.el` or `expected.json` at all - against all 84 files in this corpus (the 71
-conformance inputs plus the 13 real-world files). 57 of 84 matched the original bytes exactly.
-The other 27 were inspected by hand, one at a time, and every first divergence traces to a
+touches `oracle-dump.el` or `expected.json` at all - against all 92 files in this corpus (the 79
+conformance inputs plus the 13 real-world files). 61 of 92 matched the original bytes exactly.
+The other 31 were inspected by hand, one at a time, and every first divergence traces to a
 known, harmless `org-element-interpret-data` re-emit convention (keyword-name case-folding,
 block and property-drawer reindentation, headline-tag column alignment, planning-line keyword
 reordering, list-counter renumbering), not an information loss. `compare-strings` only reports
@@ -291,7 +294,7 @@ be accurate for that one property even though the file as a whole has been run l
 ## What protects each claim
 
 Two different kinds of evidence back this suite's claims, and they protect against different
-failure modes. A regression fixture (one of the 71 `conformance/*/expected.json` files) pins a
+failure modes. A regression fixture (one of the 79 `conformance/*/expected.json` files) pins a
 shape against DRIFT: if `oracle-dump.el`, or a future Emacs or org-mode version, ever changes
 what it produces for that case, `harness/verify-corpus.sh` and `swift test` go red on the next
 run. A one-time audit finding proves a mapping was correct AT THE TIME it was checked, against
@@ -300,13 +303,13 @@ run. A one-time audit finding proves a mapping was correct AT THE TIME it was ch
 `org-element` by reading its source, by a live parse, or both. What it lacks is an alarm that
 fires if the mapping ever breaks later.
 
-Of the 39 mapped `org-element` types (see "Type coverage" above), plus `org-data` and
-`plain-text`, **37 carry regression-fixture coverage**: `bold`, `center-block`, `code`, `comment`,
+Of the 40 mapped `org-element` types (see "Type coverage" above), plus `org-data` and
+`plain-text`, **38 carry regression-fixture coverage**: `bold`, `center-block`, `code`, `comment`,
 `comment-block`, `drawer`, `dynamic-block`, `example-block`, `export-block`, `fixed-width`,
 `footnote-definition`, `footnote-reference`, `headline`, `horizontal-rule`, `italic`, `item`,
 `keyword`, `latex-fragment`, `line-break`, `link`, `node-property`, `paragraph`, `plain-list`,
 `planning`, `property-drawer`, `quote-block`, `section`, `src-block`, `statistics-cookie`,
-`subscript`, `superscript`, `table` (both the org-style pipe flavour and the `table.el` flavour),
+`radio-target`, `subscript`, `superscript`, `table` (both the org-style pipe flavour and the `table.el` flavour),
 `table-cell`, `table-row`, `timestamp` (`active`, `active-range`, `inactive`, `inactive-range`,
 and `diary` kinds), `verbatim`, `verse-block` - plus `org-data` and `plain-text` themselves, and,
 at the property level, the affiliated `NAME`, `CAPTION`, `HEADER`, `RESULTS`, `ATTR_*` and `PLOT`
@@ -318,13 +321,14 @@ all six emphasis markers share one border-rule mechanism, and the Layer 1 corpus
 representatively via bold/italic/verbatim/code (SCHEMA.md section 7). Dedicated fixtures for those
 two would add coverage on paper and nothing in fact.
 
-One fixture is worth understanding before you trust its name. `line-break` is fixtured
-(`conformance/line-break-simple`), but no `line-break` node appears in its `expected.json`: the
-oracle deliberately flattens a hard break into a `text` node whose value is a single newline, so
-the `\\` bytes are not represented at all (SCHEMA.md section 10, Reason B). The fixture pins that
-flattening, including the fact that the flattened node carries no `preBlank` - which was a real
-bug once. A fixture that pins a documented loss is still a fixture, but it is not proving what its
-name suggests.
+`conformance/line-break-simple` used to be listed here as a fixture worth distrusting: it was
+named for `line-break` but contained no `line-break` node, because the oracle flattened a hard
+break into a `text` node holding a single newline, so the `\\` bytes were not represented at all.
+That is fixed. `line-break` is now its own node type, the fixture contains a real `line-break`
+node, and `conformance/line-break-in-verse` pins the same thing inside a verse block, where the
+distinction between a forced break and an ordinary line boundary actually matters. The old note
+also mis-stated its own point - it said the flattened node carried no `preBlank`, where the field
+that mattered was `postBlank` (that was the real bug, and it is audit finding 9).
 
 **The 6 variant gaps this section used to list are now closed.** Each was a variant or a property
 the corpus did not happen to exercise even though the type itself was covered: `table.el`-flavour
@@ -333,7 +337,7 @@ tables and their `value`; timestamp kinds `inactive-range` and `diary` plus the 
 shape and the multi-caption list; and affiliated `HEADER`, `RESULTS`, `ATTR_*` and `PLOT`. All five
 now have a dedicated fixture.
 
-The sixth item on that old list stays open on purpose: the fallback behavior for the 15 unmapped
+The sixth item on that old list stays open on purpose: the fallback behavior for the 14 unmapped
 types. They are unmapped, so there is no mapping to pin - only a warning to emit, which is a
 different kind of guarantee and belongs with the work that maps them.
 
@@ -345,16 +349,22 @@ and a minimum level configured, and nothing in this pass set that up. Its mappin
 plainly, because an honest gap is worth more than a silent one.
 
 A future Emacs or org-mode version could change either of the 2 unfixtured types, the fallback
-behavior for the 15 unmapped types, or the unverified `inlinetask` mapping, without this suite
+behavior for the 14 unmapped types, or the unverified `inlinetask` mapping, without this suite
 noticing - nothing here re-runs against them. That exposure is far smaller than it was: it used to
 cover 14 unfixtured types and 6 variant gaps as well, and those now go red on the next run.
 
 ## The round-trip loss contract (Rule D)
 
-`renderOrg(parseOrg(text)) == text`, byte-exact, except 15 documented, confirmed instances where
+`renderOrg(parseOrg(text)) == text`, byte-exact, except 9 documented, confirmed instances where
 the byte is not recoverable from the tree this schema builds. Full detail, including how each
 one was confirmed against `org-element`'s own internal representation, is in SCHEMA.md section
-10. Summary:
+10, which is the single authoritative copy - this summary cites it and does not redefine it.
+
+This list was 15. Eight entries were closed by reading the `org-element` properties they named
+(`:switches`, `:tblfm`, `:counter`, `:use-brackets-p`, `:range-type`, a link's `:type`,
+`:true-level`, and the hard line break), each now carried by a schema field and pinned by a
+conformance fixture. Doing that surfaced two losses nobody had checked for, which are included
+below rather than omitted. Summary:
 
 Unrecoverable from any string property in the tree - a buffer-position loss, or an upstream
 normalization that happens before this schema ever sees the buffer:
@@ -368,28 +378,21 @@ normalization that happens before this schema ever sees the buffer:
 6. Affiliated keyword aliases - `org-element` itself normalizes `#+TBLNAME:` to `NAME`,
    `#+RESULT:` to `RESULTS`, and `#+HEADERS:` to `HEADER` before this schema ever sees the
    keyword.
+7. Whitespace between a hard line break's `\\` and its newline. New, found while closing the old
+   item 15: `org-element`'s line-break parser swallows the trailing spaces into the node's span
+   and stores nothing but positions, which this schema strips.
 
 A chosen non-capture, not a position loss (the byte exists in `org-element`'s tree, just not in
-a field this schema reads):
+a field this schema reads). Both are the same family - the plain-list `:structure` vector - and
+both are declined on value rather than difficulty, with the reasoning recorded in section 10:
 
-7. A malformed lowercase checkbox, `- [x]`, which `org-element` itself does not recognize as a
-   checkbox state.
-8. `:switches` on `src-block`/`example-block` - the flags after the language on a
-   `#+begin_src` line.
-9. `:tblfm` on `table` - the `#+TBLFM:` formula line, which `org-element` folds into the table
-   element itself.
-10. `:counter` on `item` - an explicit ordered-list counter override, `[@5]`.
-11. `:use-brackets-p` on `subscript`/`superscript` - `a_b` and `a_{b}` become identical.
-12. `:range-type` on `timestamp` - a single timestamp with an internal time range and a genuine
-    two-full-timestamp range normalize to the same `active-range`/`inactive-range` shape. With no
-    dayname written they produce byte-identical trees; with a dayname they still differ on
-    `end.dayname`, which is finding 16's separate inconsistency rather than a way to recover the
-    source form.
-13. Radio link `:type` - folded into this schema's `"plain"` `linkType`, even though a radio
-    link, unlike an ordinary plain link, carries a description.
-14. Headline `:true-level` - this schema's `level` is `org-element`'s own reduced level, which
-    differs from the raw star count under `#+STARTUP: odd`.
-15. The `\\` of a hard line break, which renders identically to a plain newline in this schema.
+8. A malformed lowercase checkbox, `- [x]`, which `org-element` itself does not recognize as a
+   checkbox state. Capturing it is feasible and was rejected: the entire closable surface is that
+   one spelling, because `[y]`, `[XX]` and `[]` are not consumed at all and their bytes survive
+   verbatim in the item's own text.
+9. Alphabetical list counters, `1. [@c]`. New, found while closing the old item 10: `:counter` is
+   an integer and `org-element` converts a letter to its alphabet index, so `[@c]` and `[@3]`
+   are indistinguishable once parsed.
 
 Nothing else is excused. Block content indent, headline body indent, list numbering, multiple
 blank lines (including immediately before a `headline`, `item`, or `footnote-definition`, via the
