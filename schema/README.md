@@ -13,6 +13,28 @@ wrong type, an extra key). A structural mismatch against `expected.json` tells y
 right but the CONTENT is wrong. Those are two different bugs, and the schema catches the first
 kind faster.
 
+## Note: this file below is a historical record, and the corpus has since grown
+
+Everything from "Corpus regeneration complete" down describes ONE past event - the `preBlank` bug
+fix and the corpus regeneration that followed it - and its numbers are the numbers of that moment:
+52 fixtures. They are left at 52 deliberately, because rewriting them to today's count would make
+a true historical record into a false one.
+
+The corpus is now **71 fixtures**, all still **71/71 valid, 0 invalid** against this schema. The
+19 cases added since exercise several things the text below correctly reported as unexercised AT
+THE TIME. Four statements no longer describe the current corpus:
+
+| Statement below | Still true? |
+|---|---|
+| "none of the 52 exercise `table.el`" | No - `conformance/table-el-flavour` does |
+| "None of the corpus's 52 fixtures use any keyword besides `NAME`" | No - `conformance/affiliated-caption-forms` and `conformance/affiliated-header-results-attr-plot` use `CAPTION`, `HEADER`, `PLOT`, `ATTR_HTML`, `ATTR_LATEX`, and `RESULTS` |
+| "`footnote-definition` does not appear in any of the 52 fixtures" | No - `conformance/footnote-definition-simple` and `conformance/footnote-definition-preblank` do |
+| "changes zero of the 52 fixtures, since none contain a diary timestamp" | No - `conformance/timestamp-diary-sexp` does |
+
+Each of those four was a genuine coverage gap that the text below named honestly. They are now
+closed by fixtures, which is the point: the schema features they describe are no longer supported
+only by constructed one-off test files, they are pinned by the checked-in corpus.
+
 **Corpus regeneration complete.** A confirmed bug fix in `harness/oracle-dump.el` changed what a
 correct tree looks like: `headline`, `item`, and `footnote-definition` now carry a required
 `"preBlank"` field (see "`preBlank`" below). All 52 `conformance/*/expected.json` fixtures were

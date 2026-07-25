@@ -12,7 +12,7 @@ This suite is real and usable today. The Swift parser is not.
   repository yet.
 - `swift test` reports green, but not because the parser passes. Every case that depends on
   `parseOrg`/`renderOrg` is wrapped in Swift Testing's `withKnownIssue`, so the suite reports
-  a passing run via 102 known issues, not via 102 real passes. See "What is verified" below for
+  a passing run via 124 known issues, not via 124 real passes. See "What is verified" below for
   the exact numbers, and SCHEMA.md section 8 for how `withKnownIssue` is meant to be removed,
   case by case, once the parser actually exists.
 - If you came here looking for a working Swift org-mode parser, it is not here yet. What is
@@ -29,18 +29,18 @@ the whole verification story - run them yourself rather than taking this table's
 
 | What | Result |
 |---|---|
-| `harness/verify-corpus.sh` | 52 of 52 cases pass, 0 fail |
-| `swift test` | 11 tests, 6 suites, 0 failures, 102 known issues |
-| Layer 1 conformance cases | 52 pairs of `input.org` + `expected.json` |
+| `harness/verify-corpus.sh` | 71 of 71 cases pass, 0 fail |
+| `swift test` | 11 tests, 6 suites, 0 failures, 124 known issues |
+| Layer 1 conformance cases | 71 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `org-element` types mapped by the oracle | 39 of 54 |
-| Mapped types that also have a fixture | 25 of 39 |
-| Byte-exact round-trip through `org-element` | 41 of 65 files |
+| Mapped types that also have a fixture | 37 of 39 |
+| Byte-exact round-trip through `org-element` | 57 of 84 files |
 | Documented round-trip losses | 15 - see SCHEMA.md section 10 |
 
 Two of those numbers are easy to misread, so they are stated plainly here.
 
-**102 known issues are not 102 passes.** They are the parser-shaped hole: every case that needs
+**124 known issues are not 124 passes.** They are the parser-shaped hole: every case that needs
 `parseOrg`/`renderOrg` is wrapped in `withKnownIssue`, so the run is green because the failures
 are expected, not because they do not happen. That count goes DOWN as the parser gets written,
 and it goes UP whenever a new fixture is added ahead of the parser. Both directions are correct.
@@ -63,7 +63,7 @@ Two things live in the same repository, and the split matters:
 
 ```
 organism/
-├── conformance/            Layer 1: 52 cases, each a pair of input.org + expected.json
+├── conformance/            Layer 1: 71 cases, each a pair of input.org + expected.json
 ├── real/                   Layer 2/3: 13 vendored MIT real-world .org files, 2 sources
 ├── harness/                Layer 3: oracle-dump.el (the Emacs oracle), fetch-corpus.sh
 ├── schema/                 formal JSON Schema for the tree shape (companion to SCHEMA.md)
@@ -102,7 +102,7 @@ conformance/*/                    real/**/*.org                     harness/orac
   == expected.json (structural)
 ```
 
-- **Layer 1, spec conformance** (`conformance/`): 52 small, hand-written `.org` fixtures, each
+- **Layer 1, spec conformance** (`conformance/`): 71 small, hand-written `.org` fixtures, each
   isolating one rule from the spec - emphasis border rules, runtime `#+TODO:` keywords, list
   item boundaries, planning-line position, timestamps, and the rest of the cases where org-mode
   is genuinely hard. Each fixture's `expected.json` is the normalized tree a parser must
@@ -130,17 +130,17 @@ parser code against this suite - it is the contract all three layers check again
 
 Every number below was checked directly in this repository, on this commit, not assumed:
 
-- 52 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
+- 71 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 11 tests, 6 suites, 0 real failures, 102 known issues.
-- `harness/verify-corpus.sh` on this commit: 52/52 conformance cases pass (a runnable reference
+- `swift test` on this commit: 11 tests, 6 suites, 0 real failures, 124 known issues.
+- `harness/verify-corpus.sh` on this commit: 71/71 conformance cases pass (a runnable reference
   adapter that uses the Emacs oracle itself as the stand-in parser).
 - Every `conformance/*/expected.json` fixture validates against `schema/org-node.schema.json`:
-  52/52 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
+  71/71 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
 - Emacs 30.2, org-mode 9.7.11, confirmed installed. `harness/oracle-dump.el` runs clean against
-  it on all 52 conformance inputs: valid JSON, zero warnings, zero unmapped `org-element` node
+  it on all 71 conformance inputs: valid JSON, zero warnings, zero unmapped `org-element` node
   types. This was checked by running the script directly against each input file, not inferred
   from a passing test run - see the next section for why that distinction matters here.
 
@@ -173,7 +173,7 @@ Genuinely rare:
 - `radio-target` - `<<<radio>>>`, distinct from `target` above and much rarer.
 - `diary-sexp` - `%%(diary-...)`.
 
-None of these 15 types, and no `table.el`-style table (see below), occurs anywhere in the 52
+None of these 15 types, and no `table.el`-style table (see below), occurs anywhere in the 71
 conformance inputs or the 13 vendored real-world files. This disclosure is about what happens
 when you point the oracle at your own files - the shipped corpus is unaffected either way.
 
@@ -229,11 +229,11 @@ this corpus's `expected.json` fixtures were first regenerated from it - a spurio
 on nested `date`/`rep` objects, and a UTF-8 double-encoding bug in the script's own `princ`
 output (see SCHEMA.md section 9).
 
-Even so, do not read a passing `swift test` as proof the oracle is correct. Every one of the 52
+Even so, do not read a passing `swift test` as proof the oracle is correct. Every one of the 71
 `conformance/*/expected.json` fixtures is generated BY running `oracle-dump.el` itself, so
 `OracleConformanceCrossCheckTests` compares the oracle against a snapshot of its own prior
 output, not against anything independent. A green run there proves only that
-`oracle-dump.el`'s output for these 52 cases has not drifted since the fixtures were minted -
+`oracle-dump.el`'s output for these 71 cases has not drifted since the fixtures were minted -
 across an Emacs or org-mode version bump, or a future edit to the script. It says nothing, on
 its own, about whether that output is actually correct org-mode behavior. This circularity is
 real, and it still stands today.
@@ -274,9 +274,9 @@ possible, and this section keeps saying so until a second, independent audit say
 
 One further independent, non-circular signal exists: `harness/interpret-data-check.el` runs
 `org-element-interpret-data(org-element-parse-buffer(file))` - Emacs's own unparser, which never
-touches `oracle-dump.el` or `expected.json` at all - against all 65 files in this corpus (the 52
-conformance inputs plus the 13 real-world files). 41 of 65 matched the original bytes exactly.
-The other 24 were inspected by hand, one at a time, and every first divergence traces to a
+touches `oracle-dump.el` or `expected.json` at all - against all 84 files in this corpus (the 71
+conformance inputs plus the 13 real-world files). 57 of 84 matched the original bytes exactly.
+The other 27 were inspected by hand, one at a time, and every first divergence traces to a
 known, harmless `org-element-interpret-data` re-emit convention (keyword-name case-folding,
 block and property-drawer reindentation, headline-tag column alignment, planning-line keyword
 reordering, list-counter renumbering), not an information loss. `compare-strings` only reports
@@ -291,7 +291,7 @@ be accurate for that one property even though the file as a whole has been run l
 ## What protects each claim
 
 Two different kinds of evidence back this suite's claims, and they protect against different
-failure modes. A regression fixture (one of the 52 `conformance/*/expected.json` files) pins a
+failure modes. A regression fixture (one of the 71 `conformance/*/expected.json` files) pins a
 shape against DRIFT: if `oracle-dump.el`, or a future Emacs or org-mode version, ever changes
 what it produces for that case, `harness/verify-corpus.sh` and `swift test` go red on the next
 run. A one-time audit finding proves a mapping was correct AT THE TIME it was checked, against
@@ -301,38 +301,41 @@ run. A one-time audit finding proves a mapping was correct AT THE TIME it was ch
 fires if the mapping ever breaks later.
 
 Of the 39 mapped `org-element` types (see "Type coverage" above), plus `org-data` and
-`plain-text`, **25 carry regression-fixture coverage**: `bold`, `code`, `comment`,
-`example-block`, `export-block`, `headline`, `horizontal-rule`, `italic`, `item`, `keyword`,
-`link`, `node-property`, `paragraph`, `plain-list`, `planning`, `property-drawer`, `quote-block`,
-`section`, `src-block`, `table` (org-style pipe tables only), `table-cell`, `table-row`,
-`timestamp` (`active`, `active-range`, and `inactive` kinds only), `verbatim`, `verse-block` -
-plus `org-data` and `plain-text` themselves, and, at the property level, the affiliated `NAME`
-keyword on `table` and `preBlank` on `headline` and `item`.
+`plain-text`, **37 carry regression-fixture coverage**: `bold`, `center-block`, `code`, `comment`,
+`comment-block`, `drawer`, `dynamic-block`, `example-block`, `export-block`, `fixed-width`,
+`footnote-definition`, `footnote-reference`, `headline`, `horizontal-rule`, `italic`, `item`,
+`keyword`, `latex-fragment`, `line-break`, `link`, `node-property`, `paragraph`, `plain-list`,
+`planning`, `property-drawer`, `quote-block`, `section`, `src-block`, `statistics-cookie`,
+`subscript`, `superscript`, `table` (both the org-style pipe flavour and the `table.el` flavour),
+`table-cell`, `table-row`, `timestamp` (`active`, `active-range`, `inactive`, `inactive-range`,
+and `diary` kinds), `verbatim`, `verse-block` - plus `org-data` and `plain-text` themselves, and,
+at the property level, the affiliated `NAME`, `CAPTION`, `HEADER`, `RESULTS`, `ATTR_*` and `PLOT`
+keywords, and `preBlank` on `headline`, `item`, and `footnote-definition`.
 
-**14 mapped types carry no fixture at all** and rest solely on the one-time audit against
-`org-element`'s own source: `center-block`, `comment-block`, `drawer`, `dynamic-block`,
-`fixed-width`, `footnote-definition`, `footnote-reference`, `latex-fragment`, `line-break`,
-`statistics-cookie`, `strike-through`, `subscript`, `superscript`, `underline`.
+**2 mapped types carry no fixture** and rest solely on the one-time audit against `org-element`'s
+own source: `strike-through` and `underline`. Both are a documented decision, not an oversight:
+all six emphasis markers share one border-rule mechanism, and the Layer 1 corpus already tests it
+representatively via bold/italic/verbatim/code (SCHEMA.md section 7). Dedicated fixtures for those
+two would add coverage on paper and nothing in fact.
 
-**6 further gaps sit inside types that are otherwise fixture-covered** - a variant or a property
-the 52 fixtures never happen to exercise, even though the type itself is:
+One fixture is worth understanding before you trust its name. `line-break` is fixtured
+(`conformance/line-break-simple`), but no `line-break` node appears in its `expected.json`: the
+oracle deliberately flattens a hard break into a `text` node whose value is a single newline, so
+the `\\` bytes are not represented at all (SCHEMA.md section 10, Reason B). The fixture pins that
+flattening, including the fact that the flattened node carries no `preBlank` - which was a real
+bug once. A fixture that pins a documented loss is still a fixture, but it is not proving what its
+name suggests.
 
-1. `table.el`-flavour tables and their `value` field - only the org-style pipe-table flavour is
-   exercised.
-2. Timestamp kinds `inactive-range` and `diary`, and the `diarySexp` field.
-3. `preBlank` on `footnote-definition` - the third type this schema tracks it on; `headline` and
-   `item` are covered.
-4. The affiliated `CAPTION` keyword entirely, including its long/short shape and the
-   multi-caption list.
-5. Affiliated `HEADER`, `RESULTS`, `ATTR_*`, and `PLOT` - only `NAME`, and only on `table`, is
-   exercised.
-6. The fallback behavior for all 15 unmapped types (see "Type coverage" above).
+**The 6 variant gaps this section used to list are now closed.** Each was a variant or a property
+the corpus did not happen to exercise even though the type itself was covered: `table.el`-flavour
+tables and their `value`; timestamp kinds `inactive-range` and `diary` plus the `diarySexp` field;
+`preBlank` on `footnote-definition`; the affiliated `CAPTION` keyword including its long/short dual
+shape and the multi-caption list; and affiliated `HEADER`, `RESULTS`, `ATTR_*` and `PLOT`. All five
+now have a dedicated fixture.
 
-Two of the 14 unfixtured types are a documented decision, not an oversight. `underline` and
-`strike-through` intentionally get no dedicated fixture, because all six emphasis markers share
-one border-rule mechanism and the Layer 1 corpus already tests it representatively via
-bold/italic/verbatim/code (SCHEMA.md section 7). `latex-fragment` and `dynamic-block` are
-recorded as mapped but deliberately unfixtured, pending a Layer 1 revisit (SCHEMA.md section 9).
+The sixth item on that old list stays open on purpose: the fallback behavior for the 15 unmapped
+types. They are unmapped, so there is no mapping to pin - only a warning to emit, which is a
+different kind of guarantee and belongs with the work that maps them.
 
 One gap here is worse than the rest: `inlinetask`. It is not merely unfixtured - it is the one
 mapping this audit could not verify at all. No constructed input actually produced an
@@ -341,9 +344,10 @@ and a minimum level configured, and nothing in this pass set that up. Its mappin
 `oracle-dump.el` has not been checked against a real parse, by fixture or by audit. Stated here
 plainly, because an honest gap is worth more than a silent one.
 
-A future Emacs or org-mode version could change any of the 14 unfixtured types, any of the 6
-variant gaps, or the unverified `inlinetask` mapping, without this suite's own test suite
-noticing - nothing here re-runs against them.
+A future Emacs or org-mode version could change either of the 2 unfixtured types, the fallback
+behavior for the 15 unmapped types, or the unverified `inlinetask` mapping, without this suite
+noticing - nothing here re-runs against them. That exposure is far smaller than it was: it used to
+cover 14 unfixtured types and 6 variant gaps as well, and those now go red on the next run.
 
 ## The round-trip loss contract (Rule D)
 

@@ -54,8 +54,8 @@ going reference-faithful in the first place (`SCHEMA.md` section 1): if buffer p
 are redundant here, a schema that keeps everything else BUT positions can, in principle,
 round-trip too.
 
-Run across all 52 conformance inputs plus the 13 vendored real-world files (65 total), 41/65
-matched byte-for-byte on a live Emacs 30.2 run. The 24 that did not are documented and classified
+Run across all 71 conformance inputs plus the 13 vendored real-world files (84 total), 57/84
+matched byte-for-byte on a live Emacs 30.2 run. The 27 that did not are documented and classified
 in `Tests/OrgSwiftTests/InterpretDataRoundTripTests.swift` (`knownReformattingDivergences`) and
 in `SCHEMA.md` section 10 - each traces to a known `org-element-interpret-data` re-emit
 convention (keyword-name case-folding, block/property-drawer reindentation, and so on), not to a
@@ -75,7 +75,7 @@ own parser exists.
 bash harness/verify-corpus.sh
 ```
 
-For each of the 52 `conformance/<case>/{input.org,expected.json}` pairs: runs `oracle-dump.el` on
+For each of the 71 `conformance/<case>/{input.org,expected.json}` pairs: runs `oracle-dump.el` on
 `input.org`, canonicalizes both that output and `expected.json` with `jq -S` (recursively sorted
 object keys, so key order never causes a false mismatch), and diffs the two. Prints one
 `PASS`/`FAIL` line per case plus a final summary line, and exits non-zero if any case failed.

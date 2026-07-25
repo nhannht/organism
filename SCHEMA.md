@@ -381,11 +381,11 @@ matches.
   `oracle-dump.el`'s per-type property mappings against `org-element`'s own source, not a test.
 
   Independent, non-circular support: `org-element-interpret-data(org-element-parse-buffer(file))`
-  was run against all 52 conformance inputs plus the 13 vendored real-world files (65 total) -
-  41/65 matched the original bytes exactly. `compare-strings` reports only the FIRST point of
+  was run against all 71 conformance inputs plus the 13 vendored real-world files (84 total) -
+  57/84 matched the original bytes exactly. `compare-strings` reports only the FIRST point of
   divergence, so the claim below is scoped to what was actually checked: the first divergence in
-  each of the 24 non-matching files was inspected (full before/after text, not just the 20-char
-  context window), and every one of those 24 first-divergences traces to a known
+  each of the 27 non-matching files was inspected (full before/after text, not just the 20-char
+  context window), and every one of those 27 first-divergences traces to a known
   `org-element-interpret-data` re-emit convention (keyword-name case-folding, block/property-drawer
   reindentation, headline-tag column alignment, planning-line keyword reordering, list-counter
   renumbering) -- terminology note: "keyword-name case-folding" here and "keyword/property value

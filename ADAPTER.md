@@ -104,7 +104,7 @@ parser does not exist yet either:
 bash harness/verify-corpus.sh
 ```
 
-Run against this corpus, it reports `52/52 passed`. That is the exact shape your own parser's
+Run against this corpus, it reports `71/71 passed`. That is the exact shape your own parser's
 Layer 1 test loop should have once you point it at your `parseOrg` instead of at Emacs.
 
 ### Layer 2: round-trip fidelity (only if you also write a renderer)
@@ -169,7 +169,7 @@ mapped at all yet (`clock`, `entity`, and `special-block` are the three most lik
 an ordinary file - README ranks all 15 by how likely your own files contain one). Of the types
 that ARE mapped, 14 carry no conformance fixture at all and rest solely on the one-time audit
 (`footnote-reference` and `footnote-definition` among them), and 6 further gaps sit inside
-otherwise-fixtured types - a variant or property the 52 fixtures never happen to exercise, such
+otherwise-fixtured types - a variant or property the 71 fixtures never happen to exercise, such
 as `table.el`-flavour tables or the `diary` timestamp kind. None of this shows up as a Layer 1
 failure today, because nothing in this corpus asserts it either way - treat every item on
 README's list as "not yet checked," not "confirmed correct."

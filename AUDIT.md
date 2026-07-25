@@ -252,15 +252,17 @@ explanation:
   `table-row`, `timestamp` (`active`, `active-range`, `inactive` kinds only), `verbatim`,
   `verse-block` - plus `org-data` and `plain-text` themselves. A drift in any of these is caught
   by `swift test` and `harness/verify-corpus.sh` on the next run.
-- **14 mapped types carry no fixture** and rest solely on this audit: `center-block`,
-  `comment-block`, `drawer`, `dynamic-block`, `fixed-width`, `footnote-definition`,
-  `footnote-reference`, `latex-fragment`, `line-break`, `statistics-cookie`, `strike-through`,
-  `subscript`, `superscript`, `underline`. Two of these are a documented decision, not an
-  oversight: `underline`/`strike-through` share one border-rule mechanism with the four emphasis
-  markers the corpus does fixture (SCHEMA.md section 7), and `latex-fragment`/`dynamic-block` are
-  recorded as mapped-but-unfixtured pending a Layer 1 revisit (SCHEMA.md section 9).
-- **6 further gaps** sit inside otherwise-fixtured types - a variant or a property the 52
-  fixtures never happen to exercise. Listed in full in README.md's "What protects each claim".
+- **14 mapped types carried no fixture** at the time of this audit and rested solely on it. That
+  is no longer the current state and the list is deliberately NOT repeated here - README.md's
+  "What protects each claim" is the single owner of the fixture-coverage contract, and a second
+  copy in this file is exactly how the round-trip loss list drifted into four stale copies before.
+  Current state, for orientation only: 12 of those 14 gained a fixture in the corpus expansion
+  that took the corpus from 52 to 71 cases; the 2 that remain are `strike-through` and
+  `underline`, which are a documented decision rather than an oversight (SCHEMA.md section 7).
+- **6 further gaps** sat inside otherwise-fixtured types - a variant or a property the 52 fixtures
+  of the time never happened to exercise. Five are now closed by fixtures; the sixth, fallback
+  behavior for the unmapped types, stays open by design. README.md's "What protects each claim"
+  holds the current statement.
 
 One gap is worse than the rest, and is stated here plainly rather than left silent: `inlinetask`
 is not merely unfixtured, it is the one mapping this audit could not verify AT ALL. No
