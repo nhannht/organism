@@ -1,0 +1,2006 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "org-node.schema.json",
+  "title": "OrgSwift normalized org-mode JSON tree",
+  "description": "Formal JSON Schema for the expected.json shape documented in SCHEMA.md. Every conformance/*/expected.json file, and any parser's parseOrg() output meant to conform, is a single value matching $defs/node (the document root is itself a node of type \"document\"). See schema/README.md for how to run this schema against a file, and ADAPTER.md at the repo root for the full contract a new parser implementation needs.",
+  "$ref": "#/$defs/node",
+  "$defs": {
+    "postBlank": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "org-element's :post-blank, kept as an explicit field per SCHEMA.md section 1. Present on every node except the bare text leaf."
+    },
+    "nodeArray": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "nodeArrayOrNull": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/nodeArray"
+        }
+      ]
+    },
+    "affiliated": {
+      "type": "object",
+      "description": "SCHEMA.md section 5, fully implemented (finding 5): NAME and PLOT are plain strings. HEADER is an array of strings, one per #+HEADER: line in source order (a multiple keyword, not dual). CAPTION is an array of {long, short} entries, one per #+CAPTION: line in source order (both a multiple AND a dual keyword) -- long is always an array of object-nodes, short is a string or null depending on whether the #+CAPTION[short]: long dual form was used. RESULTS is always {value, hash} -- hash is a string only when the #+RESULTS[hash]: name dual form was used, null otherwise. ATTR_<BACKEND> (any backend name, e.g. ATTR_HTML, ATTR_LATEX) is an array of strings, one per repeated #+ATTR_<BACKEND>: line, matched by patternProperties since the backend name is open-ended. additionalProperties is false: an unrecognized key here is a bug in the generator, not a schema gap.",
+      "minProperties": 1,
+      "properties": {
+        "NAME": {
+          "type": "string"
+        },
+        "PLOT": {
+          "type": "string"
+        },
+        "HEADER": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "CAPTION": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "long",
+              "short"
+            ],
+            "properties": {
+              "long": {
+                "$ref": "#/$defs/nodeArray"
+              },
+              "short": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "RESULTS": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value",
+            "hash"
+          ],
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "hash": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "patternProperties": {
+        "^ATTR_[A-Z0-9_]+$": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "date": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Timestamps. A plain nested value, not a schema node in its own right: no \"type\" key, no postBlank.",
+      "additionalProperties": false,
+      "required": [
+        "year",
+        "month",
+        "day",
+        "dayname",
+        "hour",
+        "minute"
+      ],
+      "properties": {
+        "year": {
+          "type": "integer"
+        },
+        "month": {
+          "type": "integer"
+        },
+        "day": {
+          "type": "integer"
+        },
+        "dayname": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hour": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minute": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "rep": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Timestamps. Repeater or delay. Also a plain nested value: its own \"type\" key is data (the repeater/delay kind), not a schema-node discriminant, and it has no postBlank.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "unit"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "+",
+            "++",
+            ".+",
+            "-",
+            "--"
+          ]
+        },
+        "value": {
+          "type": "integer"
+        },
+        "unit": {
+          "enum": [
+            "h",
+            "d",
+            "w",
+            "m",
+            "y"
+          ]
+        }
+      }
+    },
+    "node": {
+      "description": "Any schema node, element or object. SCHEMA.md section 6: the object-vs-element restriction on WHERE a given type may appear is a parser concern, not a JSON-shape concern (a table-cell's children and a paragraph's children have the identical JSON shape), so this union is deliberately flat rather than split into separate ElementNode/ObjectNode unions. Implemented as an if/then/else dispatch on \"type\" (NOT oneOf across all alternatives) -- see schema/README.md \"Why if/then, not oneOf\" for the performance reason: a flat oneOf across ~38 shared-shape alternatives is combinatorially expensive to validate (every non-matching branch still recursively re-validates shared keys like \"children\"), which is empirically confirmed to blow up to 30+ seconds on a single small nested fixture and would only get worse on deeper real-world trees. if/then dispatches on the type tag directly: exactly one branch's full schema is ever evaluated per node.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "if": {
+        "properties": {
+          "type": {
+            "const": "document"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/document"
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "headline"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/headline"
+        },
+        "else": {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "section"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/section"
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "planning"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/planning"
+            },
+            "else": {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "property-drawer"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              },
+              "then": {
+                "$ref": "#/$defs/property-drawer"
+              },
+              "else": {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "node-property"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "$ref": "#/$defs/node-property"
+                },
+                "else": {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "drawer"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ]
+                  },
+                  "then": {
+                    "$ref": "#/$defs/drawer"
+                  },
+                  "else": {
+                    "if": {
+                      "properties": {
+                        "type": {
+                          "const": "dynamic-block"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    },
+                    "then": {
+                      "$ref": "#/$defs/dynamic-block"
+                    },
+                    "else": {
+                      "if": {
+                        "properties": {
+                          "type": {
+                            "const": "quote-block"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      },
+                      "then": {
+                        "$ref": "#/$defs/quote-block"
+                      },
+                      "else": {
+                        "if": {
+                          "properties": {
+                            "type": {
+                              "const": "center-block"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ]
+                        },
+                        "then": {
+                          "$ref": "#/$defs/center-block"
+                        },
+                        "else": {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "const": "verse-block"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "$ref": "#/$defs/verse-block"
+                          },
+                          "else": {
+                            "if": {
+                              "properties": {
+                                "type": {
+                                  "const": "paragraph"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ]
+                            },
+                            "then": {
+                              "$ref": "#/$defs/paragraph"
+                            },
+                            "else": {
+                              "if": {
+                                "properties": {
+                                  "type": {
+                                    "const": "text"
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ]
+                              },
+                              "then": {
+                                "$ref": "#/$defs/text"
+                              },
+                              "else": {
+                                "if": {
+                                  "properties": {
+                                    "type": {
+                                      "const": "bold"
+                                    }
+                                  },
+                                  "required": [
+                                    "type"
+                                  ]
+                                },
+                                "then": {
+                                  "$ref": "#/$defs/bold"
+                                },
+                                "else": {
+                                  "if": {
+                                    "properties": {
+                                      "type": {
+                                        "const": "italic"
+                                      }
+                                    },
+                                    "required": [
+                                      "type"
+                                    ]
+                                  },
+                                  "then": {
+                                    "$ref": "#/$defs/italic"
+                                  },
+                                  "else": {
+                                    "if": {
+                                      "properties": {
+                                        "type": {
+                                          "const": "underline"
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ]
+                                    },
+                                    "then": {
+                                      "$ref": "#/$defs/underline"
+                                    },
+                                    "else": {
+                                      "if": {
+                                        "properties": {
+                                          "type": {
+                                            "const": "strikethrough"
+                                          }
+                                        },
+                                        "required": [
+                                          "type"
+                                        ]
+                                      },
+                                      "then": {
+                                        "$ref": "#/$defs/strikethrough"
+                                      },
+                                      "else": {
+                                        "if": {
+                                          "properties": {
+                                            "type": {
+                                              "const": "code"
+                                            }
+                                          },
+                                          "required": [
+                                            "type"
+                                          ]
+                                        },
+                                        "then": {
+                                          "$ref": "#/$defs/code"
+                                        },
+                                        "else": {
+                                          "if": {
+                                            "properties": {
+                                              "type": {
+                                                "const": "verbatim"
+                                              }
+                                            },
+                                            "required": [
+                                              "type"
+                                            ]
+                                          },
+                                          "then": {
+                                            "$ref": "#/$defs/verbatim"
+                                          },
+                                          "else": {
+                                            "if": {
+                                              "properties": {
+                                                "type": {
+                                                  "const": "link"
+                                                }
+                                              },
+                                              "required": [
+                                                "type"
+                                              ]
+                                            },
+                                            "then": {
+                                              "$ref": "#/$defs/link"
+                                            },
+                                            "else": {
+                                              "if": {
+                                                "properties": {
+                                                  "type": {
+                                                    "const": "list"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "type"
+                                                ]
+                                              },
+                                              "then": {
+                                                "$ref": "#/$defs/list"
+                                              },
+                                              "else": {
+                                                "if": {
+                                                  "properties": {
+                                                    "type": {
+                                                      "const": "item"
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "type"
+                                                  ]
+                                                },
+                                                "then": {
+                                                  "$ref": "#/$defs/item"
+                                                },
+                                                "else": {
+                                                  "if": {
+                                                    "properties": {
+                                                      "type": {
+                                                        "const": "src-block"
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "type"
+                                                    ]
+                                                  },
+                                                  "then": {
+                                                    "$ref": "#/$defs/src-block"
+                                                  },
+                                                  "else": {
+                                                    "if": {
+                                                      "properties": {
+                                                        "type": {
+                                                          "const": "example-block"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "type"
+                                                      ]
+                                                    },
+                                                    "then": {
+                                                      "$ref": "#/$defs/example-block"
+                                                    },
+                                                    "else": {
+                                                      "if": {
+                                                        "properties": {
+                                                          "type": {
+                                                            "const": "export-block"
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "type"
+                                                        ]
+                                                      },
+                                                      "then": {
+                                                        "$ref": "#/$defs/export-block"
+                                                      },
+                                                      "else": {
+                                                        "if": {
+                                                          "properties": {
+                                                            "type": {
+                                                              "const": "comment-block"
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "type"
+                                                          ]
+                                                        },
+                                                        "then": {
+                                                          "$ref": "#/$defs/comment-block"
+                                                        },
+                                                        "else": {
+                                                          "if": {
+                                                            "properties": {
+                                                              "type": {
+                                                                "const": "comment"
+                                                              }
+                                                            },
+                                                            "required": [
+                                                              "type"
+                                                            ]
+                                                          },
+                                                          "then": {
+                                                            "$ref": "#/$defs/comment"
+                                                          },
+                                                          "else": {
+                                                            "if": {
+                                                              "properties": {
+                                                                "type": {
+                                                                  "const": "keyword"
+                                                                }
+                                                              },
+                                                              "required": [
+                                                                "type"
+                                                              ]
+                                                            },
+                                                            "then": {
+                                                              "$ref": "#/$defs/keyword"
+                                                            },
+                                                            "else": {
+                                                              "if": {
+                                                                "properties": {
+                                                                  "type": {
+                                                                    "const": "horizontal-rule"
+                                                                  }
+                                                                },
+                                                                "required": [
+                                                                  "type"
+                                                                ]
+                                                              },
+                                                              "then": {
+                                                                "$ref": "#/$defs/horizontal-rule"
+                                                              },
+                                                              "else": {
+                                                                "if": {
+                                                                  "properties": {
+                                                                    "type": {
+                                                                      "const": "fixed-width"
+                                                                    }
+                                                                  },
+                                                                  "required": [
+                                                                    "type"
+                                                                  ]
+                                                                },
+                                                                "then": {
+                                                                  "$ref": "#/$defs/fixed-width"
+                                                                },
+                                                                "else": {
+                                                                  "if": {
+                                                                    "properties": {
+                                                                      "type": {
+                                                                        "const": "statistics-cookie"
+                                                                      }
+                                                                    },
+                                                                    "required": [
+                                                                      "type"
+                                                                    ]
+                                                                  },
+                                                                  "then": {
+                                                                    "$ref": "#/$defs/statistics-cookie"
+                                                                  },
+                                                                  "else": {
+                                                                    "if": {
+                                                                      "properties": {
+                                                                        "type": {
+                                                                          "const": "subscript"
+                                                                        }
+                                                                      },
+                                                                      "required": [
+                                                                        "type"
+                                                                      ]
+                                                                    },
+                                                                    "then": {
+                                                                      "$ref": "#/$defs/subscript"
+                                                                    },
+                                                                    "else": {
+                                                                      "if": {
+                                                                        "properties": {
+                                                                          "type": {
+                                                                            "const": "superscript"
+                                                                          }
+                                                                        },
+                                                                        "required": [
+                                                                          "type"
+                                                                        ]
+                                                                      },
+                                                                      "then": {
+                                                                        "$ref": "#/$defs/superscript"
+                                                                      },
+                                                                      "else": {
+                                                                        "if": {
+                                                                          "properties": {
+                                                                            "type": {
+                                                                              "const": "table"
+                                                                            }
+                                                                          },
+                                                                          "required": [
+                                                                            "type"
+                                                                          ]
+                                                                        },
+                                                                        "then": {
+                                                                          "$ref": "#/$defs/table"
+                                                                        },
+                                                                        "else": {
+                                                                          "if": {
+                                                                            "properties": {
+                                                                              "type": {
+                                                                                "const": "table-row"
+                                                                              }
+                                                                            },
+                                                                            "required": [
+                                                                              "type"
+                                                                            ]
+                                                                          },
+                                                                          "then": {
+                                                                            "$ref": "#/$defs/table-row"
+                                                                          },
+                                                                          "else": {
+                                                                            "if": {
+                                                                              "properties": {
+                                                                                "type": {
+                                                                                  "const": "table-cell"
+                                                                                }
+                                                                              },
+                                                                              "required": [
+                                                                                "type"
+                                                                              ]
+                                                                            },
+                                                                            "then": {
+                                                                              "$ref": "#/$defs/table-cell"
+                                                                            },
+                                                                            "else": {
+                                                                              "if": {
+                                                                                "properties": {
+                                                                                  "type": {
+                                                                                    "const": "timestamp"
+                                                                                  }
+                                                                                },
+                                                                                "required": [
+                                                                                  "type"
+                                                                                ]
+                                                                              },
+                                                                              "then": {
+                                                                                "$ref": "#/$defs/timestamp"
+                                                                              },
+                                                                              "else": {
+                                                                                "if": {
+                                                                                  "properties": {
+                                                                                    "type": {
+                                                                                      "const": "footnote-reference"
+                                                                                    }
+                                                                                  },
+                                                                                  "required": [
+                                                                                    "type"
+                                                                                  ]
+                                                                                },
+                                                                                "then": {
+                                                                                  "$ref": "#/$defs/footnote-reference"
+                                                                                },
+                                                                                "else": {
+                                                                                  "if": {
+                                                                                    "properties": {
+                                                                                      "type": {
+                                                                                        "const": "footnote-definition"
+                                                                                      }
+                                                                                    },
+                                                                                    "required": [
+                                                                                      "type"
+                                                                                    ]
+                                                                                  },
+                                                                                  "then": {
+                                                                                    "$ref": "#/$defs/footnote-definition"
+                                                                                  },
+                                                                                  "else": {
+                                                                                    "if": {
+                                                                                      "properties": {
+                                                                                        "type": {
+                                                                                          "const": "latex-fragment"
+                                                                                        }
+                                                                                      },
+                                                                                      "required": [
+                                                                                        "type"
+                                                                                      ]
+                                                                                    },
+                                                                                    "then": {
+                                                                                      "$ref": "#/$defs/latex-fragment"
+                                                                                    },
+                                                                                    "else": false
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. The tree root. children: [section?, headline*].",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "document"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "headline": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. children: [section?, headline*], one level down.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "level",
+        "todo",
+        "priority",
+        "commented",
+        "tags",
+        "title",
+        "preBlank",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "headline"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "todo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commented": {
+          "type": "boolean"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "preBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. Omitted entirely by the parser when it would be empty (see section 3) -- this schema describes the node's own shape when present, it cannot enforce the omission rule itself.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "section"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. scheduled/deadline/closed are always present keys, each a timestamp node or null.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "scheduled",
+        "deadline",
+        "closed",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "planning"
+        },
+        "scheduled": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "deadline": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "closed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "property-drawer": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. children: [node-property*].",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "property-drawer"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node-property"
+          }
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "node-property": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. key is the :NAME: without colons; value can be an empty property's null.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "key",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "node-property"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "drawer": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. A generic :NAME:...:END: drawer other than PROPERTIES, e.g. LOGBOOK.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "name",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "drawer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "dynamic-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 9 (latex-fragment and dynamic-block). #+BEGIN: NAME ARGS...#+END:. arguments is the raw, unparsed rest-of-line text, or null.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "blockName",
+        "arguments",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "dynamic-block"
+        },
+        "blockName": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "quote-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. A greater element: children are element nodes (paragraph, list, ...), not raw objects.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "quote-block"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "center-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. Same shape as quote-block.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "center-block"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "verse-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Structural. Unique among blocks: children are object nodes directly (text markup, links, timestamps, ...), not elements. A verse line boundary is a literal \"\\n\" inside a text node's own value, not a separate node type.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "verse-block"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "paragraph": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Text-level container objects. children: object nodes.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "paragraph"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "text": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Text-level container objects. Leaf. The ONLY node type with no postBlank key at all: org-element tracks post-blank only on proper element/object nodes, and a bare plain-text span is not one.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "bold": {
+      "type": "object",
+      "description": "SCHEMA.md section 4/6/7. children: object nodes; may nest italic/underline/strikethrough/links/code/verbatim/entities/sub-superscript.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "bold"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "italic": {
+      "type": "object",
+      "description": "Same shape as bold, see SCHEMA.md sections 4/6/7.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "italic"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "underline": {
+      "type": "object",
+      "description": "Same shape as bold, see SCHEMA.md sections 4/6/7. Documented but not given its own Layer 1 fixture (SCHEMA.md section 7 rule 1).",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "underline"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "strikethrough": {
+      "type": "object",
+      "description": "Same shape as bold, see SCHEMA.md sections 4/6/7. Documented but not given its own Layer 1 fixture (SCHEMA.md section 7 rule 1).",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "strikethrough"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "description": "SCHEMA.md section 4. Leaf, always literal: never further parsed for emphasis or links.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "code"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "verbatim": {
+      "type": "object",
+      "description": "Same shape as code, see SCHEMA.md section 4.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "verbatim"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Links. description is null (not []) when the link has no description -- the one field in this schema where null and empty-array are meaningfully different.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "linkType",
+        "path",
+        "description",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "link"
+        },
+        "linkType": {
+          "enum": [
+            "regular",
+            "angle",
+            "plain"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "#/$defs/nodeArrayOrNull"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "list": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Lists. children: [item*].",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "kind",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "list"
+        },
+        "kind": {
+          "enum": [
+            "ordered",
+            "unordered",
+            "descriptive"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Lists. bullet is the literal bullet text used (\"-\", \"+\", \"1.\", \"a)\"). tag is only meaningful for descriptive lists. children is the item's body (element nodes).",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "bullet",
+        "checkbox",
+        "tag",
+        "preBlank",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "item"
+        },
+        "bullet": {
+          "type": "string"
+        },
+        "checkbox": {
+          "enum": [
+            "on",
+            "off",
+            "trans",
+            null
+          ]
+        },
+        "tag": {
+          "$ref": "#/$defs/nodeArrayOrNull"
+        },
+        "preBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "src-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Blocks. value is org-element's own :value, unmodified -- literal text between the #+begin_src/#+end_src lines, including the trailing newline after the last content line.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "language",
+        "params",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "src-block"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "example-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Blocks. Same value convention as src-block.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "example-block"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "export-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Blocks. backend is the #+begin_export line's backend token (e.g. \"HTML\"), or null.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "backend",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "export-block"
+        },
+        "backend": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "comment-block": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Blocks. Same value convention as src-block.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "comment-block"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "comment": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Blocks. A single \"# ...\" line. The marker \"#\" and exactly one following space are stripped from value.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "comment"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "keyword": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Keywords. A standalone #+KEY: VALUE line whose key is not one of the recognized affiliated-keyword names (or is, but was not immediately followed by an eligible element). key is always uppercase.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "key",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "keyword"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "horizontal-rule": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. Leaf, no value, no children: a line of 5+ consecutive \"-\".",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "horizontal-rule"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "fixed-width": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. A \": ...\" line.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "fixed-width"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "statistics-cookie": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. Leaf, e.g. \"[1/3]\" or \"[50%]\".",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "statistics-cookie"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "subscript": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. a_{b}.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "subscript"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "superscript": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. a^{b}.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "superscript"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "table": {
+      "description": "SCHEMA.md section 4, Tables, plus C3 (table.el). Two mutually exclusive shapes, mirroring exactly what harness/oracle-dump.el's `table' branch emits: an ordinary org-mode pipe table carries `children' ([table-row*], every table in this corpus uses this form), a table.el (ASCII-bordered) table carries `value' (the raw literal text) instead - org-element never decomposes a table.el table into rows/cells, so there is nothing to put in `children' for it. The two branches are distinguished by which of `children'/`value' is present, not by a `kind'/`tableType' discriminator field - that was tried and deliberately reverted (see schema/README.md, \"Why clock and table.el stay unmapped\"). Before this fix, this definition only accepted the children-shape, so a table.el node correctly emitted by the generator was incorrectly rejected by the schema meant to describe it - the same class of bug the keyword/affiliated fix corrected.",
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "children",
+            "postBlank"
+          ],
+          "properties": {
+            "type": {
+              "const": "table"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/table-row"
+              }
+            },
+            "postBlank": {
+              "$ref": "#/$defs/postBlank"
+            },
+            "affiliated": {
+              "$ref": "#/$defs/affiliated"
+            }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value",
+            "postBlank"
+          ],
+          "properties": {
+            "type": {
+              "const": "table"
+            },
+            "value": {
+              "type": "string"
+            },
+            "postBlank": {
+              "$ref": "#/$defs/postBlank"
+            },
+            "affiliated": {
+              "$ref": "#/$defs/affiliated"
+            }
+          }
+        }
+      ]
+    },
+    "table-row": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Tables. kind \"rule\" is a |---+---| separator row and always has an empty children array.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "kind",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "table-row"
+        },
+        "kind": {
+          "enum": [
+            "standard",
+            "rule"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/table-cell"
+          }
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "table-cell": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Tables. children: object nodes. The single formatting space around | padding is a corpus-authoring convention, not part of any node's text.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "table-cell"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "timestamp": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Timestamps. end is non-null only for the two -range kinds. start is null only for the diary kind (SCHEMA.md section 9), which has no year/month/day to report. diarySexp is present (a string, the raw \"(SEXP ...)\" text, e.g. \"(diary-float 1 3 2)\") only when kind is \"diary\" -- absent entirely, not null, for every other kind, matching org-element's own behavior (it does not track :diary-sexp on non-diary timestamps at all, the same kind of absence :pre-blank has on paragraph/plain-list).",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "kind",
+        "start",
+        "end",
+        "repeater",
+        "delay",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "timestamp"
+        },
+        "kind": {
+          "enum": [
+            "active",
+            "inactive",
+            "active-range",
+            "inactive-range",
+            "diary"
+          ]
+        },
+        "start": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/date"
+            }
+          ]
+        },
+        "end": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/date"
+            }
+          ]
+        },
+        "repeater": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/rep"
+            }
+          ]
+        },
+        "delay": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/rep"
+            }
+          ]
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "diarySexp": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "diary"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "diarySexp"
+            ]
+          },
+          "else": {
+            "properties": {
+              "diarySexp": false
+            }
+          }
+        }
+      ]
+    },
+    "footnote-reference": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Footnotes (documented, not yet in the Layer 1 corpus). label is null only for an anonymous inline footnote. children is present ONLY when inline is true -- absent entirely, not an empty array, when inline is false.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "label",
+        "inline",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "footnote-reference"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inline": {
+          "type": "boolean"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "inline": {
+                "const": true
+              }
+            },
+            "required": [
+              "inline"
+            ]
+          },
+          "then": {
+            "required": [
+              "children"
+            ]
+          },
+          "else": {
+            "properties": {
+              "children": false
+            }
+          }
+        }
+      ]
+    },
+    "footnote-definition": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Footnotes (documented, not yet in the Layer 1 corpus). children: element nodes.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "label",
+        "preBlank",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "footnote-definition"
+        },
+        "label": {
+          "type": "string"
+        },
+        "preBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
+        }
+      }
+    },
+    "latex-fragment": {
+      "type": "object",
+      "description": "SCHEMA.md section 9 (latex-fragment and dynamic-block). Leaf, same shape as code/verbatim: value is the fragment's own literal text, delimiters included (e.g. \"$x^2$\").",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "latex-fragment"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    }
+  }
+}

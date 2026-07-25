@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+*.xcodeproj
+.DS_Store
+Package.resolved
+_tmpcheck/
+
+# Fetched by harness/fetch-corpus.sh: GPL/GFDL real-world .org sources used for Layer 2
+# round-trip testing. These are NOT vendored (unlike real/, which is license-verified
+# MIT and committed) -- never let copyleft content land in this MIT repo.
+real-fetched/

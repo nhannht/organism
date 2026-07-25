@@ -1,0 +1,19 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "src-block",
+          "language": "swift",
+          "params": null,
+          "value": "let x = 1\n",
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

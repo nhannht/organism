@@ -1,0 +1,52 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "keyword",
+          "key": "TODO",
+          "value": "TODO NEXT DONE",
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    },
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": "NEXT",
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "Do thing"
+        }
+      ],
+      "preBlank": 0,
+      "children": [],
+      "postBlank": 0
+    },
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": null,
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "REVIEW Do other thing"
+        }
+      ],
+      "preBlank": 0,
+      "children": [],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

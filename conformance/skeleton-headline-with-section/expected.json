@@ -1,0 +1,40 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": null,
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "Heading"
+        }
+      ],
+      "preBlank": 0,
+      "children": [
+        {
+          "type": "section",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Some text.\n"
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

@@ -1,0 +1,34 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "link",
+              "linkType": "regular",
+              "path": "https://example.com",
+              "description": [
+                {
+                  "type": "text",
+                  "value": "Example"
+                }
+              ],
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

@@ -1,0 +1,26 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": "TODO",
+      "priority": "A",
+      "commented": false,
+      "tags": [
+        "shopping",
+        "urgent"
+      ],
+      "title": [
+        {
+          "type": "text",
+          "value": "Buy milk"
+        }
+      ],
+      "preBlank": 0,
+      "children": [],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

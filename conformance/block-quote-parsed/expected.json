@@ -1,0 +1,42 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "quote-block",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Some "
+                },
+                {
+                  "type": "bold",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "bold"
+                    }
+                  ],
+                  "postBlank": 1
+                },
+                {
+                  "type": "text",
+                  "value": "text.\n"
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

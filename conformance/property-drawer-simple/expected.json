@@ -1,0 +1,42 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "headline",
+      "level": 1,
+      "todo": null,
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "Task"
+        }
+      ],
+      "preBlank": 0,
+      "children": [
+        {
+          "type": "section",
+          "children": [
+            {
+              "type": "property-drawer",
+              "children": [
+                {
+                  "type": "node-property",
+                  "key": "ID",
+                  "value": "abc-123",
+                  "postBlank": 0
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}
