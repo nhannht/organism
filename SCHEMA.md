@@ -625,6 +625,13 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    conformant tree, be 100% redundant with `checkbox` on every well-formed input, and exist for a
    single malformed spelling that the all-files oracle sweep finds in zero of the corpus files.
    That trade is not worth a permanent field in a schema other implementations must satisfy.
+
+   Confirmed against the one authority not consulted until after the decision was drafted:
+   `org-element-interpret-data` itself re-emits `- [x] text` as `- text`, discarding the
+   malformed bracket bytes -- Emacs's own serializer does not preserve them either. Capturing
+   them would therefore make this schema stricter than Emacs on a MALFORMED input, unlike the
+   two deliberate interpret-data beats named earlier in this section (block reindentation,
+   counter renumbering), both of which are well-formed, common cases.
 9. Alphabetic list counters -- `1. [@c]`. NEW, surfaced by closing the old item 10 (`:counter` is
    now carried by the `counter` field, see section 4). `:counter` is an INTEGER, and
    `org-element`'s item parser converts a letter to its alphabet index, so `1. [@c]` and
