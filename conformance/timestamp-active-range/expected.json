@@ -10,6 +10,7 @@
             {
               "type": "timestamp",
               "kind": "active-range",
+              "rangeType": "daterange",
               "start": {
                 "year": 2026,
                 "month": 1,

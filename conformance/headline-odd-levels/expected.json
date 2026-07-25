@@ -1,0 +1,74 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "keyword",
+          "key": "STARTUP",
+          "value": "odd",
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    },
+    {
+      "type": "headline",
+      "level": 1,
+      "trueLevel": 1,
+      "todo": null,
+      "priority": null,
+      "commented": false,
+      "tags": [],
+      "title": [
+        {
+          "type": "text",
+          "value": "A"
+        }
+      ],
+      "preBlank": 0,
+      "children": [
+        {
+          "type": "headline",
+          "level": 2,
+          "trueLevel": 3,
+          "todo": null,
+          "priority": null,
+          "commented": false,
+          "tags": [],
+          "title": [
+            {
+              "type": "text",
+              "value": "B"
+            }
+          ],
+          "preBlank": 0,
+          "children": [
+            {
+              "type": "headline",
+              "level": 3,
+              "trueLevel": 5,
+              "todo": null,
+              "priority": null,
+              "commented": false,
+              "tags": [],
+              "title": [
+                {
+                  "type": "text",
+                  "value": "C"
+                }
+              ],
+              "preBlank": 0,
+              "children": [],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

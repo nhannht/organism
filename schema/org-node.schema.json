@@ -26,6 +26,20 @@
         }
       ]
     },
+    "tblfm": {
+      "description": "org-element's :tblfm on a table -- the `#+TBLFM:' formula line or lines, which org-element folds INTO the table element rather than leaving as a sibling keyword node (no keyword node is produced for a TBLFM line at all). null when absent, otherwise one string per line. THE ARRAY IS IN REVERSE SOURCE ORDER: source order `AAA' then `BBB' comes back [\"BBB\", \"AAA\"], because org-element's table parser builds the list with `push' during a forward scan and its own interpreter re-emits it through an explicit (reverse ...). It is kept reversed here rather than tidied, per SCHEMA.md section 1's rule to carry org-element's own tree -- so a RENDERER must emit the lines in reverse of this array, exactly as Emacs does. Trailing spaces after a formula are captured inside the string. Carried by table.el tables as well as org tables, which is why both table shapes require it.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "affiliated": {
       "type": "object",
       "description": "SCHEMA.md section 5, fully implemented (finding 5): NAME and PLOT are plain strings. HEADER is an array of strings, one per #+HEADER: line in source order (a multiple keyword, not dual). CAPTION is an array of {long, short} entries, one per #+CAPTION: line in source order (both a multiple AND a dual keyword) -- long is always an array of object-nodes, short is a string or null depending on whether the #+CAPTION[short]: long dual form was used. RESULTS is always {value, hash} -- hash is a string only when the #+RESULTS[hash]: name dual form was used, null otherwise. ATTR_<BACKEND> (any backend name, e.g. ATTR_HTML, ATTR_LATEX) is an array of strings, one per repeated #+ATTR_<BACKEND>: line, matched by patternProperties since the backend name is open-ended. additionalProperties is false: an unrecognized key here is a bug in the generator, not a schema gap.",
@@ -735,7 +749,37 @@
                                                                                     "then": {
                                                                                       "$ref": "#/$defs/latex-fragment"
                                                                                     },
-                                                                                    "else": false
+                                                                                    "else": {
+                                                                                      "if": {
+                                                                                        "properties": {
+                                                                                          "type": {
+                                                                                            "const": "line-break"
+                                                                                          }
+                                                                                        },
+                                                                                        "required": [
+                                                                                          "type"
+                                                                                        ]
+                                                                                      },
+                                                                                      "then": {
+                                                                                        "$ref": "#/$defs/line-break"
+                                                                                      },
+                                                                                      "else": {
+                                                                                        "if": {
+                                                                                          "properties": {
+                                                                                            "type": {
+                                                                                              "const": "radio-target"
+                                                                                            }
+                                                                                          },
+                                                                                          "required": [
+                                                                                            "type"
+                                                                                          ]
+                                                                                        },
+                                                                                        "then": {
+                                                                                          "$ref": "#/$defs/radio-target"
+                                                                                        },
+                                                                                        "else": false
+                                                                                      }
+                                                                                    }
                                                                                   }
                                                                                 }
                                                                               }
@@ -804,6 +848,7 @@
       "required": [
         "type",
         "level",
+        "trueLevel",
         "todo",
         "priority",
         "commented",
@@ -818,6 +863,11 @@
           "const": "headline"
         },
         "level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "trueLevel": {
+          "description": "org-element's :true-level -- the RAW leading-star count. Differs from `level' above only under `#+STARTUP: odd' (org-odd-levels-only), where org-element REDUCES :level: `*** B' reports level 2, trueLevel 3. Two different star counts can collapse onto one `level' (`** B' and `*** B' both report level 2), so `level' alone cannot reconstruct the source. Always present, always an integer.",
           "type": "integer",
           "minimum": 1
         },
@@ -1303,6 +1353,7 @@
       "required": [
         "type",
         "linkType",
+        "pathType",
         "path",
         "description",
         "postBlank"
@@ -1317,6 +1368,10 @@
             "angle",
             "plain"
           ]
+        },
+        "pathType": {
+          "description": "org-element's own :type -- how the PATH is to be read: \"https\", \"mailto\", \"file\", \"id\", \"custom-id\", \"fuzzy\", \"coderef\", \"radio\", or any other registered link type. Orthogonal to `linkType' above (which carries org-element's :format): a radio link is pathType \"radio\" with linkType \"plain\", and capturing it is the only thing that keeps a radio link distinguishable from an ordinary plain link. Always a non-empty string. NAMING WART, stated rather than hidden: org's own manual calls :type the link type, so the reference-faithful names would be `linkType' for :type and `format' for :format -- this schema's `linkType' is named after the wrong property. Renaming it was rejected deliberately, because silently changing the meaning of a published field name is worse for consumers than an imperfect new name.",
+          "type": "string"
         },
         "path": {
           "type": "string"
@@ -1372,6 +1427,7 @@
         "type",
         "bullet",
         "checkbox",
+        "counter",
         "tag",
         "preBlank",
         "children",
@@ -1390,6 +1446,13 @@
             "off",
             "trans",
             null
+          ]
+        },
+        "counter": {
+          "description": "org-element's :counter -- the explicit `[@N]' counter override, e.g. the 5 in `1. [@5] five'. An INTEGER, not the raw source text, and null when the item has no override. Set on unordered items too (`- [@5]'). Lossy for the alphabetical form: `1. [@c]' and `1. [@C]' both give 3, since org-element converts a letter to its alphabet index -- a declined loss recorded in SCHEMA.md section 10.",
+          "type": [
+            "integer",
+            "null"
           ]
         },
         "tag": {
@@ -1416,6 +1479,7 @@
       "required": [
         "type",
         "language",
+        "switches",
         "params",
         "value",
         "postBlank"
@@ -1425,6 +1489,13 @@
           "const": "src-block"
         },
         "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "switches": {
+          "description": "org-element's :switches -- the flag string between the language and the header arguments, e.g. \"-n -r\" in `#+begin_src elisp -n -r'. Independent of `params': `#+begin_src elisp -n -r :tangle yes' gives switches \"-n -r\" and params \":tangle yes\". null when absent.",
           "type": [
             "string",
             "null"
@@ -1453,12 +1524,20 @@
       "additionalProperties": false,
       "required": [
         "type",
+        "switches",
         "value",
         "postBlank"
       ],
       "properties": {
         "type": {
           "const": "example-block"
+        },
+        "switches": {
+          "description": "org-element's :switches, same shape and convention as src-block's, e.g. \"-n\" in `#+begin_example -n'. null when absent. src-block and example-block are the ONLY two block types org-element tracks :switches on.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "value": {
           "type": "string"
@@ -1652,12 +1731,17 @@
       "additionalProperties": false,
       "required": [
         "type",
+        "useBrackets",
         "children",
         "postBlank"
       ],
       "properties": {
         "type": {
           "const": "subscript"
+        },
+        "useBrackets": {
+          "description": "org-element's :use-brackets-p -- which SOURCE form was written: false for `a_b', true for `a_{b}'. Without it the two forms normalize to an identical tree. Always present. Named without the Lisp predicate `-p', following `commented' from `:commentedp' on headline.",
+          "type": "boolean"
         },
         "children": {
           "$ref": "#/$defs/nodeArray"
@@ -1673,12 +1757,17 @@
       "additionalProperties": false,
       "required": [
         "type",
+        "useBrackets",
         "children",
         "postBlank"
       ],
       "properties": {
         "type": {
           "const": "superscript"
+        },
+        "useBrackets": {
+          "description": "org-element's :use-brackets-p -- which SOURCE form was written: false for `a^b', true for `a^{b}'. Same convention as subscript's.",
+          "type": "boolean"
         },
         "children": {
           "$ref": "#/$defs/nodeArray"
@@ -1696,12 +1785,16 @@
           "additionalProperties": false,
           "required": [
             "type",
+            "tblfm",
             "children",
             "postBlank"
           ],
           "properties": {
             "type": {
               "const": "table"
+            },
+            "tblfm": {
+              "$ref": "#/$defs/tblfm"
             },
             "children": {
               "type": "array",
@@ -1721,12 +1814,16 @@
           "additionalProperties": false,
           "required": [
             "type",
+            "tblfm",
             "value",
             "postBlank"
           ],
           "properties": {
             "type": {
               "const": "table"
+            },
+            "tblfm": {
+              "$ref": "#/$defs/tblfm"
             },
             "value": {
               "type": "string"
@@ -1803,6 +1900,7 @@
       "required": [
         "type",
         "kind",
+        "rangeType",
         "start",
         "end",
         "repeater",
@@ -1820,6 +1918,14 @@
             "active-range",
             "inactive-range",
             "diary"
+          ]
+        },
+        "rangeType": {
+          "description": "org-element's :range-type -- which SOURCE form produced a range. \"timerange\" is a single timestamp with an internal time-time contraction (`<2026-01-01 Thu 10:00-12:00>'); \"daterange\" is a genuine two-full-timestamp range (`<date>--<date>'). null for the non-range kinds and for diary. This is also what explains a null `end.dayname' on a timerange: a timerange's raw value carries exactly one dayname token, so null is reference-faithful rather than a gap (SCHEMA.md section 10, item 12).",
+          "enum": [
+            "timerange",
+            "daterange",
+            null
           ]
         },
         "start": {
@@ -1996,6 +2102,44 @@
         },
         "value": {
           "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "line-break": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Misc. A forced line break -- a line ending in `\\\\'. Carries NEITHER `value' NOR `children': like horizontal-rule, its entire meaning is its type (SCHEMA.md section 1's third node shape). org-element's own line-break parser builds the node with only :begin, :end and :post-blank, so there is no other property to read. RENDERER NOTE: the newline belongs to THIS node, not to the following text -- org-element's own line-break interpreter returns the literal string backslash-backslash-newline, so a renderer emits all three characters from this node alone and must not also emit a newline for the line ending here, or it double-counts.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "line-break"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "radio-target": {
+      "type": "object",
+      "description": "SCHEMA.md section 4, Links. `<<<target>>>' -- the anchor a radio link matches against. A container carrying `children' only, never `value', even though org-element gives a radio-target BOTH a :value holding the raw text and parsed object contents at the same time: section 1 forbids one node having both, and `children' is the lossless choice (the children re-emit to exactly the :value text, and nested markup inside the target survives, which :value would flatten).",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "children",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "radio-target"
+        },
+        "children": {
+          "$ref": "#/$defs/nodeArray"
         },
         "postBlank": {
           "$ref": "#/$defs/postBlank"

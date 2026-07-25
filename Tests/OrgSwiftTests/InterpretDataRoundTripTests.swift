@@ -20,16 +20,17 @@ import OrgSwift
 /// Scope note (see SCHEMA.md section 9 for the fuller version): this does not prove orgswift's own
 /// `OrgJSON` tree round-trips - only that `org-element`'s tree does. `OrgJSON` never passes through
 /// `org-element-interpret-data` at all, so a property this schema drops that `interpret-data`
-/// never needed either (`:pre-blank`, `src-block`'s `:switches`, ...) would not be caught here.
+/// never needed either (the declined `:structure` entries in SCHEMA.md section 10, ...) would not
+/// be caught here.
 ///
-/// Every file in this corpus (71 conformance `input.org` + 13 vendored real-world files, 84 total)
-/// is run through the check. 57/84 match byte-for-byte; the other 27 do not -- `compare-strings`
+/// Every file in this corpus (79 conformance `input.org` + 13 vendored real-world files, 92 total)
+/// is run through the check. 61/92 match byte-for-byte; the other 31 do not -- `compare-strings`
 /// (the elisp comparison) reports only the FIRST point of divergence, so what was actually
-/// verified is scoped precisely: the first divergence in each of the 27 was inspected in full
+/// verified is scoped precisely: the first divergence in each of the 31 was inspected in full
 /// (complete reconstructed text, not just the 20-character context window this script reports).
-/// Every one of those 27 first-divergences traces to a known `org-element-interpret-data`
+/// Every one of those 31 first-divergences traces to a known `org-element-interpret-data`
 /// re-emit convention, but -- corrected here, an earlier draft of this paragraph got this wrong
-/// -- the 27 are NOT all the same kind of divergence. Direct `org-element` sexp inspection
+/// -- the 31 are NOT all the same kind of divergence. Direct `org-element` sexp inspection
 /// (Rule D; see SCHEMA.md's round-trip section for the full evidence) splits them in two:
 ///   - Genuinely lost from the parse tree, not just an `interpret-data` re-emit quirk:
 ///     keyword-name case-folding (`#+TODO:` -> `#+todo:`), keyword/property value alignment
@@ -39,19 +40,19 @@ import OrgSwift
 ///     byte-identical `:raw-value` and `:tags`, differing only in `:end` (a buffer offset this
 ///     schema strips); `:scheduled`/`:deadline` are fixed-name plist keys with no ordering
 ///     information beyond each timestamp's own (also-stripped) `:begin`. `renderOrg` cannot
-///     reconstruct what the tree never captured -- these 4 (plus trailing spaces on blank
-///     lines, not exercised by this particular check, and a 6th Reason-B item -- the malformed
-///     lowercase `[x]` checkbox, found only by a deeper raw-sexp audit, not by this check's
-///     first-divergence-only comparison) are Layer 2's permanent, out-of-scope exceptions (see
-///     `RoundTripTests`'s docstring for the full 6-item list), not a defect in this project's
-///     schema or parser.
+///     reconstruct what the tree never captured. These are a SUBSET of Layer 2's permanent
+///     exceptions, not the whole list: others (trailing spaces on blank lines, the whitespace
+///     between a hard break's `\\` and its newline, and the two declined `:structure` entries)
+///     are not exercised by this check at all, having been found by raw-sexp inspection rather
+///     than by a first-divergence comparison. SCHEMA.md section 10 is the single authoritative
+///     list; do not count exceptions from this docstring.
 ///   - NOT lost -- purely `interpret-data`'s own re-emit convention: block/property-drawer
 ///     content reindentation, and sequential renumbering of ordered-list counters. This schema's
 ///     tree retains the original indentation and counters as literal string content (`:value`,
 ///     `:bullet`), so `renderOrg` both CAN and MUST reproduce them byte-exact. Layer 2's bar here
 ///     is stricter than `interpret-data`'s own output, not equal to it -- reading this suite's
-///     27-file divergence set as "the Layer 2 exception list" would wrongly excuse these two.
-///     `RoundTripTests` holds the actual (6-item) exception list; this suite is evidence about
+///     31-file divergence set as "the Layer 2 exception list" would wrongly excuse these two.
+///     SCHEMA.md section 10 holds the actual exception list; this suite is evidence about
 ///     `org-element`'s own serializer, not a definition of `renderOrg`'s target.
 /// Every conformance case (small, single-purpose fixtures) was verified this way in full; for
 /// the large real-world files (`faq.org` at 47KB, etc.) only the first divergence was inspected,
@@ -62,7 +63,7 @@ import OrgSwift
 ///
 /// `knownReformattingDivergences` below is a hand-verified BASELINE SNAPSHOT, not a correctness
 /// gate: `org-element-interpret-data` cannot itself distinguish "reformatted" from "genuinely
-/// lost," a human inspecting the diff did that, once, for these 27 files. Treat this suite as a
+/// lost," a human inspecting the diff did that, once, for these 31 files. Treat this suite as a
 /// change-detector against that baseline - a file leaving the set (starts matching) or a new file
 /// entering it (starts diverging) is a signal to re-inspect, not to silently update the set.
 ///
@@ -110,7 +111,7 @@ struct InterpretDataRoundTripTests {
     /// convention (see the suite docstring), not information missing from the parse tree. Unlike
     /// `RoundTripTests`/`OracleDiffTests`, where EVERY case is uniformly "known broken" (parser
     /// not implemented yet) and so the whole suite can wrap every case in one blanket
-    /// `withKnownIssue`, this check's divergences are NOT uniform: 57 of 84 files already
+    /// `withKnownIssue`, this check's divergences are NOT uniform: 61 of 92 files already
     /// round-trip exactly. `withKnownIssue` fails its own case when the wrapped code does NOT
     /// fail ("known issue was not recorded"), so wrapping every file unconditionally is wrong --
     /// only a file's presence in this set means a mismatch is the expected, permanent outcome.
@@ -127,6 +128,10 @@ struct InterpretDataRoundTripTests {
         "conformance/block-src-literal", "conformance/block-src-with-params",
         "conformance/property-drawer-after-planning", "conformance/property-drawer-simple",
         "real/org-mode-samples/blocks.org",
+        // Same reindentation convention, measured on the two `:switches` cases: the body gains
+        // two leading spaces (`block-src-switches` diverges at offset 24, `block-example-switches`
+        // at offset 19). The `-n -r` / `-n` switches themselves survive the re-emit intact.
+        "conformance/block-src-switches", "conformance/block-example-switches",
         // Keyword-name case-folding (`#+TODO:` -> `#+todo:`, etc.). Affiliated keywords and the
         // dynamic-block `#+BEGIN:`/`#+END:` pair fold the same way, for the same reason.
         "conformance/easy-keyword-simple", "conformance/keyword-name-attaches-to-table",
@@ -135,6 +140,10 @@ struct InterpretDataRoundTripTests {
         "conformance/affiliated-caption-forms", "conformance/dynamic-block-simple",
         "real/doomemacs-docs/contributing.org", "real/doomemacs-docs/getting_started.org",
         "real/doomemacs-docs/index.org", "real/org-mode-samples/keywords.org",
+        // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
+        // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
+        // keyword still takes effect, only its printed case changes.
+        "conformance/headline-odd-levels",
         // Keyword-name case-folding PLUS src-block body reindentation - both conventions already
         // listed separately above, combined in one file. Verified by hand on Emacs 30.2: the
         // affiliated keywords lowercase, and the `(+ 1 2)` body gains two leading spaces, which
@@ -152,6 +161,14 @@ struct InterpretDataRoundTripTests {
         "real/org-mode-samples/headings.org",
         // Ordered-list counters renumbered sequentially, dropping an out-of-order source counter.
         "real/org-mode-samples/lists.org",
+        // The SAME renumbering convention, but the opposite-looking symptom, so it gets its own
+        // entry rather than joining the line above. Measured on the full before/after text:
+        // `1. [@5] five` / `2. six` re-emits as `5. [@5] five` / `6. six`, diverging at offset 0.
+        // interpret-data HONORS the counter -- it rewrites the bullet to agree with it and
+        // renumbers the following item from that new base -- and the `[@5]` itself survives.
+        // Filing this under the lists.org comment would assert the counter's effect is dropped,
+        // which this measurement disproves.
+        "conformance/list-counter-override",
     ]
 
     @Test("org-element-interpret-data(org-element-parse-buffer(file)) == file's own bytes", arguments: files)

@@ -4,6 +4,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": "TODO",
       "priority": null,
       "commented": false,

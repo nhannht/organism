@@ -228,6 +228,9 @@ private struct OrgParser {
             .object([
                 "type": .string("headline"),
                 "level": .int(level),
+                // `org-odd-levels-only` (`#+STARTUP: odd`) is not implemented, so the raw star
+                // count IS the true level for every case this parser handles.
+                "trueLevel": .int(level),
                 "todo": todo,
                 "priority": .null,
                 "commented": .bool(false),

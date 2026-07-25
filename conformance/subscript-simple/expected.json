@@ -13,6 +13,7 @@
             },
             {
               "type": "subscript",
+              "useBrackets": false,
               "children": [
                 {
                   "type": "text",
@@ -27,6 +28,7 @@
             },
             {
               "type": "subscript",
+              "useBrackets": true,
               "children": [
                 {
                   "type": "text",

@@ -12,8 +12,8 @@
               "value": "First part of line."
             },
             {
-              "type": "text",
-              "value": "\n"
+              "type": "line-break",
+              "postBlank": 0
             },
             {
               "type": "text",

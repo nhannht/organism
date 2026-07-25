@@ -2,13 +2,16 @@
 
 ;; STATUS (re-verified 2026-07-25 on a clean run, Emacs 30.2 / org-mode
 ;; 9.7.11): this file HAS been run for real, not left untested. A full sweep
-;; against all 71 conformance/*/input.org cases produces 71 valid JSON
-;; documents and 0 process failures. 70 of the 71 emit nothing on stderr. The
+;; against all 79 conformance/*/input.org cases produces 79 valid JSON
+;; documents and 0 process failures. 78 of the 79 emit nothing on stderr. The
 ;; single exception is `table-el-flavour', which warns loudly BY DESIGN
 ;; because this schema does not represent table.el tables at all (see the
 ;; `table' mapping below); that case exists precisely to pin the warning, so
-;; the degradation cannot go quiet without a test going red.
-;; harness/verify-corpus.sh reports the same result: 71/71 PASS.
+;; the degradation cannot go quiet without a test going red. That count was
+;; measured by re-running the sweep with stderr captured per case, not
+;; carried forward: `radio-target' used to warn too, and stopped when it was
+;; mapped (see its own branch below).
+;; harness/verify-corpus.sh reports the same result: 79/79 PASS.
 ;; SCHEMA.md section 9 records the first live run in more detail, including
 ;; two real bugs that run caught and this file has since fixed (a spurious
 ;; "type" key on nested date/rep objects, and a UTF-8 double-encoding bug in
@@ -54,7 +57,7 @@
 ;; pending and that harness/verify-corpus.sh "will report mismatches until
 ;; regeneration happens". Both statements are now false and were left stale
 ;; for a while, which is the exact failure this file's own closing paragraph
-;; predicted. Regeneration landed, and verify-corpus.sh reports 71/71 PASS on
+;; predicted. Regeneration landed, and verify-corpus.sh reports 79/79 PASS on
 ;; a clean run. The list below is kept as the historical record of WHAT was
 ;; fixed in that pass, because each item is still the reason a mapping looks
 ;; the way it does:
@@ -88,7 +91,7 @@
 ;;   - A `text' node that inconsistently carried `postBlank' depending on
 ;;     whether it came from a hard line break or ordinary text.
 ;; Those fixes landed, `conformance/*/expected.json' was regenerated from
-;; the fixed oracle, and the corpus has since grown from 52 cases to 71.
+;; the fixed oracle, and the corpus has since grown from 52 cases to 79.
 ;;
 ;; That growth invalidated a prediction this block used to make. It said
 ;; every fix except `preBlank' would touch ZERO fixtures, "since the corpus
@@ -104,6 +107,19 @@
 ;;     timestamp (conformance/timestamp-diary-sexp).
 ;; Those four fixes are no longer untested predictions. They are pinned by
 ;; fixtures, which is strictly better - a prediction cannot go red.
+;;
+;; LATEST CHANGE (the round-trip loss increment): eight properties this file
+;; previously read past are now captured, closing eight of the fifteen losses
+;; SCHEMA.md section 10 used to list - `:switches' on src-block and
+;; example-block, `:tblfm' on table, `:counter' on item, `:use-brackets-p' on
+;; subscript/superscript, `:range-type' on timestamp, a link's own `:type',
+;; and `:true-level' on headline, plus `line-break' becoming a real node type
+;; instead of being flattened into a `text' node. `radio-target' gained a
+;; mapping in the same pass, purely because a radio link cannot be fixtured
+;; without one in the buffer. Two NEW losses were surfaced by that work and
+;; are recorded rather than hidden: whitespace between a hard break's `\\'
+;; and its newline, and the alphabetical `[@c]' counter form. Every existing
+;; fixture was regenerated from this file, none hand-edited.
 ;;
 ;; Standing instruction, restated because ignoring it is what made this
 ;; block stale: whenever this file's behavior or the corpus changes,
@@ -392,6 +408,26 @@ not-accidentally-correct path."
          (is-range (memq kind-sym '(active-range inactive-range))))
     (org-swift--make-node "timestamp"
       `(("kind" . ,kind)
+        ;; :range-type records which SOURCE form produced a range: a single
+        ;; timestamp with an internal time-time contraction
+        ;; (`<2026-01-01 Thu 10:00-12:00>', `timerange') or a genuine
+        ;; two-full-timestamp range (`<date>--<date>', `daterange').
+        ;; Confirmed live against Emacs 30.2, including under inactive
+        ;; brackets and with a repeater attached; nil for the non-range
+        ;; kinds (active/inactive) and for diary. A SYMBOL, hence
+        ;; `org-swift--symbol-or-null' rather than `org-swift--str-or-null'.
+        ;;
+        ;; This is also what explains the `end.dayname' null on a timerange,
+        ;; which used to look like an inconsistency (AUDIT.md finding 16).
+        ;; The two halves of a timestamp's `end' have DIFFERENT provenance:
+        ;; year/month/day/hour/minute come from org-element's own
+        ;; `:*-end' properties, while dayname ALONE is scraped out of
+        ;; `:raw-value' by `org-swift--timestamp-dayname' above, which
+        ;; splits on "--". A timerange's raw value has no "--" and exactly
+        ;; one dayname token, so a null end dayname is the reference-faithful
+        ;; answer, not a gap. With `rangeType' captured it is derivable
+        ;; rather than surprising.
+        ("rangeType" . ,(org-swift--symbol-or-null (org-swift--prop node :range-type)))
         ("start" . ,(org-swift--timestamp-date node 'start))
         ("end" . ,(if is-range (org-swift--timestamp-date node 'end) :null))
         ("repeater" . ,(org-swift--rep node :repeater-type org-swift--repeater-type-map
@@ -566,6 +602,17 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
            ('headline
             (org-swift--make-node schema-type
               `(("level" . ,(org-swift--prop node :level))
+                ;; :true-level is the RAW star count; :level above is
+                ;; org-element's own possibly-REDUCED level, which differs
+                ;; under `#+STARTUP: odd' (org-odd-levels-only). Confirmed
+                ;; live against Emacs 30.2: with odd-levels active, `*** B'
+                ;; reports :level 2 and :true-level 3, and `** B' reports
+                ;; :level 2 and :true-level 2 - two different star counts
+                ;; collapsing onto the SAME :level, which is why :level alone
+                ;; cannot reconstruct the source. Present on every headline,
+                ;; always an integer, never nil (confirmed live on both
+                ;; odd-levels and ordinary files).
+                ("trueLevel" . ,(org-swift--prop node :true-level))
                 ("todo" . ,(org-swift--str-or-null (org-swift--prop node :todo-keyword)))
                 ("priority" . ,(let ((p (org-swift--prop node :priority)))
                                  ;; CONFIRMED via conformance/easy-priority-and-
@@ -649,6 +696,33 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
                                   ('angle "angle")
                                   ('plain "plain")
                                   (other (and other (symbol-name other)))))
+                ;; org-element's own `:type' - how the PATH is to be read:
+                ;; "https", "mailto", "file", "id", "custom-id", "fuzzy",
+                ;; "coderef", "radio". Orthogonal to `:format' above (which
+                ;; this schema calls `linkType'): a radio link is `:type
+                ;; "radio"' with `:format plain'. Capturing it is the only
+                ;; way a radio link - plain text matching an earlier
+                ;; `<<<target>>>' - stays distinguishable from an ordinary
+                ;; plain link. Confirmed live against Emacs 30.2 across nine
+                ;; link forms that `:type' is always a non-empty string,
+                ;; never nil (`[[]]' produces no link node at all), so the
+                ;; schema types this as a plain string. It still goes
+                ;; through `org-swift--str-or-null' rather than raw: handing
+                ;; a bare nil to the JSON layer would serialize as `[]', per
+                ;; this file's own top-of-file ambiguity note, so an
+                ;; unexpected nil must fail loudly against the schema
+                ;; instead of silently becoming an empty array.
+                ;;
+                ;; NAMING WART, stated rather than hidden: org-element's
+                ;; `:type' is what org's own manual calls the link type, so
+                ;; the reference-faithful names would be `linkType' for
+                ;; `:type' and `format' for `:format' - i.e. this schema's
+                ;; existing `linkType' is named after the wrong property.
+                ;; Renaming it was rejected deliberately: silently changing
+                ;; the meaning of an already-published field name is worse
+                ;; for every consumer than an imperfect new name. See
+                ;; SCHEMA.md section 4, Links.
+                ("pathType" . ,(org-swift--str-or-null (org-swift--prop node :type)))
                 ;; :path is PROTOCOL-STRIPPED (org-element splits the link
                 ;; target into :type = "https" and :path = "//example.com"
                 ;; for [[https://example.com]]) - NOT what SCHEMA.md's `path'
@@ -669,6 +743,21 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
             (org-swift--make-node schema-type
               `(("bullet" . ,(string-trim-right (or (org-swift--prop node :bullet) "")))
                 ("checkbox" . ,(org-swift--symbol-or-null (org-swift--prop node :checkbox)))
+                ;; :counter is the explicit `[@N]' ordered-list counter
+                ;; override, nil when absent. Confirmed live against Emacs
+                ;; 30.2: it is an INTEGER, not the raw source text, and it is
+                ;; set on unordered items too (`- [@5]' gives 5). It is also
+                ;; LOSSY for the alphabetical form - `1. [@c]' and `1. [@C]'
+                ;; both give 3, because org-element-item-parser converts a
+                ;; letter to its alphabet index. That residual is recorded in
+                ;; SCHEMA.md section 10 as a declined loss, alongside the
+                ;; lowercase checkbox, for the same reason: the raw text
+                ;; survives only in the list-wide `:structure' vector.
+                ;; `org-swift--str-or-null' is used for an integer here on
+                ;; purpose - it is `(or v :null)', the same helper the
+                ;; timestamp `:hour-start'/`:minute-start' integers already
+                ;; go through.
+                ("counter" . ,(org-swift--str-or-null (org-swift--prop node :counter)))
                 ("tag" . ,(org-swift--dump-secondary-or-null (org-swift--prop node :tag)))
                 ;; Same :pre-blank rationale as headline above - org-element
                 ;; sets it on item too (a blank line between the bullet and
@@ -695,10 +784,27 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
             ;; the same trailing-newline handling remains genuinely untested.
             (org-swift--make-node schema-type
               `(("language" . ,(org-swift--str-or-null (org-swift--prop node :language)))
+                ;; :switches is the flag string between the language and the
+                ;; header arguments on a `#+begin_src' line, e.g. the
+                ;; "-n -r" in `#+begin_src elisp -n -r'. Confirmed live
+                ;; against Emacs 30.2 that it is independent of
+                ;; :parameters - `#+begin_src elisp -n -r :tangle yes' gives
+                ;; :switches "-n -r" and :parameters ":tangle yes" - and nil
+                ;; when absent. Emitted in source order (language, switches,
+                ;; params) so the JSON reads the way the line is written.
+                ("switches" . ,(org-swift--str-or-null (org-swift--prop node :switches)))
                 ("params" . ,(org-swift--str-or-null (org-swift--prop node :parameters)))
                 ("value" . ,(org-swift--prop node :value)))))
 
-           ('example-block (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+           ('example-block
+            ;; example-block carries :switches too (`#+begin_example -n'),
+            ;; same shape and same nil-when-absent convention as src-block
+            ;; above. Confirmed live against Emacs 30.2 that these are the
+            ;; ONLY two block types that track it: quote, verse, center,
+            ;; comment and export blocks all report :switches nil.
+            (org-swift--make-node schema-type
+              `(("switches" . ,(org-swift--str-or-null (org-swift--prop node :switches)))
+                ("value" . ,(org-swift--prop node :value)))))
 
            ('export-block
             ;; CONFIRMED live against Emacs 30.2 (conformance/
@@ -738,12 +844,72 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
 
            ('horizontal-rule (org-swift--make-node schema-type '()))
 
+           ('line-break
+            ;; A forced line break: a line ending in `\\'. Same shape as
+            ;; `horizontal-rule' above - no `value', no `children', the whole
+            ;; meaning carried by the type itself (SCHEMA.md section 1
+            ;; permits exactly this third shape). Confirmed against
+            ;; org-element's own source: org-element-line-break-parser
+            ;; (org-element.el:3815-3829) constructs the node with only
+            ;; :begin, :end and :post-blank, the last hardcoded to 0. There
+            ;; is no other property to read.
+            ;;
+            ;; This branch REPLACES a special-case bypass that used to sit in
+            ;; `org-swift--node-json' and flatten a hard break into a `text'
+            ;; node whose value was a single newline. Dispatching through the
+            ;; ordinary pcase is what makes the shared tail below attach
+            ;; `postBlank', which a `line-break' node - a proper object node -
+            ;; must carry. Note this does NOT reopen audit finding 9: that
+            ;; bug was a `text' node WRONGLY carrying `postBlank', because a
+            ;; bare text leaf never has one. The opposite applies here.
+            ;;
+            ;; Safe against audit finding 2 (the fabricated `affiliated' key
+            ;; on `entity'): confirmed live that `line-break' is in
+            ;; `org-element-all-objects' and NOT in
+            ;; `org-element-all-elements', so `org-swift--affiliated's gate
+            ;; omits the key, and confirmed separately that it carries
+            ;; neither :name nor :caption to fabricate one from.
+            (org-swift--make-node schema-type '()))
+
+           ('radio-target
+            ;; `<<<target>>>' - the anchor a radio LINK matches against.
+            ;; Mapped as a container, `children' only, deliberately: confirmed
+            ;; live against Emacs 30.2 that org-element gives a radio-target
+            ;; BOTH a `:value' holding the raw text ("a *b* c") AND parsed
+            ;; object contents ("a ", a bold node, "c") at the same time.
+            ;; SCHEMA.md section 1 forbids one node carrying both `value' and
+            ;; `children', so this picks `children': it is lossless (the
+            ;; children re-emit to exactly the `:value' text), it preserves
+            ;; nested markup that `:value' would flatten, and it matches how
+            ;; every other container object in this file is mapped. Reading
+            ;; `:value' instead would have been the shape the generic
+            ;; unmapped-type fallback happened to produce, which is where the
+            ;; "radio-target is a flat :value string" impression came from -
+            ;; that describes the old fallback's output, not org-element.
+            ;;
+            ;; Mapped at all only because item 13 needs it: a radio link
+            ;; cannot exist without a `<<<target>>>' in the same buffer
+            ;; (confirmed live - hiding the target inside a src-block does not
+            ;; fire the link), and while radio-target was unmapped its
+            ;; fallback node failed schema validation, so no radio-link
+            ;; fixture could be checked in.
+            (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
+
            ('fixed-width (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
            ('statistics-cookie (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
            ((or 'subscript 'superscript)
-            (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
+            ;; :use-brackets-p records which SOURCE form was written: `a_b'
+            ;; (nil) vs `a_{b}' (t). Confirmed live against Emacs 30.2 on
+            ;; both subscript and superscript. Without it the two forms
+            ;; normalize to an identical tree. Emitted as a real JSON
+            ;; boolean, always present, following the `commented'-from-
+            ;; `:commentedp' precedent on headline for dropping the Lisp
+            ;; predicate `-p' from the field name.
+            (org-swift--make-node schema-type
+              `(("useBrackets" . ,(org-swift--bool (org-swift--prop node :use-brackets-p)))
+                ("children" . ,(org-swift--dump-children node)))))
 
            ('table
             ;; org-element's :type distinguishes an ordinary pipe table
@@ -773,11 +939,37 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
             ;; schema's `table' definition (still `children'-only) - this is
             ;; intentional, not an oversight, since a table.el table is not
             ;; something this schema claims to represent yet.
-            (if (eq (org-swift--prop node :type) 'table.el)
-                (progn
-                  (message "org-swift-dump: WARNING: table.el table is not represented by this schema (only org-style pipe tables are) - emitting raw :value, not a schema-conformant table node")
-                  (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
-              (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node))))))
+            ;; :tblfm is the `#+TBLFM:' formula line (or lines), which
+            ;; org-element folds INTO the table element rather than leaving
+            ;; as a sibling `keyword' node - confirmed live, no keyword node
+            ;; is produced for a TBLFM line at all. nil when absent,
+            ;; otherwise a list of strings, one per line.
+            ;;
+            ;; THE LIST IS IN REVERSE SOURCE ORDER. Source order `AAA' then
+            ;; `BBB' comes back ("BBB" "AAA"). Confirmed two independent
+            ;; ways: measured live against Emacs 30.2, and read from
+            ;; org-element's own source, where org-element-table-parser
+            ;; builds the list with `push' during a forward scan and
+            ;; org-element-table-interpreter re-emits it through an explicit
+            ;; `(reverse ...)' (org-element.el:3177). Kept reversed here
+            ;; rather than re-ordered, because section 1's rule is to carry
+            ;; org-element's own tree, not a tidied version of it - a
+            ;; renderer reverses on the way out, exactly as Emacs does. Also
+            ;; confirmed live: trailing spaces after a formula are captured
+            ;; INSIDE the string ("$2=1   "), and table.el tables carry
+            ;; :tblfm just like org tables, which is why both branches below
+            ;; emit it.
+            (let ((tblfm (let ((v (org-swift--prop node :tblfm)))
+                           (if v (org-swift--json-array v) :null))))
+              (if (eq (org-swift--prop node :type) 'table.el)
+                  (progn
+                    (message "org-swift-dump: WARNING: table.el table is not represented by this schema (only org-style pipe tables are) - emitting raw :value, not a schema-conformant table node")
+                    (org-swift--make-node schema-type
+                      `(("tblfm" . ,tblfm)
+                        ("value" . ,(org-swift--prop node :value)))))
+                (org-swift--make-node schema-type
+                  `(("tblfm" . ,tblfm)
+                    ("children" . ,(org-swift--dump-children node)))))))
 
            ('table-row
             (org-swift--make-node schema-type
@@ -885,35 +1077,32 @@ file."
   (cond
    ((null node) :null)
    ((stringp node) (org-swift--make-node "text" `(("value" . ,node))))
-   ((eq (org-element-type node) 'line-break)
-    ;; SCHEMA.md has no dedicated line-break node type: an ordinary soft
-    ;; line break inside a paragraph is just an embedded "\n" in whatever
-    ;; `text' node spans it, for free, because org-element's own plain-text
-    ;; objects already contain that newline verbatim. An EXPLICIT hard break
-    ;; (a line ending in "\\") is different: it is its OWN org-element type,
-    ;; `line-break', with no properties and no contents of its own, so it
-    ;; is flattened here into the same shape a soft break gets: a literal
-    ;; `text' node whose value is one newline.
-    ;;
-    ;; Handled HERE, before `org-swift--dump-typed-node', not as a pcase
-    ;; branch inside it (where an earlier version of this lived) - that
-    ;; distinction is the fix for a real bug, not a refactor for its own
-    ;; sake. `org-swift--dump-typed-node's shared tail code unconditionally
-    ;; adds `postBlank' (and attempts `affiliated') to whatever hashtable
-    ;; its pcase produces, regardless of what "type" that hashtable actually
-    ;; claims to be - so a `line-break' dispatched through that pcase came
-    ;; back fabricating a `text' node that DOES carry `postBlank', right
-    ;; next to ordinary `text' nodes (built via the `stringp' branch just
-    ;; above, which never goes through that tail code) that never carry
-    ;; one. Confirmed live against Emacs 30.2: a hard line break used to
-    ;; produce `{"type":"text","value":"\n","postBlank":0}' sitting between
-    ;; two ordinary `{"type":"text","value":...}' nodes with no such key at
-    ;; all - two different shapes for the same node type, which SCHEMA.md
-    ;; section 1 says can never happen (a `text' leaf has no `postBlank' key,
-    ;; full stop). Building the flattened node directly here, bypassing
-    ;; `org-swift--dump-typed-node' entirely, keeps every `text' node in the
-    ;; tree the same shape, matching the `stringp' case immediately above.
-    (org-swift--make-node "text" '(("value" . "\n"))))
+   ;; NOTE: `line-break' used to be intercepted HERE, before
+   ;; `org-swift--dump-typed-node', and flattened into a `text' node whose
+   ;; value was a single newline, because SCHEMA.md had no dedicated
+   ;; line-break type. It now has one, so the interception is gone and
+   ;; `line-break' dispatches through the ordinary pcase like every other
+   ;; type - see that branch for the full rationale.
+   ;;
+   ;; The history is worth keeping, because the bypass existed to fix a real
+   ;; bug and deleting it without understanding that bug would re-introduce
+   ;; it. The shared tail in `org-swift--dump-typed-node' unconditionally
+   ;; attaches `postBlank' to whatever hashtable its pcase produces,
+   ;; regardless of what "type" that hashtable claims. While a hard break was
+   ;; being flattened INTO a `text' node, routing it through the pcase
+   ;; therefore produced `{"type":"text","value":"\n","postBlank":0}' sitting
+   ;; beside ordinary `text' nodes (built by the `stringp' branch above, which
+   ;; never touches that tail) carrying no such key - two different shapes for
+   ;; one node type, which SCHEMA.md section 1 forbids. That was audit finding
+   ;; 9, and the bypass was its fix.
+   ;;
+   ;; What changed is the target type, not that reasoning: a `line-break' node
+   ;; is a proper OBJECT node, and section 1 says every element/object node
+   ;; carries `postBlank'. So the tail attaching it is now correct rather than
+   ;; a fabrication, and the bypass has become the thing that would be wrong.
+   ;; A `text' leaf still never carries `postBlank' - that invariant is intact
+   ;; and still enforced by the `stringp' branch above being the only producer
+   ;; of `text' nodes.
    (t (let* ((type (org-element-type node))
              (schema-type (org-swift--schema-type-name type)))
         (org-swift--dump-typed-node schema-type type node)))))

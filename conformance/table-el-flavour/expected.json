@@ -6,6 +6,7 @@
       "children": [
         {
           "type": "table",
+          "tblfm": null,
           "value": "+-----+-----+\n| a   | b   |\n+-----+-----+\n",
           "postBlank": 0
         }

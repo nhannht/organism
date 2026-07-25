@@ -10,6 +10,7 @@
             {
               "type": "timestamp",
               "kind": "diary",
+              "rangeType": null,
               "start": null,
               "end": null,
               "repeater": null,

@@ -12,6 +12,7 @@
               "type": "item",
               "bullet": "-",
               "checkbox": null,
+              "counter": null,
               "tag": null,
               "preBlank": 0,
               "children": [
@@ -32,6 +33,7 @@
               "type": "item",
               "bullet": "-",
               "checkbox": null,
+              "counter": null,
               "tag": null,
               "preBlank": 0,
               "children": [

@@ -7,6 +7,7 @@
         {
           "type": "src-block",
           "language": "emacs-lisp",
+          "switches": null,
           "params": null,
           "value": "(+ 1 2)\n",
           "postBlank": 1,

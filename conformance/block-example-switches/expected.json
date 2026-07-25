@@ -1,0 +1,18 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "example-block",
+          "switches": "-n",
+          "value": "plain line\n",
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

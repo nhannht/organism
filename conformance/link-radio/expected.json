@@ -1,0 +1,53 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "see "
+            },
+            {
+              "type": "radio-target",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "my target"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "and "
+            },
+            {
+              "type": "link",
+              "linkType": "plain",
+              "pathType": "radio",
+              "path": "my target",
+              "description": [
+                {
+                  "type": "text",
+                  "value": "my target"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "here\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

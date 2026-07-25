@@ -1,0 +1,4 @@
+#+STARTUP: odd
+* A
+*** B
+***** C

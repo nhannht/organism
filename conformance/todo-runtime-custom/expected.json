@@ -16,6 +16,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": "NEXT",
       "priority": null,
       "commented": false,
@@ -33,6 +34,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": null,
       "priority": null,
       "commented": false,

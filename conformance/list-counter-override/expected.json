@@ -1,0 +1,61 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "list",
+          "kind": "ordered",
+          "children": [
+            {
+              "type": "item",
+              "bullet": "1.",
+              "checkbox": null,
+              "counter": 5,
+              "tag": null,
+              "preBlank": 0,
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "five\n"
+                    }
+                  ],
+                  "postBlank": 0
+                }
+              ],
+              "postBlank": 0
+            },
+            {
+              "type": "item",
+              "bullet": "2.",
+              "checkbox": null,
+              "counter": null,
+              "tag": null,
+              "preBlank": 0,
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "six\n"
+                    }
+                  ],
+                  "postBlank": 0
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

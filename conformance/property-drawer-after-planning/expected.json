@@ -4,6 +4,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": null,
       "priority": null,
       "commented": false,
@@ -24,6 +25,7 @@
               "scheduled": {
                 "type": "timestamp",
                 "kind": "active",
+                "rangeType": null,
                 "start": {
                   "year": 2026,
                   "month": 1,

@@ -12,6 +12,7 @@
               "type": "item",
               "bullet": "-",
               "checkbox": null,
+              "counter": null,
               "tag": [
                 {
                   "type": "text",

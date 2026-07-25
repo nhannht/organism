@@ -4,6 +4,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": null,
       "priority": null,
       "commented": false,
@@ -19,6 +20,7 @@
         {
           "type": "headline",
           "level": 2,
+          "trueLevel": 2,
           "todo": null,
           "priority": null,
           "commented": false,

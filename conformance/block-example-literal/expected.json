@@ -6,6 +6,7 @@
       "children": [
         {
           "type": "example-block",
+          "switches": null,
           "value": "raw *not* emphasized\n",
           "postBlank": 0
         }

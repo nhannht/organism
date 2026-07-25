@@ -1,0 +1,59 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "table",
+          "tblfm": [
+            "$2=1",
+            "$3=$1+$2"
+          ],
+          "children": [
+            {
+              "type": "table-row",
+              "kind": "standard",
+              "children": [
+                {
+                  "type": "table-cell",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "a"
+                    }
+                  ],
+                  "postBlank": 0
+                },
+                {
+                  "type": "table-cell",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "b"
+                    }
+                  ],
+                  "postBlank": 0
+                },
+                {
+                  "type": "table-cell",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "c"
+                    }
+                  ],
+                  "postBlank": 0
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

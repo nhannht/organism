@@ -4,6 +4,7 @@
     {
       "type": "headline",
       "level": 1,
+      "trueLevel": 1,
       "todo": null,
       "priority": null,
       "commented": false,
@@ -26,6 +27,7 @@
               "closed": {
                 "type": "timestamp",
                 "kind": "inactive",
+                "rangeType": null,
                 "start": {
                   "year": 2026,
                   "month": 1,

@@ -10,6 +10,7 @@
             {
               "type": "link",
               "linkType": "angle",
+              "pathType": "https",
               "path": "https://example.com",
               "description": null,
               "postBlank": 0
