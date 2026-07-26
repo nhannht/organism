@@ -1,0 +1,256 @@
+// The document skeleton: SCHEMA.md section 3's `[section?, headline*]` shape, at both the
+// document level and inside every headline, plus the headline line itself.
+//
+// Everything below the section boundary lives in ParserElements.swift; everything inside an
+// element's contents lives in ParserObjects.swift.
+
+extension OrgParser {
+
+    // MARK: Document
+
+    func parseDocument() throws -> OrgJSON {
+        // CRLF (or stray CR) input is outside the implemented subset. Checked on the SCALAR
+        // view, deliberately: "\r\n" is a single Swift grapheme cluster, so a Character-level
+        // `source.contains("\r")` is FALSE for a CRLF file -- the guard would silently never
+        // fire, the tokenizer below (which splits on the Character "\n") would never split, and
+        // the whole file would collapse into one line and emit a wrong tree instead of throwing.
+        // With the scalar-level guard in place, no CR in any form can reach the tokenizer, so
+        // the rest of the parser safely stays on `[Character]` (grapheme clusters are correct
+        // for content: decomposed accents, emoji, and NUL bytes all round-trip byte-exact).
+        guard !source.unicodeScalars.contains(where: { $0.value == 0x0D }) else {
+            throw OrgError.notImplemented
+        }
+
+        // An empty or all-blank document is a document with no children at all -- no section,
+        // no headline, postBlank 0 (oracle-confirmed for "", "\n", and "\n\n\n").
+        guard lines.contains(where: { !$0.isBlank }) else {
+            return .object([
+                "type": .string("document"),
+                "children": .array([]),
+                "postBlank": .int(0),
+            ])
+        }
+
+        // Locate every headline line. (`***` with no following space is NOT a headline -- it is
+        // paragraph text, and the emphasis scanner handles it; oracle-confirmed. Same for stars
+        // followed by a tab -- see `headlineLevel`.)
+        var headlineIndices: [(index: Int, level: Int)] = []
+        for (i, line) in lines.enumerated() {
+            if let level = headlineLevel(of: line) {
+                headlineIndices.append((i, level))
+            }
+        }
+
+        var documentChildren: [OrgJSON] = []
+
+        // Zeroth section: everything before the first headline. Leading blank lines at the very
+        // start of the document are dropped entirely -- recorded in no node's preBlank or
+        // postBlank, whether a paragraph or the first headline follows them (oracle-confirmed
+        // for both).
+        let zeroEnd = headlineIndices.first?.index ?? lines.count
+        var zeroStart = 0
+        while zeroStart < zeroEnd, lines[zeroStart].isBlank { zeroStart += 1 }
+        if zeroStart < zeroEnd {
+            documentChildren.append(try parseSection(in: zeroStart..<zeroEnd))
+        }
+
+        // Headlines, attached by level via a stack.
+        var stack: [HeadlineBuilder] = []
+
+        func closeTop() {
+            let finished = stack.removeLast().build()
+            if let parent = stack.last {
+                parent.children.append(finished)
+            } else {
+                documentChildren.append(finished)
+            }
+        }
+
+        for (position, entry) in headlineIndices.enumerated() {
+            while let top = stack.last, top.trueLevel >= entry.level { closeTop() }
+
+            let builder = try parseHeadlineLine(lines[entry.index], level: entry.level)
+
+            let regionEnd = position + 1 < headlineIndices.count
+                ? headlineIndices[position + 1].index
+                : lines.count
+            let region = (entry.index + 1)..<regionEnd
+
+            var contentStart = region.lowerBound
+            while contentStart < region.upperBound, lines[contentStart].isBlank { contentStart += 1 }
+            let leadingBlanks = contentStart - region.lowerBound
+
+            if contentStart < region.upperBound {
+                // The headline has section content: blanks between the headline line and that
+                // content are its preBlank (oracle-confirmed).
+                builder.preBlank = leadingBlanks
+                builder.children.append(try parseSection(in: contentStart..<region.upperBound))
+            } else if position + 1 < headlineIndices.count,
+                      headlineIndices[position + 1].level > entry.level {
+                // No section, next headline is a CHILD: blanks before it are this headline's
+                // preBlank (oracle-confirmed).
+                builder.preBlank = leadingBlanks
+            } else {
+                // No section, next headline is a sibling/uncle or EOF: blanks are this
+                // headline's own postBlank (oracle-confirmed).
+                builder.postBlank = leadingBlanks
+            }
+
+            stack.append(builder)
+        }
+        while !stack.isEmpty { closeTop() }
+
+        return .object([
+            "type": .string("document"),
+            "children": .array(documentChildren),
+            "postBlank": .int(0),
+        ])
+    }
+
+    /// Returns the headline level when `line` is a headline line (stars at column 0 followed by
+    /// a space), and `nil` when it is not.
+    ///
+    /// A TAB after the stars does NOT open a headline. Org requires a literal space, so
+    /// `*<TAB>tabbed title` is an ordinary paragraph whose text begins with a `*` -- measured,
+    /// both for one star and for `**<TAB>x` followed by a real headline, which still parses
+    /// normally. This used to throw, on the reasoning that a tab was an unverified variant rather
+    /// than a known answer. That was wrong in the most damaging available direction: because the
+    /// scan runs over every line before any tree is built, ONE such line anywhere failed the
+    /// WHOLE document, including documents whose every other construct was fully supported.
+    ///
+    /// Nothing else is needed to make the paragraph correct. The emphasis scanner already leaves
+    /// both forms literal for its own reasons: a tab is border whitespace, so CONTENTS may not
+    /// begin with it, and in `**<TAB>x` the second `*` is preceded by a `*`, which is not a PRE
+    /// character.
+    private func headlineLevel(of line: Line) -> Int? {
+        var stars = 0
+        while stars < line.text.count, line.text[stars] == "*" { stars += 1 }
+        guard stars > 0 else { return nil }
+        guard stars < line.text.count else { return nil } // bare stars: paragraph text
+        return line.text[stars] == " " ? stars : nil // `*word` / `*<TAB>x`: paragraph text
+    }
+
+    // MARK: Headlines
+
+    /// Mutable staging for a headline node while its children are still being attached.
+    ///
+    /// `trueLevel` is the raw leading-star count and `level` is what `org-element` reports, which
+    /// are equal in an ordinary file and diverge under `#+STARTUP: odd` -- see `reducedLevel`.
+    /// Nesting is decided on `trueLevel`, never on `level`: the reduction maps two different star
+    /// counts onto one `level` (SCHEMA.md section 4 spells this out), so `level` cannot express
+    /// the source's own structure, while the star count always can.
+    private final class HeadlineBuilder {
+        let level: Int
+        let trueLevel: Int
+        let todo: OrgJSON
+        let title: [OrgJSON]
+        var preBlank = 0
+        var postBlank = 0
+        var children: [OrgJSON] = []
+
+        init(level: Int, trueLevel: Int, todo: OrgJSON, title: [OrgJSON]) {
+            self.level = level
+            self.trueLevel = trueLevel
+            self.todo = todo
+            self.title = title
+        }
+
+        func build() -> OrgJSON {
+            .object([
+                "type": .string("headline"),
+                "level": .int(level),
+                "trueLevel": .int(trueLevel),
+                "todo": todo,
+                "priority": .null,
+                "commented": .bool(false),
+                "tags": .array([]),
+                "title": .array(title),
+                "preBlank": .int(preBlank),
+                "children": .array(children),
+                "postBlank": .int(postBlank),
+            ])
+        }
+    }
+
+    private func parseHeadlineLine(_ line: Line, level: Int) throws -> HeadlineBuilder {
+        // Title = everything after the stars, trimmed of surrounding spaces/tabs.
+        var start = level + 1
+        while start < line.text.count, line.text[start] == " " || line.text[start] == "\t" { start += 1 }
+        var end = line.text.count
+        while end > start, line.text[end - 1] == " " || line.text[end - 1] == "\t" { end -= 1 }
+        let titleChars = Array(line.text[start..<end])
+
+        // Empty titles are not exercised by any implemented case.
+        guard !titleChars.isEmpty else { throw OrgError.notImplemented }
+
+        // Trailing `:tag:tag2:` groups are outside the implemented subset. (A `[#X]` priority
+        // cookie needs no dedicated check: `[` throws inside the title's object scan.)
+        var tagStart = titleChars.count
+        while tagStart > 0, titleChars[tagStart - 1] != " ", titleChars[tagStart - 1] != "\t" { tagStart -= 1 }
+        let lastWord = titleChars[tagStart...]
+        if lastWord.count >= 2, lastWord.first == ":", lastWord.last == ":",
+           lastWord.dropFirst().dropLast().allSatisfy({ isTagChar($0) }) {
+            throw OrgError.notImplemented
+        }
+
+        // TODO keyword extraction: the first whitespace-delimited word is stripped and captured
+        // as `todo` ONLY when it is a member of the active set (SCHEMA.md, "Runtime TODO
+        // keywords"); an unrecognized first word is plain title text and stays put with
+        // `todo: null`. Oracle-confirmed: `* TODO Buy milk` -> todo "TODO", title "Buy milk";
+        // `* REVIEW Buy milk` -> todo null, title "REVIEW Buy milk".
+        var todo: OrgJSON = .null
+        var titleStart = 0
+        var wordEnd = 0
+        while wordEnd < titleChars.count, titleChars[wordEnd] != " ", titleChars[wordEnd] != "\t" { wordEnd += 1 }
+        let firstWord = String(titleChars[0..<wordEnd])
+        if todoSet.contains(firstWord) {
+            todo = .string(firstWord)
+            titleStart = wordEnd
+            while titleStart < titleChars.count,
+                  titleChars[titleStart] == " " || titleChars[titleStart] == "\t" {
+                titleStart += 1
+            }
+            // A TODO keyword with nothing after it (`* TODO`) is not exercised by any
+            // implemented case and its empty-title shape is unverified.
+            guard titleStart < titleChars.count else { throw OrgError.notImplemented }
+        }
+
+        // A COMMENT keyword (directly after the stars, or after a TODO keyword) is outside the
+        // implemented subset.
+        var commentEnd = titleStart
+        while commentEnd < titleChars.count, titleChars[commentEnd] != " ", titleChars[commentEnd] != "\t" {
+            commentEnd += 1
+        }
+        if String(titleChars[titleStart..<commentEnd]) == "COMMENT" {
+            throw OrgError.notImplemented
+        }
+
+        let title = try parseObjects(String(titleChars[titleStart...]))
+        return HeadlineBuilder(
+            level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title
+        )
+    }
+
+    /// `org-element`'s own `:level` for a headline written with `stars` leading stars.
+    ///
+    /// Equal to the star count normally. Under `#+STARTUP: odd` (`org-odd-levels-only`) org
+    /// applies `org-reduced-level`, which is `1 + floor(stars / 2)`, so 1, 3, 5 stars report
+    /// levels 1, 2, 3 -- the progression `conformance/headline-odd-levels` pins.
+    ///
+    /// The `1 +` matters and the obvious-looking `(stars + 1) / 2` is WRONG. The two agree on
+    /// every ODD star count and disagree on every EVEN one, and the fixture contains only odd
+    /// counts, so the wrong formula passes it. Measured: under `#+STARTUP: odd`, a `** B` reports
+    /// `level: 2`, not `level: 1`. This is the corpus-blind class of error the whole probe
+    /// discipline exists to catch, found by measuring the one input no fixture covers.
+    ///
+    /// Even star counts under odd-levels are exactly where `level` becomes ambiguous -- `** B`
+    /// and `*** B` both report `level: 2` -- which is why SCHEMA.md section 4 carries `trueLevel`
+    /// alongside it, and why nesting is decided on the star count instead.
+    private func reducedLevel(forStars stars: Int) -> Int {
+        oddLevels ? 1 + stars / 2 : stars
+    }
+
+    private func isTagChar(_ ch: Character) -> Bool {
+        ch.isLetter || ch.isNumber || ch == "_" || ch == "@" || ch == "#" || ch == "%" || ch == ":"
+    }
+}

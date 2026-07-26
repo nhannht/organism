@@ -1,0 +1,210 @@
+// The ELEMENT layer: a section and the element nodes that may appear directly inside one
+// (paragraph, horizontal-rule, comment today; lists, tables, blocks, drawers, keywords as they
+// land). Elements hold other elements or hold objects, never both -- SCHEMA.md section 6 says
+// which for each type, and ParserObjects.swift is the other side of that boundary.
+
+extension OrgParser {
+
+    // MARK: Sections and elements
+
+    /// Parses a run of lines (already known to start and end at non-blank content boundaries --
+    /// the caller strips leading blanks into `preBlank`) into a `section` node. Blank lines
+    /// inside the range attach to the preceding element's `postBlank`; the section's own
+    /// `postBlank` is always 0 (oracle-confirmed: trailing blanks belong to the innermost
+    /// element, never the section).
+    func parseSection(in range: Range<Int>) throws -> OrgJSON {
+        var elements: [OrgJSON] = []
+        var i = range.lowerBound
+
+        while i < range.upperBound {
+            let line = lines[i]
+
+            if line.isBlank {
+                var count = 0
+                while i < range.upperBound, lines[i].isBlank { count += 1; i += 1 }
+                guard var last = elements.popLast()?.objectValue,
+                      case .int(let existing)? = last["postBlank"] else {
+                    // Leading blanks were stripped by the caller; reaching here means the
+                    // bookkeeping is wrong, not that the input is unsupported.
+                    throw OrgError.notImplemented
+                }
+                last["postBlank"] = .int(existing + count)
+                elements.append(.object(last))
+                continue
+            }
+
+            if isHorizontalRule(line) {
+                elements.append(.object([
+                    "type": .string("horizontal-rule"),
+                    "postBlank": .int(0),
+                ]))
+                i += 1
+                continue
+            }
+
+            if isCommentLine(line) {
+                var values: [String] = []
+                while i < range.upperBound, isCommentLine(lines[i]) {
+                    values.append(commentValue(of: lines[i]))
+                    i += 1
+                }
+                // Consecutive comment lines merge into one element, values joined by "\n" with
+                // no trailing newline (oracle-confirmed).
+                elements.append(.object([
+                    "type": .string("comment"),
+                    "value": .string(values.joined(separator: "\n")),
+                    "postBlank": .int(0),
+                ]))
+                continue
+            }
+
+            if let (key, value) = OrgParser.keywordParts(of: line), !OrgParser.isBlockLine(line) {
+                // An AFFILIATED keyword attaches to the element on the very next line instead of
+                // standing alone (SCHEMA.md section 5), which is not implemented yet, so that
+                // shape throws. Standing alone is the implemented case, and it is the one that
+                // actually occurs here: measured, `#+NAME: x` followed by a BLANK line does not
+                // attach -- it stays an ordinary keyword node and keeps the blank as its own
+                // postBlank -- and so does an affiliated keyword at end of file.
+                if OrgParser.isAffiliatedName(key), i + 1 < range.upperBound,
+                   !lines[i + 1].isBlank {
+                    throw OrgError.notImplemented
+                }
+                elements.append(.object([
+                    "type": .string("keyword"),
+                    "key": .string(key),
+                    "value": .string(value),
+                    "postBlank": .int(0),
+                ]))
+                i += 1
+                continue
+            }
+
+            try throwIfUnimplementedElementStart(line)
+
+            // Paragraph: consecutive lines up to a blank line or the start of another element.
+            let paragraphStart = i
+            while i < range.upperBound {
+                let candidate = lines[i]
+                if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
+                    || OrgParser.keywordParts(of: candidate) != nil
+                    || isUnimplementedElementStart(candidate) {
+                    break
+                }
+                i += 1
+            }
+            var text = ""
+            for lineIndex in paragraphStart..<i {
+                text.append(String(lines[lineIndex].text))
+                if lines[lineIndex].hasNewline { text.append("\n") }
+            }
+            elements.append(.object([
+                "type": .string("paragraph"),
+                "children": .array(try parseObjects(text)),
+                "postBlank": .int(0),
+            ]))
+        }
+
+        return .object([
+            "type": .string("section"),
+            "children": .array(elements),
+            "postBlank": .int(0),
+        ])
+    }
+
+    /// A line of 5+ dashes (optionally followed by trailing spaces/tabs). Indented rules are
+    /// excluded here and rejected by the leading-whitespace check instead.
+    private func isHorizontalRule(_ line: Line) -> Bool {
+        var dashes = 0
+        while dashes < line.text.count, line.text[dashes] == "-" { dashes += 1 }
+        guard dashes >= 5 else { return false }
+        return line.text[dashes...].allSatisfy { $0 == " " || $0 == "\t" }
+    }
+
+    /// `#` alone, or `#` followed by a space. (`#+` is rejected as an unimplemented element
+    /// start; `#\t` and indented comments are unimplemented; `#word` is paragraph text, per the
+    /// spec.)
+    private func isCommentLine(_ line: Line) -> Bool {
+        guard line.text.first == "#" else { return false }
+        return line.text.count == 1 || line.text[1] == " "
+    }
+
+    /// The comment marker `#` and exactly one following space are stripped (SCHEMA.md).
+    private func commentValue(of line: Line) -> String {
+        if line.text.count <= 1 { return "" }
+        return String(line.text[2...])
+    }
+
+    private func throwIfUnimplementedElementStart(_ line: Line) throws {
+        if isUnimplementedElementStart(line) { throw OrgError.notImplemented }
+    }
+
+    /// Lines that open (or could open) an element type outside the implemented subset. Also used
+    /// as a paragraph boundary, so an unsupported element interrupting a paragraph is dispatched
+    /// -- and thrown on -- rather than silently swallowed as paragraph text.
+    ///
+    /// `#+` lines are no longer claimed wholesale. This predicate used to return true for every
+    /// one of them (and before that, a document-wide pre-scan threw on them before parsing even
+    /// began). Now that keywords are implemented, the three `#+` shapes are separated, each
+    /// according to a measured answer rather than a guess:
+    ///
+    /// - A valid `#+KEY: VALUE` line is dispatched as a `keyword` element by `parseSection`
+    ///   BEFORE this predicate is consulted, so it never reaches here.
+    /// - A block or dynamic-block line still returns true and still throws (`isBlockLine`).
+    /// - Anything else -- `#+foo` with no colon, `#+: x` with an empty key -- is ordinary
+    ///   PARAGRAPH text, measured, and now correctly falls through instead of throwing.
+    ///
+    /// The paragraph loop in `parseSection` breaks on keyword lines as well as on this predicate,
+    /// so a keyword interrupting a paragraph is re-dispatched rather than swallowed as text.
+    ///
+    /// **What changes when blocks land:** block CONTENT lines stop passing through
+    /// `parseSection`, so a `#+TODO:` written inside a `#+begin_example` becomes reachable
+    /// without ever reaching this predicate, and `scanTodoKeywords` would wrongly read it as a
+    /// declaration. That scan is only correct while blocks throw; both places have to change
+    /// together, and `scanTodoKeywords` carries the same warning.
+    ///
+    /// **One branch below is deliberately WIDER than org and must narrow when its construct
+    /// lands** -- measured, recorded here so the narrowing is not forgotten: `a.` / `a)`
+    /// alphabetical bullets are NOT a list. `a. alpha` + `b. beta` is ONE `paragraph` in org,
+    /// because alphabetical bullets need `org-list-allow-alphabetical`, which is nil by default
+    /// (SCHEMA.md section 10 item 9 says the same). Carrying that branch into the list
+    /// implementation as "this is a list" would emit a `list` where org emits a `paragraph`. It
+    /// is safe today only because it throws.
+    private func isUnimplementedElementStart(_ line: Line) -> Bool {
+        guard let first = line.text.first else { return false }
+
+        // Indented anything: lists, continuation conventions, indented blocks -- unimplemented.
+        if first == " " || first == "\t" { return true }
+        // Tables (org and table.el `|` rows), fixed-width lines, and drawers.
+        if first == "|" || first == ":" { return true }
+        // Blocks and dynamic blocks. A `#+` line that is neither this nor a keyword is
+        // paragraph text, so there is deliberately no blanket `#+` branch here any more.
+        if OrgParser.isBlockLine(line) { return true }
+        // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
+        if first == "#", line.text.count > 1, line.text[1] == "\t" { return true }
+        // List items: `-`/`+` bullets (followed by space, tab, or end of line) and ordered
+        // bullets (`12.`, `12)`, and single-letter `a.`/`a)` forms, conservatively).
+        if first == "-" || first == "+" {
+            if line.text.count == 1 { return true }
+            if line.text[1] == " " || line.text[1] == "\t" { return true }
+        }
+        var digitEnd = 0
+        while digitEnd < line.text.count, line.text[digitEnd].isNumber { digitEnd += 1 }
+        if digitEnd > 0, digitEnd < line.text.count,
+           line.text[digitEnd] == "." || line.text[digitEnd] == ")" {
+            let after = digitEnd + 1
+            if after == line.text.count || line.text[after] == " " || line.text[after] == "\t" {
+                return true
+            }
+        }
+        if line.text.count >= 3, first.isLetter, line.text.count > 2,
+           line.text[1] == "." || line.text[1] == ")",
+           line.text[2] == " " || line.text[2] == "\t" {
+            return true
+        }
+        // Planning/clock lines, diary sexps, footnote definitions.
+        for prefix in ["SCHEDULED:", "DEADLINE:", "CLOSED:", "CLOCK:", "%%(", "[fn:"] {
+            if line.text.starts(with: prefix) { return true }
+        }
+        return false
+    }
+}

@@ -55,6 +55,18 @@ struct ConformanceTests {
         // and `todo-default-recognized` followed once keyword extraction was implemented.)
         "todo-default-recognized",
         "todo-default-unrecognized",
+        // Keyword elements (`#+KEY: VALUE`), and the two file-level settings a keyword line
+        // carries that change how the rest of the document parses. `keyword-nonaffiliated-does-
+        // not-attach` is the negative case: STARTUP is not an affiliated keyword, so it stays a
+        // standalone sibling of the paragraph rather than attaching to it.
+        "easy-keyword-simple",
+        "keyword-title-document-level",
+        "keyword-nonaffiliated-does-not-attach",
+        // `#+TODO:` declares the runtime keyword set for the WHOLE file, including headlines
+        // above the declaring line, which is why the parse is two-pass.
+        "todo-runtime-custom",
+        // `#+STARTUP: odd` makes `level` and `trueLevel` genuinely diverge.
+        "headline-odd-levels",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
