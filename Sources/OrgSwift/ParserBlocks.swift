@@ -176,7 +176,7 @@ extension OrgParser {
                 // Worth contrasting with a plain link's `pathType`, which keeps the source's own
                 // case (`HTTPS://x` reports `"HTTPS"`) -- two `#+`-adjacent string fields with
                 // opposite case conventions, so neither can be inferred from the other.
-                "backend": isSingleToken ? .string(trimmedRest.uppercased()) : .null,
+                "backend": isSingleToken ? .string(OrgParser.emacsUpcased(trimmedRest)) : .null,
                 "value": .string(value),
                 "postBlank": .int(0),
             ])

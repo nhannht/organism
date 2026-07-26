@@ -52,7 +52,22 @@ extension OrgParser {
             // section, means it attaches to nothing -- measured, each line then stands alone as an
             // ordinary keyword node keeping its SOURCE key (`#+TBLNAME:` stays `TBLNAME`, and is
             // normalized to `NAME` only when it actually attaches).
-            if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank {
+            // `comment` is the ONE element type that REFUSES affiliated keywords. `#+NAME: n`
+            // followed by `# a comment` gives TWO siblings in org -- a standalone `keyword` and a
+            // `comment` -- where every other reachable element type attaches: paragraph, all four
+            // block types, horizontal-rule, fixed-width, table, list, and even another `keyword`.
+            //
+            // That `keyword` row is what makes this undeducible. `#+NAME: n` before `#+TITLE: t`
+            // really does produce a keyword carrying `affiliated`, so "a keyword-ish line cannot
+            // be decorated" is NOT the rule and is exactly the generalization to reach for.
+            // `comment` is a single-member exception with no companion to infer it from.
+            //
+            // Deliberately NOT unified with the headline case, which also refuses. A headline
+            // ENDS the section, so it is excluded by `range` before this code runs; a comment is
+            // an element INSIDE the section that org simply declines to decorate. Two different
+            // mechanisms -- a shared branch would assert a common cause that does not exist.
+            if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank,
+               !isCommentLine(lines[runEnd]) {
                 let (node, next) = try parseOneElement(at: runEnd, in: range)
                 guard var fields = node.objectValue else { throw OrgError.notImplemented }
                 fields["affiliated"] = try affiliatedObject(from: affiliated)

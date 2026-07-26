@@ -61,7 +61,7 @@ extension OrgParser {
         guard colon > 2 else { return nil } // no colon, or an empty key: not a keyword
 
         let rawKey = String(text[2..<colon])
-        let key = rawKey.uppercased()
+        let key = emacsUpcased(rawKey)
         var valueStart = colon + 1
         while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
             valueStart += 1
@@ -163,7 +163,18 @@ extension OrgParser {
         // name is whatever precedes the first `[`.
         let base = String(key.prefix { $0 != "[" })
         if affiliatedNames.contains(base) { return true }
-        return base.hasPrefix("ATTR_") && base.count > "ATTR_".count
+
+        // `ATTR_[-_A-Za-z0-9]+` -- the character class is ASCII-ONLY and the `+` needs at least
+        // one character. Both halves are measured, and the class matters: `#+ATTR_HTſML:` does
+        // NOT attach, because U+017F is outside `[A-Za-z]`, so org emits a standalone keyword.
+        // A bare `hasPrefix("ATTR_")` accepts it and wrongly attaches -- the same over-wide
+        // reading that made `[i-npr]` claim four switches org does not recognize.
+        guard base.hasPrefix("ATTR_") else { return false }
+        let backend = base.dropFirst("ATTR_".count)
+        guard !backend.isEmpty else { return false }
+        return backend.allSatisfy { ch in
+            ch == "-" || ch == "_" || (ch.isASCII && (ch.isLetter || ch.isNumber))
+        }
     }
 
     /// The spellings `org-element` NORMALIZES away before this schema ever sees the tree

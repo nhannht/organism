@@ -17,6 +17,55 @@
 
 extension OrgParser {
 
+    /// Emacs's `upcase`, which is NOT Swift's `String.uppercased()`.
+    ///
+    /// The two agree on almost every input, which is exactly what stops anyone checking. Measured
+    /// divergence, and it is exactly two scalars:
+    ///
+    ///     U+0131  ı  DOTLESS I   Emacs leaves it alone; Unicode maps it to `I`
+    ///     U+017F  ſ  LONG S      Emacs leaves it alone; Unicode maps it to `S`
+    ///
+    /// Deliberately NOT an ASCII-only upcase, which would be the tempting over-correction: Emacs
+    /// genuinely does upcase ordinary non-ASCII letters (å->Å, α->Α, б->Б, all measured). And
+    /// deliberately not a "length must not change" rule either, because every length-CHANGING
+    /// expansion agrees between the two (ß->SS, ﬄ->FFL, ﬁ->FI, ŉ->ʼN, և->ԵՒ). Emacs's case table
+    /// simply has no entry for those two scalars.
+    ///
+    /// **This table is EMPIRICAL, not derived, and that distinction is deliberate.** No rule
+    /// generating the set was found, and the most plausible one was tested and REFUTED: "Emacs
+    /// omits an uppercase mapping where it would not round-trip" is clean, true of both members,
+    /// and predicts `µ` (U+00B5), the combining iota subscript (U+0345), `ﬅ` and `ﬆ` -- Emacs
+    /// agrees with Unicode on every one of those. So no predicate is written here on purpose: a
+    /// predicate would imply a rule that does not exist and would be trusted further than the
+    /// evidence supports.
+    ///
+    /// Boundary of that evidence, stated so the next reader inherits the limit rather than a
+    /// false sense of completeness: 26 characters were swept, by two people independently, and
+    /// the divergence set was exactly these two. Additional members, if any, lie outside that
+    /// sweep. Extend the table by MEASURING, never by reasoning about which characters "should"
+    /// behave this way.
+    ///
+    /// Applied per SCALAR rather than per Character on purpose. `ı` followed by a combining mark
+    /// is ONE grapheme cluster, and uppercasing that cluster as a unit does not preserve the
+    /// dotless i -- so a Character-level implementation is correct on the bare scalar and wrong
+    /// the moment a mark is attached.
+    ///
+    /// Third Swift string API in this parser whose Unicode-correct answer differs from the Emacs
+    /// notion it stands in for, after `Character.isWhitespace` at the border class and
+    /// `Character.isLetter` at the link guard. None of the three is WRONG; each answers a
+    /// different question than the one being asked.
+    static func emacsUpcased(_ s: String) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars {
+            if scalar.value == 0x0131 || scalar.value == 0x017F {
+                out.append(scalar)
+            } else {
+                out.append(contentsOf: String(scalar).uppercased().unicodeScalars)
+            }
+        }
+        return String(out)
+    }
+
     static let prePunctuation: Set<Character> = ["-", "(", "{", "'", "\""]
     static let postPunctuation: Set<Character> = [
         "-", ".", ",", ";", ":", "!", "?", "'", ")", "}", "[", "\"", "\\",
