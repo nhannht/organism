@@ -33,7 +33,17 @@ extension OrgParser {
     /// The caller is responsible for rejecting the `#+` lines that are NOT keywords before
     /// calling this -- see `isUnimplementedHashPlusElement`, which documents why `#+END:` and
     /// `#+BEGIN:` end up on opposite sides of that line.
-    static func keywordParts(of line: Line) -> (key: String, value: String)? {
+    /// `rawKey` is the key EXACTLY as written, un-upcased, and it is not redundant with `key`.
+    /// A dual affiliated keyword carries its short form inside brackets, and org upcases the NAME
+    /// while preserving the bracket content's case: `#+caption[ShOrT]: long` yields the affiliated
+    /// short `"ShOrT"`, not `"SHORT"`, measured -- as does `#+RESULTS[AbC123]:` for its hash.
+    /// Reading the short out of `key` would silently upcase it, and no current fixture would
+    /// catch that, since `affiliated-caption-forms` uses an all-lowercase short.
+    ///
+    /// `key` stays upcased because that IS right for the standalone case, which is the trap:
+    /// `#+FOO[x]: y` really does report key `FOO[X]`, brackets upcased with the rest. The same
+    /// bracket text follows two different rules depending on whether the keyword attaches.
+    static func keywordParts(of line: Line) -> (key: String, rawKey: String, value: String)? {
         let text = line.text
         guard text.count > 2, text[0] == "#", text[1] == "+" else { return nil }
 
@@ -50,7 +60,8 @@ extension OrgParser {
         }
         guard colon > 2 else { return nil } // no colon, or an empty key: not a keyword
 
-        let key = String(text[2..<colon]).uppercased()
+        let rawKey = String(text[2..<colon])
+        let key = rawKey.uppercased()
         var valueStart = colon + 1
         while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
             valueStart += 1
@@ -60,7 +71,7 @@ extension OrgParser {
               text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
             valueEnd -= 1
         }
-        return (key, String(text[valueStart..<valueEnd]))
+        return (key, rawKey, String(text[valueStart..<valueEnd]))
     }
 
     /// True for a `#+` line whose real element type is NOT `keyword` and is not implemented.
@@ -155,6 +166,77 @@ extension OrgParser {
         return base.hasPrefix("ATTR_") && base.count > "ATTR_".count
     }
 
+    /// The spellings `org-element` NORMALIZES away before this schema ever sees the tree
+    /// (`org-element-keyword-translation-alist`). SCHEMA.md section 10's loss item 6: the name the
+    /// author typed is gone from the affiliated key.
+    ///
+    /// Applies ONLY on attachment. A standalone `#+TBLNAME: v` keeps key `TBLNAME`, and
+    /// `#+RESULT:`/`#+HEADERS:` likewise keep theirs -- measured. So the same line yields
+    /// `TBLNAME` as a keyword node and `NAME` as an affiliated key, depending purely on whether
+    /// an element follows it.
+    static let affiliatedAliases: [String: String] = [
+        "DATA": "NAME", "LABEL": "NAME", "RESNAME": "NAME", "SOURCE": "NAME",
+        "SRCNAME": "NAME", "TBLNAME": "NAME", "RESULT": "RESULTS", "HEADERS": "HEADER",
+    ]
+
+    /// Splits an affiliated keyword's key into its normalized BASE name and its dual bracket
+    /// content, taken from the RAW key so the bracket's own case survives (see `keywordParts`).
+    static func affiliatedKeyParts(key: String, rawKey: String) -> (base: String, dual: String?) {
+        let base = String(key.prefix { $0 != "[" })
+        let normalized = affiliatedAliases[base] ?? base
+        guard let open = rawKey.firstIndex(of: "["), rawKey.hasSuffix("]") else {
+            return (normalized, nil)
+        }
+        let inner = rawKey[rawKey.index(after: open)..<rawKey.index(before: rawKey.endIndex)]
+        return (normalized, String(inner))
+    }
+
+    /// Builds the `affiliated` object (SCHEMA.md section 5) for a run of affiliated keyword lines.
+    ///
+    /// SIX value shapes behind ONE uniform-looking key, every one derived from the live oracle
+    /// rather than from a fixture, because five differently-shaped values under one name is the
+    /// same trap geometry as `switches` meaning different things on `src` and `example`:
+    ///
+    ///     NAME     bare string, LAST WINS      (#+NAME: a then b -> "b")
+    ///     PLOT     bare string, last wins
+    ///     HEADER   ARRAY of raw strings, ACCUMULATES in source order
+    ///     ATTR_*   ARRAY of raw strings, accumulates; key upcased, VALUE verbatim
+    ///     RESULTS  object {value, hash}; hash null unless the dual form is used
+    ///     CAPTION  ARRAY of {long, short}, accumulates; `long` is PARSED object nodes,
+    ///              `short` a string or null
+    ///
+    /// The scalar-versus-accumulate split has NO syntactic tell: nothing about how `#+NAME:` and
+    /// `#+HEADER:` are written says one overwrites and the other appends. It has to be measured
+    /// per keyword, which is why each row above is a measurement rather than a generalization.
+    func affiliatedObject(
+        from run: [(base: String, dual: String?, value: String)]
+    ) throws -> OrgJSON {
+        var fields: [String: OrgJSON] = [:]
+        for entry in run {
+            switch entry.base {
+            case "NAME", "PLOT":
+                fields[entry.base] = .string(entry.value) // last wins
+            case "RESULTS":
+                fields["RESULTS"] = .object([
+                    "value": .string(entry.value),
+                    "hash": entry.dual.map(OrgJSON.string) ?? .null,
+                ])
+            case "CAPTION":
+                var entries = fields["CAPTION"]?.arrayValue ?? []
+                entries.append(.object([
+                    "long": .array(try parseObjects(entry.value)),
+                    "short": entry.dual.map(OrgJSON.string) ?? .null,
+                ]))
+                fields["CAPTION"] = .array(entries)
+            default: // HEADER and the open-ended ATTR_* family: accumulate raw strings
+                var entries = fields[entry.base]?.arrayValue ?? []
+                entries.append(.string(entry.value))
+                fields[entry.base] = .array(entries)
+            }
+        }
+        return .object(fields)
+    }
+
     // MARK: File-level settings (the two-pass scan)
 
     /// The TODO keyword set declared by the file itself, or `nil` when it declares none.
@@ -191,7 +273,7 @@ extension OrgParser {
         let literal = literalBodyLines(in: lines)
         for (i, line) in lines.enumerated()
         where !literal[i] && !isUnimplementedHashPlusElement(line) {
-            guard let (key, value) = keywordParts(of: line),
+            guard let (key, _, value) = keywordParts(of: line),
                   key == "TODO" || key == "SEQ_TODO" || key == "TYP_TODO" else { continue }
             sawDeclaration = true
             for token in value.split(whereSeparator: { $0 == " " || $0 == "\t" }) where token != "|" {
@@ -214,7 +296,7 @@ extension OrgParser {
         let literal = literalBodyLines(in: lines)
         for (i, line) in lines.enumerated()
         where !literal[i] && !isUnimplementedHashPlusElement(line) {
-            guard let (key, value) = keywordParts(of: line), key == "STARTUP" else { continue }
+            guard let (key, _, value) = keywordParts(of: line), key == "STARTUP" else { continue }
             if value.split(whereSeparator: { $0 == " " || $0 == "\t" }).contains("odd") {
                 return true
             }

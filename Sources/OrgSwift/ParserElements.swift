@@ -33,97 +33,37 @@ extension OrgParser {
                 continue
             }
 
-            if isHorizontalRule(line) {
-                elements.append(.object([
-                    "type": .string("horizontal-rule"),
-                    "postBlank": .int(0),
-                ]))
-                i += 1
+            // AFFILIATED keywords attach to the element on the very next line, with no blank
+            // between (SCHEMA.md section 5). Collect the whole consecutive run first, because a
+            // run chains onto ONE element: `#+NAME:` then `#+CAPTION:` then a table gives one
+            // table carrying both.
+            var affiliated: [(base: String, dual: String?, value: String)] = []
+            var runEnd = i
+            while runEnd < range.upperBound,
+                  !OrgParser.isUnimplementedHashPlusElement(lines[runEnd]),
+                  let (key, rawKey, value) = OrgParser.keywordParts(of: lines[runEnd]),
+                  OrgParser.isAffiliatedName(key) {
+                let (base, dual) = OrgParser.affiliatedKeyParts(key: key, rawKey: rawKey)
+                affiliated.append((base, dual, value))
+                runEnd += 1
+            }
+
+            // The run attaches only if a non-blank line follows it. A blank line, or end of the
+            // section, means it attaches to nothing -- measured, each line then stands alone as an
+            // ordinary keyword node keeping its SOURCE key (`#+TBLNAME:` stays `TBLNAME`, and is
+            // normalized to `NAME` only when it actually attaches).
+            if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank {
+                let (node, next) = try parseOneElement(at: runEnd, in: range)
+                guard var fields = node.objectValue else { throw OrgError.notImplemented }
+                fields["affiliated"] = try affiliatedObject(from: affiliated)
+                elements.append(.object(fields))
+                i = next
                 continue
             }
 
-            if isCommentLine(line) {
-                var values: [String] = []
-                while i < range.upperBound, isCommentLine(lines[i]) {
-                    values.append(commentValue(of: lines[i]))
-                    i += 1
-                }
-                // Consecutive comment lines merge into one element, values joined by "\n" with
-                // no trailing newline (oracle-confirmed).
-                elements.append(.object([
-                    "type": .string("comment"),
-                    "value": .string(values.joined(separator: "\n")),
-                    "postBlank": .int(0),
-                ]))
-                continue
-            }
-
-            // Blocks are dispatched BEFORE keywords and before the unimplemented-element check,
-            // because a `#+begin_X` line is claimed by neither and would otherwise throw.
-            if let (type, rest) = OrgParser.blockBeginLine(line),
-               let end = blockEndIndex(openedAt: i, type: type, in: range) {
-                // Content mode is decided from the `#+begin_` line alone, before any content is
-                // consumed (SCHEMA.md rule 3). Only the LITERAL modes are implemented; quote and
-                // center (elements), verse (objects), and every other type -- which org parses as
-                // an unmapped `special-block` -- still throw.
-                guard OrgParser.literalBlockTypes.contains(type) else {
-                    throw OrgError.notImplemented
-                }
-                elements.append(literalBlockNode(
-                    type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
-                ))
-                i = end + 1
-                continue
-            }
-
-            if !OrgParser.isUnimplementedHashPlusElement(line),
-               let (key, value) = OrgParser.keywordParts(of: line) {
-                // An AFFILIATED keyword attaches to the element on the very next line instead of
-                // standing alone (SCHEMA.md section 5), which is not implemented yet, so that
-                // shape throws. Standing alone is the implemented case, and it is the one that
-                // actually occurs here: measured, `#+NAME: x` followed by a BLANK line does not
-                // attach -- it stays an ordinary keyword node and keeps the blank as its own
-                // postBlank -- and so does an affiliated keyword at end of file.
-                if OrgParser.isAffiliatedName(key), i + 1 < range.upperBound,
-                   !lines[i + 1].isBlank {
-                    throw OrgError.notImplemented
-                }
-                elements.append(.object([
-                    "type": .string("keyword"),
-                    "key": .string(key),
-                    "value": .string(value),
-                    "postBlank": .int(0),
-                ]))
-                i += 1
-                continue
-            }
-
-            try throwIfUnimplementedElementStart(line)
-
-            // Paragraph: consecutive lines up to a blank line or the start of another element.
-            let paragraphStart = i
-            while i < range.upperBound {
-                let candidate = lines[i]
-                if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
-                    || OrgParser.keywordParts(of: candidate) != nil
-                    || isUnimplementedElementStart(candidate)
-                    // A bare-star line ENDS the paragraph it follows, but is content of the one
-                    // it opens, so it only breaks when it is not the line we started on.
-                    || (isBareStarLine(candidate) && i > paragraphStart) {
-                    break
-                }
-                i += 1
-            }
-            var text = ""
-            for lineIndex in paragraphStart..<i {
-                text.append(String(lines[lineIndex].text))
-                if lines[lineIndex].hasNewline { text.append("\n") }
-            }
-            elements.append(.object([
-                "type": .string("paragraph"),
-                "children": .array(try parseObjects(text)),
-                "postBlank": .int(0),
-            ]))
+            let (node, next) = try parseOneElement(at: i, in: range)
+            elements.append(node)
+            i = next
         }
 
         return .object([
@@ -131,6 +71,102 @@ extension OrgParser {
             "children": .array(elements),
             "postBlank": .int(0),
         ])
+    }
+
+    /// Parses the ONE element beginning at `i` (which must not be a blank line), returning the
+    /// node and the index just past it.
+    ///
+    /// Split out of `parseSection` so the element dispatch is callable as a unit. Affiliated
+    /// keyword attachment needs exactly that: it collects a run of `#+NAME:`-style lines and then
+    /// has to parse whatever element comes next -- a paragraph, a table, a block, even another
+    /// keyword -- and hang the collected values on it. Without this split, attachment would have
+    /// to duplicate the dispatch chain, which is the two-paths-kept-in-sync shape this parser has
+    /// already been bitten by once (the block end-line search, before the pairing collapse).
+    ///
+    /// Blank-line handling deliberately stays in `parseSection`: blanks are attributed to the
+    /// PRECEDING element's `postBlank`, so they belong to the loop that knows what came before,
+    /// not to a function that parses one element in isolation.
+    private func parseOneElement(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+        var i = start
+        let line = lines[i]
+
+        if isHorizontalRule(line) {
+            return (.object([
+                "type": .string("horizontal-rule"),
+                "postBlank": .int(0),
+            ]), i + 1)
+        }
+
+        if isCommentLine(line) {
+            var values: [String] = []
+            while i < range.upperBound, isCommentLine(lines[i]) {
+                values.append(commentValue(of: lines[i]))
+                i += 1
+            }
+            // Consecutive comment lines merge into one element, values joined by "\n" with
+            // no trailing newline (oracle-confirmed).
+            return (.object([
+                "type": .string("comment"),
+                "value": .string(values.joined(separator: "\n")),
+                "postBlank": .int(0),
+            ]), i)
+        }
+
+        // Blocks are dispatched BEFORE keywords and before the unimplemented-element check,
+        // because a `#+begin_X` line is claimed by neither and would otherwise throw.
+        if let (type, rest) = OrgParser.blockBeginLine(line),
+           let end = blockEndIndex(openedAt: i, type: type, in: range) {
+            // Content mode is decided from the `#+begin_` line alone, before any content is
+            // consumed (SCHEMA.md rule 3). Only the LITERAL modes are implemented; quote and
+            // center (elements), verse (objects), and every other type -- which org parses as
+            // an unmapped `special-block` -- still throw.
+            guard OrgParser.literalBlockTypes.contains(type) else {
+                throw OrgError.notImplemented
+            }
+            return (literalBlockNode(
+                type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
+            ), end + 1)
+        }
+
+        if !OrgParser.isUnimplementedHashPlusElement(line),
+           let (key, _, value) = OrgParser.keywordParts(of: line) {
+            // An affiliated keyword reaching HERE is one that attached to nothing, so it stands
+            // alone and keeps its SOURCE key -- `parseSection` handles the attaching case before
+            // calling this, and alias normalization belongs to that path only.
+            return (.object([
+                "type": .string("keyword"),
+                "key": .string(key),
+                "value": .string(value),
+                "postBlank": .int(0),
+            ]), i + 1)
+        }
+
+        try throwIfUnimplementedElementStart(line)
+
+        // Paragraph: consecutive lines up to a blank line or the start of another element.
+        let paragraphStart = i
+        while i < range.upperBound {
+            let candidate = lines[i]
+            if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
+                || OrgParser.keywordParts(of: candidate) != nil
+                || isUnimplementedElementStart(candidate)
+                // A bare-star line ENDS the paragraph it follows, but is content of the one
+                // it opens, so it only breaks when it is not the line we started on.
+                || (isBareStarLine(candidate) && i > paragraphStart) {
+                break
+            }
+            i += 1
+        }
+        var text = ""
+        for lineIndex in paragraphStart..<i {
+            text.append(String(lines[lineIndex].text))
+            if lines[lineIndex].hasNewline { text.append("\n") }
+        }
+        return (.object([
+            "type": .string("paragraph"),
+            "children": .array(try parseObjects(text)),
+            "postBlank": .int(0),
+        ]), i)
     }
 
     /// A column-0 line of exactly ONE `*` followed by end of line or a TAB.
