@@ -12,10 +12,20 @@ extension OrgParser {
     /// inside the range attach to the preceding element's `postBlank`; the section's own
     /// `postBlank` is always 0 (oracle-confirmed: trailing blanks belong to the innermost
     /// element, never the section).
-    func parseSection(in range: Range<Int>) throws -> OrgJSON {
+    /// - Parameter mayOpenWithPlanning: whether this section's FIRST line may be a planning line.
+    ///   Only a section that directly follows a headline may, and the permission defaults to
+    ///   refusal rather than allowance, for the ORG-21 reason: a caller that gains a section has
+    ///   to opt in on purpose instead of inheriting a rule it was never measured against.
+    ///   Measured, and the reason this cannot simply be "is the first element":
+    ///
+    ///       SCHEDULED: <2026-01-01 Thu>   at top level, no headline   ->   PARAGRAPH
+    ///
+    ///   so the document's own zeroth section passes `false` and only the headline call site
+    ///   passes `true`.
+    func parseSection(in range: Range<Int>, mayOpenWithPlanning: Bool = false) throws -> OrgJSON {
         .object([
             "type": .string("section"),
-            "children": .array(try parseElementRun(in: range)),
+            "children": .array(try parseElementRun(in: range, mayOpenWithPlanning: mayOpenWithPlanning)),
             "postBlank": .int(0),
         ])
     }
@@ -29,9 +39,18 @@ extension OrgParser {
     /// themselves directly. Duplicating the loop for them would be the two-paths-kept-in-sync
     /// shape this parser has already been bitten by once (the block end-line search, before the
     /// pairing collapse).
-    func parseElementRun(in range: Range<Int>) throws -> [OrgJSON] {
+    func parseElementRun(in range: Range<Int>, mayOpenWithPlanning: Bool = false) throws -> [OrgJSON] {
         var elements: [OrgJSON] = []
         var i = range.lowerBound
+
+        // The planning line, if there is one, is consumed here rather than prepended by the
+        // caller, so that blank lines after it attach to it as `postBlank` through the ordinary
+        // path below (measured: a blank line after a planning line gives it `postBlank` 1). A
+        // node prepended outside this loop would instead hit the no-preceding-element throw.
+        if mayOpenWithPlanning, i < range.upperBound, let planning = planningLineNode(lines[i]) {
+            elements.append(planning)
+            i += 1
+        }
 
         while i < range.upperBound {
             let line = lines[i]
@@ -401,8 +420,23 @@ extension OrgParser {
         // flagged during ORG-19 as needing re-derivation against that variable rather than an
         // ASCII narrowing, and this is that re-derivation: they fall through to the paragraph
         // path, which is org's answer rather than a widened guess.
-        // Planning/clock lines, diary sexps, footnote definitions.
-        for prefix in ["SCHEDULED:", "DEADLINE:", "CLOSED:", "CLOCK:", "%%(", "[fn:"] {
+        // Clock lines, diary sexp ELEMENTS (distinct from the inline `<%%(...)>` timestamp, which
+        // does parse), footnote definitions.
+        //
+        // NOTE what is deliberately GONE: `SCHEDULED:`, `DEADLINE:` and `CLOSED:`. They belonged
+        // here while planning was unimplemented, and keeping them would now be a pure over-throw.
+        // A planning line is only a `planning` element directly after a headline, and
+        // `parseElementRun` consumes it there before this predicate is ever consulted. In EVERY
+        // other position org emits an ordinary paragraph, measured across all four:
+        //
+        //     SCHEDULED: <ts>           at top level, no headline    paragraph
+        //     * T / blank / SCHEDULED:  one blank line is enough     paragraph
+        //     * T / body / SCHEDULED:   not the first line           paragraph
+        //     * T / SCHEDULED: x2       the second one               paragraph
+        //
+        // so the paragraph path is org's own answer for all of them, and it reaches it only
+        // because timestamps parse as objects now.
+        for prefix in ["CLOCK:", "%%(", "[fn:"] {
             if line.text[s...].starts(with: prefix.unicodeScalars) { return true }
         }
         return false

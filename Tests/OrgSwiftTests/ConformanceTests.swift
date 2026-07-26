@@ -115,6 +115,10 @@ struct ConformanceTests {
         "timestamp-with-repeater",
         "timestamp-with-delay",
         "timestamp-diary-sexp",
+        // Planning lines, which timestamps unlock: the same timestamp parser serves both.
+        "planning-closed",
+        "planning-scheduled-and-deadline",
+        "planning-scheduled-hugs-headline",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

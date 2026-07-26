@@ -123,6 +123,97 @@ extension OrgParser {
             repeater: first.repeater, delay: first.delay))
     }
 
+    // MARK: The planning line
+
+    private static let planningKeywords = ["SCHEDULED", "DEADLINE", "CLOSED"]
+
+    /// Parses a `SCHEDULED:` / `DEADLINE:` / `CLOSED:` line into a `planning` node, or nil when
+    /// the line is not one.
+    ///
+    /// Four placement and shape rules, all measured, and three of them reject inputs a plausible
+    /// implementation would accept:
+    ///
+    ///     * T                                  planning. The line must be the one IMMEDIATELY
+    ///     SCHEDULED: <2026-01-01 Thu>          after the headline.
+    ///
+    ///     * T                                  PARAGRAPH. One blank line is enough to stop it
+    ///                                          being a planning line.
+    ///     SCHEDULED: <2026-01-01 Thu>
+    ///
+    ///     * T                                  PARAGRAPH, with the timestamp as an inline
+    ///     foo SCHEDULED: <2026-01-01 Thu>      object. The keyword must OPEN the line.
+    ///
+    ///     * T                                  planning, and `extra` is DISCARDED -- the section
+    ///     SCHEDULED: <2026-01-01 Thu> extra    holds the planning node and nothing else.
+    ///
+    /// That last one is org's own data loss, not this parser's: `org-element` keeps no property
+    /// for the trailing text, so a reference-faithful tree cannot carry it either. Reproducing
+    /// the loss is correct; inventing a node to hold it would not be.
+    ///
+    /// Keywords may appear in any order and any subset, and only the ones present are non-null.
+    /// A SECOND planning line is a paragraph, which falls out of the caller's rule rather than
+    /// needing a check here.
+    func planningLineNode(_ line: Line) -> OrgJSON? {
+        let chars = line.text
+
+        /// The planning keyword opening at `at`, with the index just past its colon.
+        func keyword(at index: Int) -> (name: String, end: Int)? {
+            for key in OrgParser.planningKeywords {
+                let scalars = Array(key.unicodeScalars)
+                guard index + scalars.count < chars.count else { continue }
+                var ok = true
+                for (offset, expected) in scalars.enumerated() where chars[index + offset] != expected {
+                    ok = false
+                    break
+                }
+                if ok, chars[index + scalars.count] == ":" {
+                    return (key, index + scalars.count + 1)
+                }
+            }
+            return nil
+        }
+
+        // A planning keyword must OPEN the line. That alone decides whether this IS a planning
+        // line -- NOT whether any timestamp parses. Measured, and it is the opposite of the
+        // obvious guess:
+        //
+        //     * T / SCHEDULED: bogus    planning, all three fields null, `bogus` DISCARDED
+        //     * T / SCHEDULED:          planning, all three null
+        //     * T / foo SCHEDULED: <ts> PARAGRAPH -- the keyword does not open the line
+        //
+        // So an unparseable timestamp does not demote the element, it just leaves that field
+        // null. Requiring a successful timestamp here produced three wrong trees, all of them
+        // paragraphs where org had a planning node, and all three were found by the sweep rather
+        // than by reading org's source.
+        var i = line.contentStart
+        guard keyword(at: i) != nil else { return nil }
+
+        var scheduled = OrgJSON.null
+        var deadline = OrgJSON.null
+        var closed = OrgJSON.null
+
+        while i < chars.count, let key = keyword(at: i) {
+            var j = key.end
+            while j < chars.count, chars[j] == " " || chars[j] == "\t" { j += 1 }
+            guard let match = timestampMatch(in: chars, at: j) else { break }
+            let (node, next) = timestampNode(match, in: chars)
+            switch key.name {
+            case "SCHEDULED": scheduled = node
+            case "DEADLINE": deadline = node
+            default: closed = node
+            }
+            i = next
+        }
+
+        return .object([
+            "type": .string("planning"),
+            "scheduled": scheduled,
+            "deadline": deadline,
+            "closed": closed,
+            "postBlank": .int(0),
+        ])
+    }
+
     /// Attaches `postBlank` and reports where scanning resumes. Same inter-object rule as links
     /// and emphasis: spaces and tabs after the timestamp are CONSUMED onto the node, newlines are
     /// not (SCHEMA.md section 1).

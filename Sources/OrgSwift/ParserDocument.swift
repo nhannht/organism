@@ -91,7 +91,13 @@ extension OrgParser {
                 // The headline has section content: blanks between the headline line and that
                 // content are its preBlank (oracle-confirmed).
                 builder.preBlank = leadingBlanks
-                builder.children.append(try parseSection(in: contentStart..<region.upperBound))
+                // A planning line must be the line IMMEDIATELY after the headline. `contentStart`
+                // has already skipped any blanks, so `leadingBlanks == 0` is exactly that test:
+                // measured, one blank line between the headline and `SCHEDULED:` makes it a
+                // paragraph instead.
+                builder.children.append(try parseSection(
+                    in: contentStart..<region.upperBound,
+                    mayOpenWithPlanning: leadingBlanks == 0))
             } else if position + 1 < headlineIndices.count,
                       headlineIndices[position + 1].level > entry.level {
                 // No section, next headline is a CHILD: blanks before it are this headline's
