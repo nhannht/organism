@@ -37,20 +37,21 @@ extension OrgParser {
     /// mis-parsed here.
     static func blockBeginLine(_ line: Line) -> (type: String, rest: String)? {
         let text = line.text
+        let start = line.contentStart
         let prefix = Array("#+begin_".unicodeScalars)
-        guard text.count > prefix.count else { return nil }
+        guard text.count > start + prefix.count else { return nil }
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
         //
         // Compared as Strings, not by building a Character from `lowercased()`: that initializer
         // traps when a character lowercases to anything other than exactly one grapheme, which is
         // reachable from arbitrary document text.
-        for (i, ch) in prefix.enumerated() where asciiLowered(text[i]) != ch {
+        for (i, ch) in prefix.enumerated() where asciiLowered(text[start + i]) != ch {
             return nil
         }
-        var typeEnd = prefix.count
+        var typeEnd = start + prefix.count
         while typeEnd < text.count, text[typeEnd] != " ", text[typeEnd] != "\t" { typeEnd += 1 }
-        let type = OrgParser.asciiLowered(String(scalars: text[prefix.count..<typeEnd]))
+        let type = OrgParser.asciiLowered(String(scalars: text[(start + prefix.count)..<typeEnd]))
         guard !type.isEmpty else { return nil }
         return (type, String(scalars: text[typeEnd...]))
     }
@@ -65,13 +66,17 @@ extension OrgParser {
     static func isBlockEndLine(_ line: Line, type: String) -> Bool {
         let expected = Array(("#+end_" + type).unicodeScalars)
         let text = line.text
-        guard text.count >= expected.count else { return false }
+        // The closer's OWN indent is free and need not match the opener's: `  #+begin_quote`
+        // with an unindented body and a `  #+end_quote` pairs, measured.
+        let start = line.contentStart
+        guard text.count >= start + expected.count else { return false }
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        for (i, ch) in expected.enumerated() where asciiLowered(text[i]) != asciiLowered(ch) {
+        for (i, ch) in expected.enumerated()
+        where asciiLowered(text[start + i]) != asciiLowered(ch) {
             return false
         }
-        return text[expected.count...].allSatisfy { $0 == " " || $0 == "\t" }
+        return text[(start + expected.count)...].allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// Index of the line CLOSING a construct opened at `begin`, or `nil` when nothing inside

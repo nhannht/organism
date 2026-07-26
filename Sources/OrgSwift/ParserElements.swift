@@ -285,24 +285,28 @@ extension OrgParser {
     /// A line of 5+ dashes (optionally followed by trailing spaces/tabs). Indented rules are
     /// excluded here and rejected by the leading-whitespace check instead.
     private func isHorizontalRule(_ line: Line) -> Bool {
+        var i = line.contentStart
         var dashes = 0
-        while dashes < line.text.count, line.text[dashes] == "-" { dashes += 1 }
+        while i < line.text.count, line.text[i] == "-" { dashes += 1; i += 1 }
         guard dashes >= 5 else { return false }
-        return line.text[dashes...].allSatisfy { $0 == " " || $0 == "\t" }
+        return line.text[i...].allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// `#` alone, or `#` followed by a space. (`#+` is rejected as an unimplemented element
     /// start; `#\t` and indented comments are unimplemented; `#word` is paragraph text, per the
     /// spec.)
     private func isCommentLine(_ line: Line) -> Bool {
-        guard line.text.first == "#" else { return false }
-        return line.text.count == 1 || line.text[1] == " "
+        let s = line.contentStart
+        guard s < line.text.count, line.text[s] == "#" else { return false }
+        return s + 1 == line.text.count || line.text[s + 1] == " "
     }
 
     /// The comment marker `#` and exactly one following space are stripped (SCHEMA.md).
     private func commentValue(of line: Line) -> String {
-        if line.text.count <= 1 { return "" }
-        return String(scalars: line.text[2...])
+        // Indent is not part of the value: `    # c` reports `c`, measured.
+        let s = line.contentStart
+        if s + 1 >= line.text.count { return "" }
+        return String(scalars: line.text[(s + 2)...])
     }
 
     private func throwIfUnimplementedElementStart(_ line: Line) throws {
@@ -343,10 +347,19 @@ extension OrgParser {
     /// implementation as "this is a list" would emit a `list` where org emits a `paragraph`. It
     /// is safe today only because it throws.
     private func isUnimplementedElementStart(_ line: Line) -> Bool {
-        guard let first = line.text.first else { return false }
-
-        // Indented anything: lists, continuation conventions, indented blocks -- unimplemented.
-        if first == " " || first == "\t" { return true }
+        // Indentation is NOT a rejection of its own any more. org's element regexes are written
+        // `^[ \t]*...`, so an indented element is simply an element, and every question below is
+        // asked from `contentStart`. The blanket "indented anything is unimplemented" branch that
+        // used to stand here was the single cause of six real over-throws, measured: `  text`
+        // (paragraph), `  | a | b |` (table), `  : x` (fixed-width), `  # c` (comment),
+        // `  -----` (rule) and `  #+TITLE: t` (keyword) are all ordinary elements to org.
+        let s = line.contentStart
+        let indented = s > 0
+        guard s < line.text.count else { return false }
+        let first = line.text[s]
+        func isSpaceOrTab(_ i: Int) -> Bool {
+            i < line.text.count && (line.text[i] == " " || line.text[i] == "\t")
+        }
         // Drawers, and every other `:` line that is not a fixed-width area. `|` is gone from this
         // list entirely: `org-element` decides `org` vs `table.el` on `[ \t]*|` alone, so at
         // column 0 EVERY `|` line opens an org table and there is no `|` case left to reject.
@@ -362,30 +375,32 @@ extension OrgParser {
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
-        if first == "#", line.text.count > 1, line.text[1] == "\t" { return true }
-        // List items: `-`/`+` bullets (followed by space, tab, or end of line) and ordered
-        // bullets (`12.`, `12)`, and single-letter `a.`/`a)` forms, conservatively).
-        if first == "-" || first == "+" {
-            if line.text.count == 1 { return true }
-            if line.text[1] == " " || line.text[1] == "\t" { return true }
+        if first == "#", isSpaceOrTab(s + 1), line.text[s + 1] == "\t" { return true }
+        // List items, still unimplemented (they land in 4b). `*` counts as a bullet ONLY when
+        // indented: at column 0 it is a HEADLINE and never reaches here, `  * x` is an item whose
+        // bullet is `* `, and `  ** x` is a plain paragraph because a bullet is a SINGLE `*`
+        // followed by whitespace. All three measured.
+        if first == "-" || first == "+" || (indented && first == "*") {
+            if s + 1 == line.text.count { return true }
+            if isSpaceOrTab(s + 1) { return true }
         }
-        var digitEnd = 0
-        while digitEnd < line.text.count, OrgParser.isNumberScalar(line.text[digitEnd]) { digitEnd += 1 }
-        if digitEnd > 0, digitEnd < line.text.count,
+        var digitEnd = s
+        while digitEnd < line.text.count, OrgParser.isNumberScalar(line.text[digitEnd]) {
+            digitEnd += 1
+        }
+        if digitEnd > s, digitEnd < line.text.count,
            line.text[digitEnd] == "." || line.text[digitEnd] == ")" {
-            let after = digitEnd + 1
-            if after == line.text.count || line.text[after] == " " || line.text[after] == "\t" {
-                return true
-            }
+            if digitEnd + 1 == line.text.count || isSpaceOrTab(digitEnd + 1) { return true }
         }
-        if line.text.count >= 3, OrgParser.isLetterScalar(first), line.text.count > 2,
-           line.text[1] == "." || line.text[1] == ")",
-           line.text[2] == " " || line.text[2] == "\t" {
-            return true
-        }
+        // NOTE what is deliberately GONE: the alphabetical-bullet branch. `a. item`, `a) item`
+        // and `A. item` are all PARAGRAPHS in org, because `org-list-allow-alphabetical` is nil
+        // by default, so rejecting them was a pure over-throw (147,404 scalars wide). It was
+        // flagged during ORG-19 as needing re-derivation against that variable rather than an
+        // ASCII narrowing, and this is that re-derivation: they fall through to the paragraph
+        // path, which is org's answer rather than a widened guess.
         // Planning/clock lines, diary sexps, footnote definitions.
         for prefix in ["SCHEDULED:", "DEADLINE:", "CLOSED:", "CLOCK:", "%%(", "[fn:"] {
-            if line.text.starts(with: prefix.unicodeScalars) { return true }
+            if line.text[s...].starts(with: prefix.unicodeScalars) { return true }
         }
         return false
     }

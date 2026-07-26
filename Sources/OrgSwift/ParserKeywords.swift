@@ -47,22 +47,24 @@ extension OrgParser {
     /// whether the keyword attaches, and `affiliatedParts` owns the other one.
     static func keywordParts(of line: Line) -> (key: String, value: String)? {
         let text = line.text
-        guard text.count > 2, text[0] == "#", text[1] == "+" else { return nil }
+        // Indented keywords are keywords: `   #+TITLE: t` reports value `t`, measured.
+        let start = line.contentStart
+        guard start + 2 < text.count, text[start] == "#", text[start + 1] == "+" else { return nil }
 
         // The leading run of non-whitespace after `#+` is all the separator colon can live in.
-        var runEnd = 2
+        var runEnd = start + 2
         while runEnd < text.count, text[runEnd] != " ", text[runEnd] != "\t" { runEnd += 1 }
 
         // `\S-+` is greedy, so the separator is the LAST colon in that run, not the first.
         var colon = -1
         var scan = runEnd - 1
-        while scan >= 2 {
+        while scan >= start + 2 {
             if text[scan] == ":" { colon = scan; break }
             scan -= 1
         }
-        guard colon > 2 else { return nil } // no colon, or an empty key: not a keyword
+        guard colon > start + 2 else { return nil } // no colon, or an empty key: not a keyword
 
-        let key = emacsUpcased(String(scalars: text[2..<colon]))
+        let key = emacsUpcased(String(scalars: text[(start + 2)..<colon]))
         var valueStart = colon + 1
         while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
             valueStart += 1
@@ -106,7 +108,7 @@ extension OrgParser {
     static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        let lower = OrgParser.asciiLowered(String(scalars: line.text))
+        let lower = OrgParser.asciiLowered(String(scalars: line.text[line.contentStart...]))
         return lower.hasPrefix("#+begin_") || lower.hasPrefix("#+end_")
             || lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
             || lower == "#+begin"

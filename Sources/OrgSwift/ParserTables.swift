@@ -28,16 +28,20 @@ extension OrgParser {
     /// this predicate without also implementing indented elements would let an indented
     /// fixed-width through while its indented neighbours still throw.
     static func isFixedWidthLine(_ line: Line) -> Bool {
-        guard line.text.first == ":" else { return false }
-        return line.text.count == 1 || line.text[1] == " "
+        let s = line.contentStart
+        guard s < line.text.count, line.text[s] == ":" else { return false }
+        return s + 1 == line.text.count || line.text[s + 1] == " "
     }
 
     /// The marker `:` and exactly one following space are stripped, org's own
     /// `"^[ \t]*: ?"` replacement. The `?` matters: `:  a` keeps ONE leading space (value `" a"`),
     /// it does not collapse the run. Same convention as `comment`'s `# ` stripping.
     static func fixedWidthValue(of line: Line) -> String {
-        guard line.text.count > 1 else { return "" }
-        return String(scalars: line.text[2...])
+        // The indent is NOT part of the value: `    : x` reports `x`, measured. Only the `: `
+        // marker and whatever precedes it are dropped.
+        let s = line.contentStart
+        guard s + 1 < line.text.count else { return "" }
+        return String(scalars: line.text[(s + 2)...])
     }
 
     /// Consecutive `: ` lines merge into ONE `fixed-width` element, values joined by `"\n"` with

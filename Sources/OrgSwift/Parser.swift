@@ -112,6 +112,27 @@ struct OrgParser {
         let hasNewline: Bool
 
         var isBlank: Bool { text.allSatisfy { $0 == " " || $0 == "\t" } }
+
+        /// Index of the first non-indent scalar, i.e. where the line's CONTENT begins.
+        ///
+        /// Every element predicate keys off this rather than off index 0, because org's element
+        /// regexes are written `^[ \t]*...` and an indented element is simply an element:
+        /// measured, `  | a | b |` is a table, `  : x` is a fixed-width, `  # c` is a comment,
+        /// `  -----` is a rule, `  #+TITLE: t` is a keyword and `  text` is a paragraph. The
+        /// parser used to be column-0-only everywhere, propped up by a blanket "indented
+        /// anything is unimplemented" rejection in `isUnimplementedElementStart`; that rejection
+        /// was the reason those six over-threw.
+        ///
+        /// There is exactly ONE construct this does NOT apply to, and it is the reason this is a
+        /// property rather than a blanket trim: a HEADLINE must start at column 0. `* x` is a
+        /// headline, `  * x` is a LIST ITEM whose bullet is `* `, and `  ** x` is neither -- a
+        /// plain paragraph, because a bullet is a single `*` followed by whitespace. All three
+        /// measured. So `headlineLevel` deliberately keeps reading from index 0.
+        var contentStart: Int {
+            var i = 0
+            while i < text.count, text[i] == " " || text[i] == "\t" { i += 1 }
+            return i
+        }
     }
 
     let source: String
