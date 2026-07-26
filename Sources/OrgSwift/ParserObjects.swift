@@ -128,7 +128,7 @@ extension OrgParser {
     ///   Defaulting to `true` matches the shape of org's own table, where permission is the rule
     ///   and the refusals are enumerated. When a second restricted object lands this parameter
     ///   becomes the container type instead of growing a second boolean beside it.
-    func parseObjects(_ s: String, permitsLineBreak: Bool = true) throws -> [OrgJSON] {
+    func parseObjects(_ s: String, permitsLineBreak: Bool = false) throws -> [OrgJSON] {
         let chars = Array(s.unicodeScalars)
 
         // Plain links have no bracket to key off, so they are rejected by scanning the whole
@@ -227,7 +227,7 @@ extension OrgParser {
                         // narrowed region (see this function's doc comment).
                         objectNode = .object([
                             "type": .string(c == "*" ? "bold" : "italic"),
-                            "children": .array(try parseObjects(contents)),
+                            "children": .array(try parseObjects(contents, permitsLineBreak: permitsLineBreak)),
                             "postBlank": .int(match.postBlank),
                         ])
                     default:

@@ -176,7 +176,9 @@ extension OrgParser {
                 // paragraph's contents, newlines and all.
                 return (.object([
                     "type": .string("verse-block"),
-                    "children": .array(try parseObjects(blockValue(bodyFrom: i + 1, to: end))),
+                    "children": .array(try parseObjects(
+                        blockValue(bodyFrom: i + 1, to: end), permitsLineBreak: true
+                    )),
                     "postBlank": .int(0),
                 ]), end + 1)
             default:
@@ -254,7 +256,7 @@ extension OrgParser {
         }
         return (.object([
             "type": .string("paragraph"),
-            "children": .array(try parseObjects(text)),
+            "children": .array(try parseObjects(text, permitsLineBreak: true)),
             "postBlank": .int(0),
         ]), i)
     }

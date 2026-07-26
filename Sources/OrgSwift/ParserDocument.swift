@@ -244,9 +244,7 @@ extension OrgParser {
         // keeps the backslashes as literal text, measured. Without this the trailing `\\` of a
         // title would silently become a break, since a title has no trailing newline and end of
         // contents otherwise counts as end of line.
-        let title = try parseObjects(
-            String(scalars: titleChars[titleStart...]), permitsLineBreak: false
-        )
+        let title = try parseObjects(String(scalars: titleChars[titleStart...]))
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title
         )

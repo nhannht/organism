@@ -165,9 +165,7 @@ extension OrgParser {
                 // The other container org REFUSES `line-break` in: `| a\\ | b |` keeps `a\\` as
                 // literal cell text, measured. A cell's contents end without a newline, so end
                 // of contents would otherwise read as end of line and manufacture a break.
-                "children": .array(try parseObjects(
-                    String(scalars: text[lower..<upper]), permitsLineBreak: false
-                )),
+                "children": .array(try parseObjects(String(scalars: text[lower..<upper]))),
                 "postBlank": .int(0),
             ]))
             // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.
