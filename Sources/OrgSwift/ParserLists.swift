@@ -1,0 +1,283 @@
+// Plain lists: `list` (SCHEMA.md section 4, "Lists") and its `item` children.
+//
+// A list is the first construct whose CONTENT is indented BY DESIGN rather than incidentally,
+// which is why increment 4a (indentation-aware element predicates) had to land first. An item's
+// body is an ordinary element run -- it can hold a paragraph, a table, a block, or a nested list
+// -- so it goes through `parseElementRun` rather than a private path, for the same reason quote
+// and center do.
+//
+// The one thing that is NOT ordinary: an item's content begins MID-LINE, right after the bullet,
+// while every following line is verbatim. That asymmetry is measured, not assumed:
+//
+//     - one
+//       continued        paragraph text is 'one\n  continued\n'
+//
+// The continuation keeps its indentation IN THE VALUE. So de-indenting the body would produce the
+// right structure and the wrong text, and rebuilding the text from the original lines afterwards
+// would be two representations of one thing. Instead the body is re-tokenized ONCE, with only the
+// first line sliced, and parsed by a sub-parser over those lines. That is org's own model: it
+// narrows the buffer to the contents region rather than passing a column around.
+
+extension OrgParser {
+
+    /// A recognized bullet: the literal text, and where the item's content starts after it.
+    ///
+    /// `bullet` carries its TRAILING WHITESPACE (ORG-14, and SCHEMA.md section 4 says so
+    /// explicitly). `- one` reports `"- "` and `-   three` reports `"-   "`; a bare `-` at end of
+    /// line reports `"-"` with none. Layer 2's byte-exact round-trip needs that distinction, so
+    /// it is part of the value rather than formatting noise.
+    struct BulletMatch {
+        let bullet: String
+        let contentIndex: Int
+        let indent: Int
+        let ordered: Bool
+    }
+
+    /// The SINGLE bullet recognizer. Both the list dispatch and `isUnimplementedElementStart`
+    /// answer "is this a list item" through this, deliberately: while lists were unimplemented
+    /// the guard carried its own copy of the rule, and two copies of one rule kept in sync by
+    /// hand is the shape that produced Finding A.
+    ///
+    /// Measured, and the `*` row is the subtle one:
+    ///
+    ///     "* x"      HEADLINE, never an item (column 0)
+    ///     "  * x"    item, bullet "* "
+    ///     "  ** x"   paragraph -- a bullet is a SINGLE marker, not a run
+    ///     "-item"    paragraph -- the marker needs whitespace or end of line after it
+    ///     "1.item"   paragraph, same rule
+    ///
+    /// Digits are ASCII ONLY, matching org's `\d`. `numericType != nil` would accept 2,013
+    /// non-ASCII numeric scalars that org does not treat as bullets; that over-throw was flagged
+    /// during ORG-19 and this is where it closes.
+    static func bulletMatch(of line: Line) -> BulletMatch? {
+        let t = line.text
+        let s = line.contentStart
+        guard s < t.count else { return nil }
+
+        var afterMarker: Int
+        var ordered = false
+        let first = t[s]
+        // `*` is a bullet only when indented: at column 0 it is a headline, which is decided
+        // before any element dispatch runs. This mirrors the guard's own three-way split.
+        if first == "-" || first == "+" || (s > 0 && first == "*") {
+            afterMarker = s + 1
+        } else {
+            var d = s
+            while d < t.count, t[d].value >= 0x30, t[d].value <= 0x39 { d += 1 }
+            guard d > s, d < t.count, t[d] == "." || t[d] == ")" else { return nil }
+            afterMarker = d + 1
+            ordered = true
+        }
+
+        // End of line ends the bullet, and the trailing whitespace is simply absent: `-\n` is an
+        // item whose bullet is "-" and whose body is empty, measured.
+        if afterMarker == t.count {
+            return BulletMatch(
+                bullet: String(scalars: t[s..<afterMarker]),
+                contentIndex: afterMarker, indent: s, ordered: ordered
+            )
+        }
+        guard t[afterMarker] == " " || t[afterMarker] == "\t" else { return nil }
+        var ws = afterMarker
+        while ws < t.count, t[ws] == " " || t[ws] == "\t" { ws += 1 }
+        return BulletMatch(
+            bullet: String(scalars: t[s..<ws]), contentIndex: ws, indent: s, ordered: ordered
+        )
+    }
+
+    /// `[@N]` / `[@a]`, org's `:counter`, stripped from the content it precedes.
+    ///
+    /// An INTEGER, never the source text, and the letter conversion is measured rather than
+    /// implemented as character arithmetic -- that is F19's exact shape:
+    ///
+    ///     [@5] -> 5    [@0] -> 0     [@27] -> 27
+    ///     [@a] -> 1    [@c] -> 3     [@C] -> 3     [@z] -> 26
+    ///     [@aa] -> NOT a counter; the text keeps "[@aa] "
+    ///
+    /// So: a run of ASCII digits, or exactly ONE ASCII letter case-insensitively with `a` = 1.
+    /// Multi-letter is not a counter at all. Set on unordered items too (`- [@5] x` reports 5).
+    static func counterMatch(in t: [Unicode.Scalar], at i: Int) -> (value: Int, end: Int)? {
+        guard i + 3 < t.count, t[i] == "[", t[i + 1] == "@" else { return nil }
+        var j = i + 2
+        var digits = ""
+        while j < t.count, t[j].value >= 0x30, t[j].value <= 0x39 {
+            digits.unicodeScalars.append(t[j]); j += 1
+        }
+        var value: Int
+        if !digits.isEmpty {
+            guard let v = Int(digits) else { return nil }
+            value = v
+        } else {
+            let c = t[i + 2].value
+            let isLetter = (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)
+            guard isLetter else { return nil }
+            value = Int(c | 0x20) - 0x60 // case-insensitive, 'a' = 1
+            j = i + 3
+        }
+        guard j < t.count, t[j] == "]" else { return nil }
+        return (value, j + 1)
+    }
+
+    /// `[ ]` / `[X]` / `[-]`, org's `:checkbox`, stripped from the content it precedes.
+    static func checkboxMatch(in t: [Unicode.Scalar], at i: Int) -> (state: String, end: Int)? {
+        guard i + 2 < t.count, t[i] == "[", t[i + 2] == "]" else { return nil }
+        switch t[i + 1] {
+        case " ": return ("off", i + 3)
+        case "X", "x": return ("on", i + 3)
+        case "-": return ("trans", i + 3)
+        default: return nil
+        }
+    }
+
+    /// The ` :: ` separating a descriptive item's TAG from its body, or nil.
+    ///
+    /// The spaces are required on BOTH sides: `- term :: def` is descriptive with tag `term`,
+    /// while `- term::def` stays an ordinary unordered item whose text is `term::def`. Measured,
+    /// and it is the whole difference between two list kinds.
+    static func tagSeparator(in t: [Unicode.Scalar], from start: Int, upTo end: Int) -> Range<Int>? {
+        var i = start
+        while i + 3 < end {
+            if t[i] == " ", t[i + 1] == ":", t[i + 2] == ":", t[i + 3] == " " {
+                return i..<(i + 4)
+            }
+            i += 1
+        }
+        return nil
+    }
+}
+
+extension OrgParser {
+
+    /// Parses the whole list beginning at `start`, returning the node and the index just past it.
+    ///
+    /// The list's identity is its INDENT. Items are the lines at exactly that indent carrying a
+    /// bullet; anything indented deeper belongs to the current item's body, including a nested
+    /// list, which is a child of the ITEM rather than of this list (measured).
+    ///
+    /// `kind` belongs to the LIST, not to each item, and is taken from the FIRST item: `- a`
+    /// followed by `1. b` is ONE unordered list with two items, measured. Descriptive wins when
+    /// the first item carries a ` :: ` tag.
+    func parseList(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+        guard let head = OrgParser.bulletMatch(of: lines[start]) else {
+            throw OrgError.notImplemented
+        }
+        let indent = head.indent
+        var items: [OrgJSON] = []
+        var listPostBlank = 0
+        var kind = head.ordered ? "ordered" : "unordered"
+        var i = start
+
+        while i < range.upperBound,
+              let b = OrgParser.bulletMatch(of: lines[i]), b.indent == indent {
+            // The body runs while lines are blank or indented DEEPER than the bullet. A non-blank
+            // line back at or left of the bullet ends the item.
+            var next = i + 1
+            while next < range.upperBound,
+                  lines[next].isBlank || lines[next].contentStart > indent {
+                next += 1
+            }
+            var bodyEnd = next
+            var blanks = 0
+            while bodyEnd > i + 1, lines[bodyEnd - 1].isBlank { bodyEnd -= 1; blanks += 1 }
+
+            let (item, descriptive, base) = try parseItem(
+                at: i, bodyFrom: i + 1, to: bodyEnd, bullet: b
+            )
+            if items.isEmpty, descriptive { kind = "descriptive" }
+
+            // Where the trailing blanks land depends on whether the LIST continues. Between two
+            // items they are the finished item's postBlank; after the last item they are the
+            // list's own. Both measured.
+            let listContinues = next < range.upperBound
+                && OrgParser.bulletMatch(of: lines[next]).map { $0.indent == indent } == true
+            if listContinues {
+                items.append(item.withPostBlank(base + blanks))
+            } else {
+                items.append(item)
+                listPostBlank = blanks
+            }
+            i = next
+        }
+
+        return (.object([
+            "type": .string("list"),
+            "kind": .string(kind),
+            "children": .array(items),
+            "postBlank": .int(listPostBlank),
+        ]), i)
+    }
+
+    /// One item: its bullet-line prefixes (counter, checkbox, tag) and its body as an element run.
+    private func parseItem(
+        at head: Int, bodyFrom: Int, to bodyEnd: Int, bullet b: BulletMatch
+    ) throws -> (node: OrgJSON, descriptive: Bool, basePostBlank: Int) {
+        let t = lines[head].text
+        var idx = b.contentIndex
+        var counter: OrgJSON = .null
+        var checkbox: OrgJSON = .null
+        var tag: OrgJSON = .null
+        var descriptive = false
+
+        func skipSpace() { while idx < t.count, t[idx] == " " || t[idx] == "\t" { idx += 1 } }
+
+        // Counter precedes checkbox: `1. [@5] [X] x` carries both, measured.
+        if let c = OrgParser.counterMatch(in: t, at: idx) {
+            counter = .int(c.value); idx = c.end; skipSpace()
+        }
+        if let cb = OrgParser.checkboxMatch(in: t, at: idx) {
+            checkbox = .string(cb.state); idx = cb.end; skipSpace()
+        }
+        if let sep = OrgParser.tagSeparator(in: t, from: idx, upTo: t.count) {
+            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound])))
+            idx = sep.upperBound
+            descriptive = true
+        }
+
+        // The body: FIRST line sliced to what follows the bullet and its prefixes, every later
+        // line VERBATIM. That asymmetry is the measured shape -- `- one` / `  continued` gives
+        // 'one\n  continued\n', so the continuation's indent survives in the value.
+        var bodyLines: [Line] = []
+        let firstRest = Array(t[idx...])
+        // A bullet line with nothing after it contributes no content line at all; `-\n` is an
+        // item with an EMPTY body, not an item holding a blank line.
+        if !firstRest.isEmpty {
+            bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline))
+        }
+        for k in bodyFrom..<bodyEnd { bodyLines.append(lines[k]) }
+
+        let children = bodyLines.isEmpty ? [] : try OrgParser(
+            lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels
+        ).parseElementRun(in: 0..<bodyLines.count)
+
+        // An item with an EMPTY body reports postBlank 1, and blank lines after it add to that
+        // rather than replacing it. Derived from five probes rather than guessed from one:
+        //
+        //     "-"        item pb=1     "- "        item pb=1     (no trailing newline: still 1)
+        //     "-\n- b"   pb=1, pb=0    "-\nx"      pb=1, then a sibling paragraph
+        //     "- a"      pb=0                      a body of its own suppresses it
+        //
+        // So it is the empty body that carries it, not the file ending or the next line.
+        let base = bodyLines.isEmpty ? 1 : 0
+
+        return (.object([
+            "type": .string("item"),
+            "bullet": .string(b.bullet),
+            "checkbox": checkbox,
+            "counter": counter,
+            "tag": tag,
+            "children": .array(children),
+            "preBlank": .int(0),
+            "postBlank": .int(base),
+        ]), descriptive, base)
+    }
+}
+
+extension OrgJSON {
+    /// Returns this node with `postBlank` replaced. Items learn their trailing blank count only
+    /// after the parser has seen what follows them, so the node is built first and adjusted here.
+    func withPostBlank(_ n: Int) -> OrgJSON {
+        guard var fields = objectValue else { return self }
+        fields["postBlank"] = .int(n)
+        return .object(fields)
+    }
+}

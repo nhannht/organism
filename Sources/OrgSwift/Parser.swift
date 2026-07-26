@@ -168,4 +168,23 @@ struct OrgParser {
             ?? ["TODO", "DONE"]
         self.oddLevels = OrgParser.scanOddLevels(in: built)
     }
+
+    /// A sub-parser over an already-tokenized, NARROWED line list.
+    ///
+    /// org narrows the buffer to a contents region rather than passing a column around, and this
+    /// is that. A list item needs it because its content begins mid-line, right after the bullet,
+    /// while every following line is verbatim -- so the body is re-tokenized once, with only the
+    /// first line sliced, and parsed as an ordinary element run.
+    ///
+    /// The file-level settings are INHERITED rather than re-scanned. Re-running `scanTodoKeywords`
+    /// or `scanOddLevels` over a fragment would let a `#+TODO:` line inside an item redefine the
+    /// keyword set for that fragment alone, which is a second source of truth for a document-wide
+    /// setting. `source` is empty because it feeds exactly one thing, `parseDocument`'s CRLF
+    /// guard, and a sub-parser never runs it: the document was already validated as a whole.
+    init(lines: [Line], todoSet: Set<String>, oddLevels: Bool) {
+        self.source = ""
+        self.lines = lines
+        self.todoSet = todoSet
+        self.oddLevels = oddLevels
+    }
 }

@@ -94,6 +94,12 @@ struct ConformanceTests {
         "block-verse-parsed-objects",
         "line-break-simple",
         "line-break-in-verse",
+        "list-unordered-simple",
+        "list-ordered-simple",
+        "list-nested-by-indent",
+        "list-checkbox-states",
+        "list-counter-override",
+        "list-descriptive-term-def",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

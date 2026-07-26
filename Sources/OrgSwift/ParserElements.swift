@@ -198,6 +198,14 @@ extension OrgParser {
             ]), i + 1)
         }
 
+        // Lists dispatch BEFORE the unimplemented guard, which no longer knows about bullets.
+        // Placed after the block and keyword branches so nothing that merely starts with `-` is
+        // stolen: `-----` is a horizontal rule and `bulletMatch` declines it, because a bullet
+        // marker must be followed by whitespace or end of line.
+        if OrgParser.bulletMatch(of: line) != nil {
+            return try parseList(at: i, in: range)
+        }
+
         try throwIfUnimplementedElementStart(line)
 
         // Tables and fixed-width areas are dispatched AFTER the unimplemented check, not before,
@@ -227,6 +235,11 @@ extension OrgParser {
                 // paragraph, and the same holds for `text` then `: a`.
                 || OrgParser.isTableLine(candidate)
                 || OrgParser.isFixedWidthLine(candidate)
+                // Lists join that set for the same reason, and this is the line that makes
+                // nesting work at all: inside an item body, `  - nested` must END the item's
+                // paragraph and START a child list. Without it the bullet line is swallowed as
+                // paragraph text ("one\n  - nested\n") and nesting silently disappears.
+                || OrgParser.bulletMatch(of: candidate) != nil
                 // A bare-star line ENDS the paragraph it follows, but is content of the one
                 // it opens, so it only breaks when it is not the line we started on.
                 || (isBareStarLine(candidate) && i > paragraphStart) {
@@ -354,7 +367,6 @@ extension OrgParser {
         // (paragraph), `  | a | b |` (table), `  : x` (fixed-width), `  # c` (comment),
         // `  -----` (rule) and `  #+TITLE: t` (keyword) are all ordinary elements to org.
         let s = line.contentStart
-        let indented = s > 0
         guard s < line.text.count else { return false }
         let first = line.text[s]
         func isSpaceOrTab(_ i: Int) -> Bool {
@@ -376,22 +388,11 @@ extension OrgParser {
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
         if first == "#", isSpaceOrTab(s + 1), line.text[s + 1] == "\t" { return true }
-        // List items, still unimplemented (they land in 4b). `*` counts as a bullet ONLY when
-        // indented: at column 0 it is a HEADLINE and never reaches here, `  * x` is an item whose
-        // bullet is `* `, and `  ** x` is a plain paragraph because a bullet is a SINGLE `*`
-        // followed by whitespace. All three measured.
-        if first == "-" || first == "+" || (indented && first == "*") {
-            if s + 1 == line.text.count { return true }
-            if isSpaceOrTab(s + 1) { return true }
-        }
-        var digitEnd = s
-        while digitEnd < line.text.count, OrgParser.isNumberScalar(line.text[digitEnd]) {
-            digitEnd += 1
-        }
-        if digitEnd > s, digitEnd < line.text.count,
-           line.text[digitEnd] == "." || line.text[digitEnd] == ")" {
-            if digitEnd + 1 == line.text.count || isSpaceOrTab(digitEnd + 1) { return true }
-        }
+        // NOTE there is no list-item branch here any more. While lists were unimplemented this
+        // predicate carried its OWN copy of the bullet rule; now `bulletMatch` is the single
+        // recognizer and `parseOneElement` dispatches on it BEFORE reaching this guard. Two
+        // copies of one rule kept in sync by hand is the shape that produced Finding A, so the
+        // copy was deleted rather than left to agree by inspection.
         // NOTE what is deliberately GONE: the alphabetical-bullet branch. `a. item`, `a) item`
         // and `A. item` are all PARAGRAPHS in org, because `org-list-allow-alphabetical` is nil
         // by default, so rejecting them was a pure over-throw (147,404 scalars wide). It was
