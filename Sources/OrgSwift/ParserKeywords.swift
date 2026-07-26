@@ -104,6 +104,8 @@ extension OrgParser {
     /// keywords, measured. So are `#+INCLUDE:`, `#+MACRO:`, `#+FILETAGS:`, and a `#+TBLFM:` with
     /// no table above it -- that last one looks like it should be special and genuinely is not.
     static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
         let lower = String(line.text).lowercased()
         return lower.hasPrefix("#+begin_") || lower.hasPrefix("#+end_")
             || lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")

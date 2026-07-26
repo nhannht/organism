@@ -183,6 +183,8 @@ extension OrgParser {
         var idx = 0
         while idx < text.count, text[idx] == " " || text[idx] == "\t" { idx += 1 }
 
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
         let marker = Array("#+tblfm:")
         guard text.count >= idx + marker.count else { return nil }
         for (offset, expected) in marker.enumerated()

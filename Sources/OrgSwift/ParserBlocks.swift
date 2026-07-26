@@ -37,6 +37,9 @@ extension OrgParser {
         let text = line.text
         let prefix = Array("#+begin_")
         guard text.count > prefix.count else { return nil }
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
+        //
         // Compared as Strings, not by building a Character from `lowercased()`: that initializer
         // traps when a character lowercases to anything other than exactly one grapheme, which is
         // reachable from arbitrary document text.
@@ -61,6 +64,8 @@ extension OrgParser {
         let expected = Array("#+end_" + type)
         let text = line.text
         guard text.count >= expected.count else { return false }
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
         for (i, ch) in expected.enumerated() where text[i].lowercased() != ch.lowercased() {
             return false
         }
@@ -90,11 +95,47 @@ extension OrgParser {
     /// in sync by hand. Both callers now share this one.
     /// Static because pass 1 runs from `init`, before `self.lines` exists; the instance overload
     /// below is the same function for every later caller.
+    ///
+    /// **A HEADLINE AT ANY LEVEL BREAKS PAIRING, and that rule lives HERE rather than at a call
+    /// site.** `#+begin_example` / `* x` / `#+end_example` forms no block at all: org emits the
+    /// opener as a paragraph, `* x` as a real headline, and the closer as a paragraph in the new
+    /// section. Measured across every paired construct org has, each against a no-headline control
+    /// -- the document's top-level child types are the discriminator:
+    ///
+    ///     src example export comment quote center verse   ["section","headline"]   broken
+    ///     :LOGBOOK: / :END:      :PROPERTIES: / :END:      ["section","headline"]   broken
+    ///     #+BEGIN: / #+END:                                ["section","headline"]   broken
+    ///     the same three, with no headline inside          ["section"]              formed
+    ///
+    /// All ten break, so the rule belongs to PAIRING itself -- exactly like the unpaired-opener
+    /// rule above -- and not to blocks. (First reported by parser-review over the block types and
+    /// drawers; the table above is a first-hand re-measurement, controls included, because a
+    /// docstring asserting a sweep its author did not run is the defect this very fix exists to
+    /// close.)
+    ///
+    /// It is inside the primitive because sharing the primitive is not the same as sharing the
+    /// BOUND, and that gap was a real defect. The docstring above claimed pass 1 and pass 2 "cannot
+    /// disagree about what closes a block". They could and did: pass 2 reaches here through
+    /// `blockEndIndex` bounded by the enclosing SECTION, which stops at the next headline for free,
+    /// while pass 1 passed `upperBound: lines.count` and happily paired across one. The result was
+    /// a document-wide wrong answer -- `literalBodyLines` marked a `#+TODO:` line literal that org
+    /// honors, so `scanTodoKeywords` returned nil and EVERY headline in the file lost its `todo`.
+    /// Masked only because such input throws on the orphaned opener today.
+    ///
+    /// Passing a computed bound from each caller would have fixed this one instance and left the
+    /// next caller to rediscover the rule -- the same two-paths-kept-in-sync shape the primitive
+    /// was extracted to kill, moved up one level. Drawers and dynamic blocks now inherit it.
+    ///
+    /// No-op for the pass-2 caller, by construction rather than by luck: a section's range already
+    /// excludes headlines, and it is `headlineLevel` that put them there, so the predicate that
+    /// bounds the range is the predicate that stops the scan. Proven behavior-neutral by a
+    /// byte-identical per-case status diff over all 79 conformance cases.
     static func pairedCloseIndex(
         in lines: [Line], openedAt begin: Int, upperBound: Int, isCloser: (Line) -> Bool
     ) -> Int? {
         var i = begin + 1
         while i < upperBound {
+            if headlineLevel(of: lines[i]) != nil { return nil }
             if isCloser(lines[i]) { return i }
             i += 1
         }
@@ -394,10 +435,13 @@ extension OrgParser {
             guard let (type, _) = blockBeginLine(lines[i]) else { i += 1; continue }
             // The SAME pairing primitive the element dispatch uses, so pass 1 and pass 2 cannot
             // disagree about what closes a block.
+            // The SAME primitive AND the same bound semantics as the element dispatch: the
+            // headline-break rule lives inside `pairedCloseIndex`, so passing `lines.count` here
+            // is now safe. Passing it used to be the bug -- see that function's own note.
             guard let found = pairedCloseIndex(
                 in: lines, openedAt: i, upperBound: lines.count,
                 isCloser: { isBlockEndLine($0, type: type) }
-            ) else { i += 1; continue } // unterminated: opens nothing
+            ) else { i += 1; continue } // unterminated, or broken by a headline: opens nothing
             if nonElementBlockTypes.contains(type) {
                 for body in (i + 1)..<found { flags[body] = true }
             }

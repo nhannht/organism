@@ -88,6 +88,9 @@ extension OrgParser {
             let afterColon = chars[colon + 1]
             guard afterColon != " ", afterColon != "\t", afterColon != "\n" else { continue }
             var matched = true
+            // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+            // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in
+            // Emacs). No registered link type contains `k`, which is why this is inert today.
             for (offset, expected) in type.enumerated()
             where !chars[i + offset].lowercased().elementsEqual(String(expected)) {
                 matched = false

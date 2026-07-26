@@ -36,7 +36,7 @@ extension OrgParser {
         // followed by a tab -- see `headlineLevel`.)
         var headlineIndices: [(index: Int, level: Int)] = []
         for (i, line) in lines.enumerated() {
-            if let level = headlineLevel(of: line) {
+            if let level = OrgParser.headlineLevel(of: line) {
                 headlineIndices.append((i, level))
             }
         }
@@ -122,7 +122,15 @@ extension OrgParser {
     /// both forms literal for its own reasons: a tab is border whitespace, so CONTENTS may not
     /// begin with it, and in `**<TAB>x` the second `*` is preceded by a `*`, which is not a PRE
     /// character.
-    private func headlineLevel(of line: Line) -> Int? {
+    ///
+    /// Static, and shared with `pairedCloseIndex`, which needs it from pass 1 -- i.e. from `init`,
+    /// before `self.lines` exists. It reads no instance state to begin with: it counts stars and
+    /// checks for a following space, and `oddLevels` never enters it (the odd-levels reduction
+    /// happens later, at node construction, on the RAW count this returns). So sharing it costs
+    /// nothing and buys the thing that matters: the headline predicate that SPLITS the document is
+    /// literally the same one that BREAKS pairing, so the two cannot drift into disagreeing about
+    /// what a headline is.
+    static func headlineLevel(of line: Line) -> Int? {
         var stars = 0
         while stars < line.text.count, line.text[stars] == "*" { stars += 1 }
         guard stars > 0 else { return nil }

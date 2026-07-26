@@ -64,6 +64,21 @@ extension OrgParser {
     /// did not exist when that table was built. Only U+0131 and U+017F are genuine long-standing
     /// omissions, and they are the two whose targets (`I`, `S`) have existed since Unicode 1.1.
     ///
+    /// The age grouping is a PROXY, and the thing it proxies for was measured directly over the
+    /// full space:
+    ///
+    ///     Emacs `upcase` changes c IFF c has a non-nil `uppercase` or `special-uppercase`
+    ///     char-code-property in EMACS's OWN bundled Unicode data -- with exactly 2 exceptions
+    ///     (U+0131 and U+017F, which carry the property, value U+0049 / U+0053, and are declined
+    ///     anyway) and 0 value mismatches anywhere.
+    ///
+    /// 51 of the 57 are general category **Cn, unassigned**, in Emacs 30.2's tables: Emacs has
+    /// simply never heard of them. Four more are assigned but carry no uppercase property. So the
+    /// honest one-line summary of this table is "2 genuine Emacs case-table omissions, plus 55
+    /// scalars Emacs 30.2's UCD has not absorbed yet", and a newer Emacs collapses it to 2.
+    /// Still not written as a predicate, and now for a blunter reason than the age version: Swift
+    /// cannot read Emacs's bundled tables at all.
+    ///
     /// Group by the SOURCE scalar's age instead and this is invisible, which is worth knowing
     /// before "simplifying" the grouping: U+019B and U+0264 are age-1.1 letters whose uppercase
     /// counterparts were only encoded in Unicode 16.0, and U+A7D3/U+A7D5 are age-14.0 letters
@@ -138,11 +153,22 @@ extension OrgParser {
     /// dotless i -- so a Character-level implementation is correct on the bare scalar and wrong
     /// the moment a mark is attached.
     ///
-    /// This upcases scalar by scalar rather than handing the whole string to `.uppercased()`, and
-    /// the two are not interchangeable: whole-string casing is context sensitive (final sigma is
-    /// the standard example) while per-scalar casing is not. Per-scalar is what `upcaseDeclined`
-    /// was enumerated against, so the table and the application agree by construction. Keep them
-    /// that way -- switching this to whole-string casing invalidates the enumeration.
+    /// This upcases scalar by scalar rather than handing the whole string to `.uppercased()`.
+    /// The reason is STRUCTURAL, not linguistic: `upcaseDeclined` is a per-scalar exception table,
+    /// and there is no way to apply a per-scalar exception to a whole-string `.uppercased()` call
+    /// in the first place. Per-scalar is also what the enumeration measured, so the table and its
+    /// application agree by construction. Switching this to whole-string casing invalidates the
+    /// enumeration and silently drops every exception.
+    ///
+    /// An earlier version of this note justified the split by claiming whole-string casing is
+    /// context sensitive, "final sigma is the standard example". That was WRONG and is recorded
+    /// here because the instruction above outlives it: final sigma is a LOWERCASING rule, and root
+    /// locale UPPERCASING has no unconditional context-sensitive mapping. A maintainer who checked
+    /// the stated reason would have found it false and might have discounted the instruction with
+    /// it. Measured on both sides while correcting it: Swift whole-string vs per-scalar over the
+    /// full space, plus every scalar wrapped in 11 contexts (Σ, ς, σ, ι, U+0345, U+0307, i, İ, ',
+    /// a, empty) -- 0 differences in ~12.2M probes; and Emacs's own whole-string `upcase` vs this
+    /// function, full space in 512-scalar chunks -- 0 differing chunks.
     ///
     /// Third Swift string API in this parser whose Unicode-correct answer differs from the Emacs
     /// notion it stands in for, after `Character.isWhitespace` at the border class and
@@ -159,6 +185,32 @@ extension OrgParser {
         }
         return String(out)
     }
+
+    // MARK: The case-FOLD side, which has had no equivalent treatment
+    //
+    // `emacsUpcased` above exists because Swift and Emacs disagree about UPCASING. The mirror
+    // question -- do they agree about case-FOLDING, which is what every `.lowercased()` comparison
+    // in this parser relies on -- was enumerated in both directions and the answer is nearly, but
+    // not exactly, yes:
+    //
+    //     Emacs's canon table folds ZERO non-ASCII scalars onto an ASCII letter.
+    //     Swift folds exactly ONE: U+212A KELVIN SIGN lowercases to `k`.
+    //
+    // So a document containing U+212A can make a Swift `.lowercased()` comparison match a literal
+    // `k` where Emacs would not, at any site that case-folds document text against an ASCII
+    // keyword. The sites are `blockBeginLine` and `isBlockEndLine` (ParserBlocks),
+    // `isUnimplementedHashPlusElement` (ParserKeywords), the plain-link scheme match
+    // (ParserObjects), and `tblfmValue` (ParserTables).
+    //
+    // UNREACHABLE TODAY, and the reason is worth writing down because it is a coincidence rather
+    // than a safeguard: no `k` appears in `#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, or in any
+    // of the 23 registered link types, so there is nothing for a folded U+212A to collide with. It
+    // goes LIVE the moment a block TYPE containing `k` can be matched, which is special blocks --
+    // `blockBeginLine` lowercases the type straight out of the document.
+    //
+    // Deliberately a note and not a guard: adding an exception table here would be inventing a
+    // defense for a case no input can currently reach, and the correct fix is likely to fall out
+    // of the pending unit question rather than to be bolted on now.
 
     static let prePunctuation: Set<Character> = ["-", "(", "{", "'", "\""]
     static let postPunctuation: Set<Character> = [
