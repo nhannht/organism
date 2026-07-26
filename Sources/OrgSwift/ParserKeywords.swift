@@ -33,17 +33,19 @@ extension OrgParser {
     /// The caller is responsible for rejecting the `#+` lines that are NOT keywords before
     /// calling this -- see `isUnimplementedHashPlusElement`, which documents why `#+END:` and
     /// `#+BEGIN:` end up on opposite sides of that line.
-    /// `rawKey` is the key EXACTLY as written, un-upcased, and it is not redundant with `key`.
-    /// A dual affiliated keyword carries its short form inside brackets, and org upcases the NAME
-    /// while preserving the bracket content's case: `#+caption[ShOrT]: long` yields the affiliated
-    /// short `"ShOrT"`, not `"SHORT"`, measured -- as does `#+RESULTS[AbC123]:` for its hash.
-    /// Reading the short out of `key` would silently upcase it, and no current fixture would
-    /// catch that, since `affiliated-caption-forms` uses an all-lowercase short.
     ///
-    /// `key` stays upcased because that IS right for the standalone case, which is the trap:
-    /// `#+FOO[x]: y` really does report key `FOO[X]`, brackets upcased with the rest. The same
-    /// bracket text follows two different rules depending on whether the keyword attaches.
-    static func keywordParts(of line: Line) -> (key: String, rawKey: String, value: String)? {
+    /// This function handles the STANDALONE keyword grammar only. Affiliated keywords are a
+    /// separate grammar with a separate regexp and are read by `affiliatedParts` -- including the
+    /// dual bracket form, whose content this function's `\S-+` key cannot even span when it holds
+    /// a space. The two disagree on the same line by design: `#+CAPTION[a b]: x` is an affiliated
+    /// keyword when an element follows it and is not a keyword AT ALL to this function.
+    ///
+    /// `key` is upcased, which is right for the standalone case and is the trap worth naming:
+    /// `#+FOO[x]: y` really does report key `FOO[X]`, brackets upcased along with the rest, and so
+    /// do `#+NAME[x]:` and `#+ATTR_HTML[x]:` -- neither is dual, so neither attaches, and both
+    /// arrive here (measured). The same bracket text follows two different rules depending on
+    /// whether the keyword attaches, and `affiliatedParts` owns the other one.
+    static func keywordParts(of line: Line) -> (key: String, value: String)? {
         let text = line.text
         guard text.count > 2, text[0] == "#", text[1] == "+" else { return nil }
 
@@ -60,8 +62,7 @@ extension OrgParser {
         }
         guard colon > 2 else { return nil } // no colon, or an empty key: not a keyword
 
-        let rawKey = String(text[2..<colon])
-        let key = emacsUpcased(rawKey)
+        let key = emacsUpcased(String(text[2..<colon]))
         var valueStart = colon + 1
         while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
             valueStart += 1
@@ -71,7 +72,7 @@ extension OrgParser {
               text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
             valueEnd -= 1
         }
-        return (key, rawKey, String(text[valueStart..<valueEnd]))
+        return (key, String(text[valueStart..<valueEnd]))
     }
 
     /// True for a `#+` line whose real element type is NOT `keyword` and is not implemented.
@@ -177,6 +178,89 @@ extension OrgParser {
         }
     }
 
+    /// The two affiliated keywords that may carry a secondary value in brackets
+    /// (`org-element-dual-keywords`). No other affiliated name accepts a bracket at all:
+    /// `#+NAME[x]: v` and `#+ATTR_HTML[x]: v` are NOT affiliated, and fall through to ordinary
+    /// keyword nodes with the bracket upcased into the key (`NAME[X]`, `ATTR_HTML[X]`), measured.
+    static let dualKeywords: Set<String> = ["CAPTION", "RESULTS"]
+
+    /// Recognizes an AFFILIATED keyword line, which org matches with a DIFFERENT regexp than an
+    /// ordinary one. This is not a refinement of `keywordParts`, it is a second grammar.
+    ///
+    /// `org-element--affiliated-re` is, in shape:
+    ///
+    ///     [ \t]*#\+\(?:  \(CAPTION\|RESULTS\)\(?:\[\(.*\)\]\)?
+    ///                 \| \(<the other affiliated names>\)
+    ///                 \| \(ATTR_[-_A-Za-z0-9]+\) \):[ \t]*
+    ///
+    /// The bracket content is `\(.*\)` -- ANY character, WHITESPACE INCLUDED. The ordinary keyword
+    /// regexp uses `\S-+` for its key, which cannot span a space, so routing affiliated keywords
+    /// through `keywordParts` silently loses exactly the dual form the corpus exercises:
+    /// `#+CAPTION[short one]: The *long* caption` stops its key run at the space inside the
+    /// brackets, finds no colon in `CAPTION[short`, and reports "not a keyword" -- after which the
+    /// line becomes paragraph text and the `[` throws as an unimplemented link. That was a real
+    /// defect, found by `affiliated-caption-forms` failing to parse at all.
+    ///
+    /// Measured consequences of the two grammars being separate, none of which follow from the
+    /// other:
+    ///
+    ///     `#+CAPTION[short one]: x` + element  AFFILIATED, short "short one"
+    ///     `#+CAPTION[a b]: x` with NO element  PARAGRAPH -- the ordinary regexp cannot read it,
+    ///                                          so the same line is affiliated or paragraph
+    ///                                          depending only on what FOLLOWS it
+    ///     `#+NAME[x]: v` + element             keyword `NAME[X]` + separate element; not dual
+    ///     `#+CAPTION[a] : x`                   PARAGRAPH -- the `:` must follow `]` immediately
+    ///     `#+CAPTION[a]b[c]: x`                short "a]b[c" -- `.*` is GREEDY, so the LAST `]`
+    ///                                          before the colon closes the bracket
+    ///     `#+caption[Mixed Case]: x`           AFFILIATED -- the NAME folds case, the bracket
+    ///                                          content keeps its own
+    ///     `#+RESULTſ: r`                       NOT affiliated: Emacs does not case-fold U+017F
+    ///                                          to `s` here, so this stays keyword `RESULTſ`
+    ///                                          (which is also a live check of the F19 table)
+    static func affiliatedParts(
+        of line: Line
+    ) -> (base: String, dual: String?, value: String)? {
+        let text = line.text
+        var idx = 0
+        while idx < text.count, text[idx] == " " || text[idx] == "\t" { idx += 1 }
+        guard idx + 1 < text.count, text[idx] == "#", text[idx + 1] == "+" else { return nil }
+        idx += 2
+
+        // The name runs to the first `[` or `:`; anything else in it is part of the name.
+        var nameEnd = idx
+        while nameEnd < text.count, text[nameEnd] != "[", text[nameEnd] != ":" { nameEnd += 1 }
+        guard nameEnd < text.count, nameEnd > idx else { return nil }
+        let name = emacsUpcased(String(text[idx..<nameEnd]))
+        guard isAffiliatedName(name) else { return nil }
+
+        var dual: String?
+        var cursor = nameEnd
+        if text[cursor] == "[" {
+            guard dualKeywords.contains(name) else { return nil }
+            // `\(.*\)\]:` is greedy, so the closing bracket is the LAST `]` directly before a `:`.
+            var close: Int?
+            var scan = text.count - 2
+            while scan > cursor {
+                if text[scan] == "]", text[scan + 1] == ":" { close = scan; break }
+                scan -= 1
+            }
+            guard let closeIndex = close else { return nil }
+            dual = String(text[(cursor + 1)..<closeIndex])
+            cursor = closeIndex + 1
+        }
+        guard cursor < text.count, text[cursor] == ":" else { return nil }
+
+        var valueStart = cursor + 1
+        while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
+            valueStart += 1
+        }
+        var valueEnd = text.count
+        while valueEnd > valueStart, text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
+            valueEnd -= 1
+        }
+        return (affiliatedAliases[name] ?? name, dual, String(text[valueStart..<valueEnd]))
+    }
+
     /// The spellings `org-element` NORMALIZES away before this schema ever sees the tree
     /// (`org-element-keyword-translation-alist`). SCHEMA.md section 10's loss item 6: the name the
     /// author typed is gone from the affiliated key.
@@ -190,17 +274,6 @@ extension OrgParser {
         "SRCNAME": "NAME", "TBLNAME": "NAME", "RESULT": "RESULTS", "HEADERS": "HEADER",
     ]
 
-    /// Splits an affiliated keyword's key into its normalized BASE name and its dual bracket
-    /// content, taken from the RAW key so the bracket's own case survives (see `keywordParts`).
-    static func affiliatedKeyParts(key: String, rawKey: String) -> (base: String, dual: String?) {
-        let base = String(key.prefix { $0 != "[" })
-        let normalized = affiliatedAliases[base] ?? base
-        guard let open = rawKey.firstIndex(of: "["), rawKey.hasSuffix("]") else {
-            return (normalized, nil)
-        }
-        let inner = rawKey[rawKey.index(after: open)..<rawKey.index(before: rawKey.endIndex)]
-        return (normalized, String(inner))
-    }
 
     /// Builds the `affiliated` object (SCHEMA.md section 5) for a run of affiliated keyword lines.
     ///
@@ -236,7 +309,7 @@ extension OrgParser {
                 var entries = fields["CAPTION"]?.arrayValue ?? []
                 entries.append(.object([
                     "long": .array(try parseObjects(entry.value)),
-                    "short": entry.dual.map(OrgJSON.string) ?? .null,
+                    "short": try captionShort(entry.dual),
                 ]))
                 fields["CAPTION"] = .array(entries)
             default: // HEADER and the open-ended ATTR_* family: accumulate raw strings
@@ -246,6 +319,40 @@ extension OrgParser {
             }
         }
         return .object(fields)
+    }
+
+    /// CAPTION's `short`, which does NOT follow the same empty/null rule as RESULTS' `hash`.
+    ///
+    /// Measured, and the split is real rather than incidental: `#+CAPTION[]:` gives `short` NULL
+    /// while `#+RESULTS[]:` gives `hash` the empty STRING. The cause is that CAPTION is in
+    /// `org-element-parsed-keywords` and RESULTS is not, so CAPTION's secondary value goes through
+    /// `org-element--parse-objects` (an empty range yields no objects, hence nil) while RESULTS'
+    /// is kept as the raw match (hence `""`). A whitespace-only bracket parses to one text object
+    /// either way, so `#+CAPTION[  ]:` is `"  "`, not null -- only the truly EMPTY bracket differs.
+    ///
+    /// **The `objects.count == 1` guard is a refusal to reproduce a defect in the oracle, and it
+    /// is deliberately not a workaround for one.** Because CAPTION is a parsed keyword, its
+    /// secondary value is a LIST of objects, but `harness/oracle-dump.el`'s `org-swift--dump-caption`
+    /// reads it with `(cadr entry)`, which takes only the list's FIRST object -- and its own
+    /// docstring asserts the value is "a single raw, propertized STRING", which org-element's
+    /// source contradicts. For a plain-text short the list has exactly one element and the read is
+    /// accidentally correct, which is why every fixture passes. For a marked-up short it silently
+    /// truncates: `#+CAPTION[a *b* c]:` dumps `short` as `"a "`, losing `*b*` and `"c"`.
+    ///
+    /// This parser therefore emits a short ONLY when it is a single plain-text run, where the
+    /// oracle is right, and throws otherwise rather than reproducing the truncation. Reported to
+    /// `main`; SCHEMA.md also types `short` as a plain string, so representing a marked-up short
+    /// needs a schema answer, not a parser one.
+    private func captionShort(_ dual: String?) throws -> OrgJSON {
+        guard let dual else { return .null }
+        guard !dual.isEmpty else { return .null }
+        let objects = try parseObjects(dual)
+        guard objects.count == 1,
+              let only = objects.first?.objectValue,
+              only["type"] == OrgJSON.string("text") else {
+            throw OrgError.notImplemented
+        }
+        return .string(dual)
     }
 
     // MARK: File-level settings (the two-pass scan)
@@ -284,7 +391,7 @@ extension OrgParser {
         let literal = literalBodyLines(in: lines)
         for (i, line) in lines.enumerated()
         where !literal[i] && !isUnimplementedHashPlusElement(line) {
-            guard let (key, _, value) = keywordParts(of: line),
+            guard let (key, value) = keywordParts(of: line),
                   key == "TODO" || key == "SEQ_TODO" || key == "TYP_TODO" else { continue }
             sawDeclaration = true
             for token in value.split(whereSeparator: { $0 == " " || $0 == "\t" }) where token != "|" {
@@ -307,7 +414,7 @@ extension OrgParser {
         let literal = literalBodyLines(in: lines)
         for (i, line) in lines.enumerated()
         where !literal[i] && !isUnimplementedHashPlusElement(line) {
-            guard let (key, _, value) = keywordParts(of: line), key == "STARTUP" else { continue }
+            guard let (key, value) = keywordParts(of: line), key == "STARTUP" else { continue }
             if value.split(whereSeparator: { $0 == " " || $0 == "\t" }).contains("odd") {
                 return true
             }

@@ -1,0 +1,244 @@
+// Tables and fixed-width areas -- two element-layer constructs that share nothing except the
+// order they landed in. They sit together here rather than in ParserElements.swift for the same
+// reason blocks do: the element dispatch stays readable when each construct family owns a file.
+//
+// Everything below is measured against Emacs 30.2 / org 9.7.11, and where a rule was surprising
+// enough that a reader would assume the obvious thing instead, org-element's own source is cited
+// by function name so the claim can be checked rather than believed.
+
+extension OrgParser {
+
+    // MARK: - Fixed-width
+
+    /// A `: ...` line, i.e. `:` alone or `:` followed by a space.
+    ///
+    /// Org's own test is `"[ \t]*:\\( \\|$\\)"` (`org-element-fixed-width-parser`), and the
+    /// alternation is the whole rule: a colon must be followed by a SPACE or by end of line.
+    /// Measured consequences, each of which the obvious reading gets wrong:
+    ///
+    ///     `: a`   fixed-width      `:`     fixed-width, value ""
+    ///     `:\ta`  PARAGRAPH        `::  a` PARAGRAPH        `:a`  PARAGRAPH
+    ///
+    /// A TAB after the colon does not qualify, which is the one most likely to be "simplified"
+    /// into a whitespace test later.
+    ///
+    /// Column 0 only, deliberately narrower than org: org accepts leading indentation here, but
+    /// every indented element is still unimplemented and rejected earlier by
+    /// `isUnimplementedElementStart`, so an indented `: a` throws rather than parsing. Widening
+    /// this predicate without also implementing indented elements would let an indented
+    /// fixed-width through while its indented neighbours still throw.
+    static func isFixedWidthLine(_ line: Line) -> Bool {
+        guard line.text.first == ":" else { return false }
+        return line.text.count == 1 || line.text[1] == " "
+    }
+
+    /// The marker `:` and exactly one following space are stripped, org's own
+    /// `"^[ \t]*: ?"` replacement. The `?` matters: `:  a` keeps ONE leading space (value `" a"`),
+    /// it does not collapse the run. Same convention as `comment`'s `# ` stripping.
+    static func fixedWidthValue(of line: Line) -> String {
+        guard line.text.count > 1 else { return "" }
+        return String(line.text[2...])
+    }
+
+    /// Consecutive `: ` lines merge into ONE `fixed-width` element, values joined by `"\n"` with
+    /// no trailing newline. A `:` line with an empty value contributes an empty string rather than
+    /// ending the run, so `: a` / `:` / `: b` gives the single value `"a\n\nb"` (measured).
+    ///
+    /// **`postBlank` is seeded to 1, not 0, and that is not a bug.** A `fixed-width` whose last
+    /// line ends in a newline reports `post-blank` ONE HIGHER than the number of blank lines that
+    /// follow it -- `: a\n` alone reports 1, `: a\ntext\n` reports 1 with no blank line anywhere,
+    /// and `: a\n\n\n` reports 3. Confirmed against raw `org-element` directly, not only through
+    /// the oracle, so this is org's behavior rather than a dump artifact.
+    ///
+    /// The cause, from `org-element-fixed-width-parser`: it computes
+    /// `end-area = (if (bolp) (line-end-position 0) (point))`, which lands just BEFORE the final
+    /// newline so that newline can be excluded from `:value` -- and then reuses that same position
+    /// as the start of `:post-blank (count-lines end-area end)`. One position doing two jobs, so
+    /// the excluded newline is counted as a blank line. When the last line has NO trailing newline
+    /// `(bolp)` is false, `end-area` is point-max, and the count is 0 -- which is why the seed is
+    /// conditional on `hasNewline` rather than a constant 1.
+    ///
+    /// The tempting generalization -- "elements whose value drops the trailing newline count it as
+    /// post-blank" -- is REFUTED and was tested before this comment was written: `comment` uses
+    /// exactly the same strip-and-join convention, and `# a\n` reports `post-blank` 0. Its parser
+    /// accumulates each line's text separately, so its equivalent position sits AFTER the newline.
+    /// The difference is the two parsers' internal bookkeeping, not a shared value convention.
+    ///
+    /// Blank lines FOLLOWING the run are added on top of this seed by `parseSection`, which owns
+    /// blank attribution for every element type.
+    func parseFixedWidth(at start: Int, in range: Range<Int>) -> (OrgJSON, Int) {
+        var i = start
+        var values: [String] = []
+        while i < range.upperBound, OrgParser.isFixedWidthLine(lines[i]) {
+            values.append(OrgParser.fixedWidthValue(of: lines[i]))
+            i += 1
+        }
+        return (.object([
+            "type": .string("fixed-width"),
+            "value": .string(values.joined(separator: "\n")),
+            "postBlank": .int(lines[i - 1].hasNewline ? 1 : 0),
+        ]), i)
+    }
+
+    // MARK: - Tables
+
+    /// A line belonging to an org table: its first non-whitespace character is `|`.
+    ///
+    /// This is the negation of org's table terminator `"^[ \t]*\\($\\|[^| \t]\\)"`
+    /// (`org-element-table-parser`), which ends the table at the first line that is blank or whose
+    /// first non-whitespace character is anything other than `|`. A whitespace-only line therefore
+    /// ENDS a table rather than continuing it: `| a |` / `"   "` / `| b |` is TWO tables, measured.
+    ///
+    /// Indentation is accepted here on purpose, unlike `isFixedWidthLine` above, and the asymmetry
+    /// is real rather than an oversight. A table's FIRST line still has to reach this code, and an
+    /// indented one never does -- `isUnimplementedElementStart` rejects every indented line before
+    /// dispatch. So an indented table START throws, while an indented CONTINUATION row inside a
+    /// table that began at column 0 is parsed, which is exactly what org does.
+    static func isTableLine(_ line: Line) -> Bool {
+        for ch in line.text {
+            if ch == " " || ch == "\t" { continue }
+            return ch == "|"
+        }
+        return false
+    }
+
+    /// A rule row (`|---+---|`). Org's test is the whole of `"^[ \t]*|-"`
+    /// (`org-element-table-row-parser`): a `|` immediately followed by `-`, and nothing more.
+    ///
+    /// That is far looser than it looks and the difference is measurable, so it is NOT written
+    /// here as "a row of dashes and plusses":
+    ///
+    ///     `|-x-|`   RULE      -- despite the `x`
+    ///     `|-`      RULE
+    ///     `| - |`   STANDARD  -- one cell, value "-"; the space defeats it
+    ///     `| -- |`  STANDARD  -- one cell, value "--"
+    ///
+    /// A rule row carries no cells at all: org gives it `contents-begin`/`contents-end` of `nil`,
+    /// which is why `children` is an empty array rather than a single empty cell.
+    static func isTableRuleLine(_ line: Line) -> Bool {
+        var idx = 0
+        while idx < line.text.count, line.text[idx] == " " || line.text[idx] == "\t" { idx += 1 }
+        guard idx < line.text.count, line.text[idx] == "|" else { return false }
+        return idx + 1 < line.text.count && line.text[idx + 1] == "-"
+    }
+
+    /// The cells of a standard row.
+    ///
+    /// Org spans a row's contents from just after the FIRST `|` to end of line with trailing
+    /// whitespace skipped back (`org-element-table-row-parser`), then repeatedly applies
+    /// `"[ \t]*\\(.*?\\)[ \t]*\\(?:|\\|$\\)"` (`org-element-table-cell-parser`). Net effect: split
+    /// the span on `|`, trim each piece of spaces and tabs. Interior whitespace is content, so
+    /// `| a  b |` is one cell `"a  b"`.
+    ///
+    /// The boundary cases are what make this worth spelling out, all measured:
+    ///
+    ///     `| a | b |`  2 cells        the closing `|` ends the last cell, it does not open a new one
+    ///     `| a | b`    2 cells        an unclosed row still yields its last cell
+    ///     `| | a |`    2 cells        first is EMPTY (children [], not a missing cell)
+    ///     `||`         1 empty cell
+    ///     `|`          ZERO cells     the row exists and has no cells at all
+    func tableCells(of line: Line) throws -> [OrgJSON] {
+        let text = line.text
+        guard let firstPipe = text.firstIndex(of: "|") else { return [] }
+
+        // End of the row's contents: end of line, trailing spaces and tabs skipped back.
+        var contentsEnd = text.count
+        while contentsEnd > firstPipe + 1,
+              text[contentsEnd - 1] == " " || text[contentsEnd - 1] == "\t" {
+            contentsEnd -= 1
+        }
+
+        var cells: [OrgJSON] = []
+        var pos = firstPipe + 1
+        while pos < contentsEnd {
+            var pipe = pos
+            while pipe < contentsEnd, text[pipe] != "|" { pipe += 1 }
+            var lower = pos, upper = pipe
+            while lower < upper, text[lower] == " " || text[lower] == "\t" { lower += 1 }
+            while upper > lower, text[upper - 1] == " " || text[upper - 1] == "\t" { upper -= 1 }
+            cells.append(.object([
+                "type": .string("table-cell"),
+                "children": .array(try parseObjects(String(text[lower..<upper]))),
+                "postBlank": .int(0),
+            ]))
+            // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.
+            pos = pipe < contentsEnd ? pipe + 1 : contentsEnd
+        }
+        return cells
+    }
+
+    /// A `#+TBLFM:` line's formula text, or `nil` when the line is not one.
+    ///
+    /// Org matches `"[ \t]*#\\+TBLFM: +\\(.*\\)[ \t]*$"` under `case-fold-search t`
+    /// (`org-element-table-parser`). Three details, each measured, none guessable from the others:
+    ///
+    /// - The name is CASE-INSENSITIVE. `#+tblfm:` and `#+TbLfM:` are both absorbed.
+    /// - `: +` demands at least one SPACE after the colon, and a tab does not count.
+    ///   `#+TBLFM:x` and `#+TBLFM:\tx` are NOT absorbed -- they stay standalone `keyword` nodes,
+    ///   which is a visibly different tree, not a cosmetic difference.
+    /// - The capture is greedy to end of line, so trailing spaces live INSIDE the formula string:
+    ///   `#+TBLFM:  f  ` yields `"f  "`.
+    static func tblfmValue(of line: Line) -> String? {
+        let text = line.text
+        var idx = 0
+        while idx < text.count, text[idx] == " " || text[idx] == "\t" { idx += 1 }
+
+        let marker = Array("#+tblfm:")
+        guard text.count >= idx + marker.count else { return nil }
+        for (offset, expected) in marker.enumerated()
+        where text[idx + offset].lowercased() != String(expected) {
+            return nil
+        }
+
+        var value = idx + marker.count
+        var spaces = 0
+        while value < text.count, text[value] == " " { value += 1; spaces += 1 }
+        guard spaces >= 1 else { return nil }
+        return String(text[value...])
+    }
+
+    /// A table: its rows, then any `#+TBLFM:` lines it absorbs.
+    ///
+    /// Org folds `#+TBLFM:` lines INTO the table element rather than leaving them as sibling
+    /// keywords, so no `keyword` node is produced for an absorbed line (SCHEMA.md section 4).
+    /// Only lines directly after the last row are absorbed -- a blank line between table and
+    /// formula leaves the formula a standalone `keyword`, measured.
+    ///
+    /// **The array is REVERSED relative to source order, deliberately.** `org-element` builds it
+    /// with `push` during a forward scan and never reverses, so the LAST formula line in the file
+    /// is the FIRST array entry. SCHEMA.md section 10 makes this a renderer obligation: emit the
+    /// array in order and every multi-formula table comes out backwards.
+    ///
+    /// This reversal is written out here, inline, rather than shared with any other
+    /// accumulate-into-an-array code in this parser. The affiliated `HEADER` and `ATTR_*` families
+    /// accumulate in SOURCE order (`affiliatedObject`), and `affiliated-header-results-attr-plot`
+    /// pins both directions in one fixture. A shared "collect into array" helper would have to
+    /// carry a direction flag, and that flag is exactly the kind of switch that gets passed wrong.
+    func parseTable(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+        var i = start
+        var rows: [OrgJSON] = []
+        while i < range.upperBound, OrgParser.isTableLine(lines[i]) {
+            let isRule = OrgParser.isTableRuleLine(lines[i])
+            rows.append(.object([
+                "type": .string("table-row"),
+                "kind": .string(isRule ? "rule" : "standard"),
+                "children": .array(isRule ? [] : try tableCells(of: lines[i])),
+                "postBlank": .int(0),
+            ]))
+            i += 1
+        }
+
+        var formulas: [OrgJSON] = []
+        while i < range.upperBound, let formula = OrgParser.tblfmValue(of: lines[i]) {
+            formulas.insert(.string(formula), at: 0) // `push`, so source order is reversed
+            i += 1
+        }
+
+        return (.object([
+            "type": .string("table"),
+            "tblfm": formulas.isEmpty ? .null : .array(formulas),
+            "children": .array(rows),
+            "postBlank": .int(0),
+        ]), i)
+    }
+}

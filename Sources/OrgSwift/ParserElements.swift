@@ -39,12 +39,12 @@ extension OrgParser {
             // table carrying both.
             var affiliated: [(base: String, dual: String?, value: String)] = []
             var runEnd = i
+            // Recognized with `affiliatedParts`, org's SEPARATE affiliated regexp -- not with
+            // `keywordParts`, whose `\S-+` key cannot span the space in `#+CAPTION[short one]:`.
             while runEnd < range.upperBound,
                   !OrgParser.isUnimplementedHashPlusElement(lines[runEnd]),
-                  let (key, rawKey, value) = OrgParser.keywordParts(of: lines[runEnd]),
-                  OrgParser.isAffiliatedName(key) {
-                let (base, dual) = OrgParser.affiliatedKeyParts(key: key, rawKey: rawKey)
-                affiliated.append((base, dual, value))
+                  let parts = OrgParser.affiliatedParts(of: lines[runEnd]) {
+                affiliated.append(parts)
                 runEnd += 1
             }
 
@@ -144,7 +144,7 @@ extension OrgParser {
         }
 
         if !OrgParser.isUnimplementedHashPlusElement(line),
-           let (key, _, value) = OrgParser.keywordParts(of: line) {
+           let (key, value) = OrgParser.keywordParts(of: line) {
             // An affiliated keyword reaching HERE is one that attached to nothing, so it stands
             // alone and keeps its SOURCE key -- `parseSection` handles the attaching case before
             // calling this, and alias normalization belongs to that path only.
@@ -158,6 +158,20 @@ extension OrgParser {
 
         try throwIfUnimplementedElementStart(line)
 
+        // Tables and fixed-width areas are dispatched AFTER the unimplemented check, not before,
+        // and the order carries meaning. Both predicates accept leading indentation the way org
+        // does, but every indented line is rejected above, so an indented table or `: ` line
+        // throws while an indented CONTINUATION row inside a table started at column 0 parses.
+        // Dispatching these first would silently accept indented starts that the rest of the
+        // parser still refuses.
+        if OrgParser.isFixedWidthLine(line) {
+            return parseFixedWidth(at: i, in: range)
+        }
+
+        if OrgParser.isTableLine(line) {
+            return try parseTable(at: i, in: range)
+        }
+
         // Paragraph: consecutive lines up to a blank line or the start of another element.
         let paragraphStart = i
         while i < range.upperBound {
@@ -165,6 +179,12 @@ extension OrgParser {
             if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
                 || OrgParser.keywordParts(of: candidate) != nil
                 || isUnimplementedElementStart(candidate)
+                // Now that these two parse rather than throw, they no longer reach the paragraph
+                // boundary through `isUnimplementedElementStart` and have to break it themselves.
+                // Both are measured: `text` then `| a |` is a paragraph AND a table, never one
+                // paragraph, and the same holds for `text` then `: a`.
+                || OrgParser.isTableLine(candidate)
+                || OrgParser.isFixedWidthLine(candidate)
                 // A bare-star line ENDS the paragraph it follows, but is content of the one
                 // it opens, so it only breaks when it is not the line we started on.
                 || (isBareStarLine(candidate) && i > paragraphStart) {
@@ -285,8 +305,17 @@ extension OrgParser {
 
         // Indented anything: lists, continuation conventions, indented blocks -- unimplemented.
         if first == " " || first == "\t" { return true }
-        // Tables (org and table.el `|` rows), fixed-width lines, and drawers.
-        if first == "|" || first == ":" { return true }
+        // Drawers, and every other `:` line that is not a fixed-width area. `|` is gone from this
+        // list entirely: `org-element` decides `org` vs `table.el` on `[ \t]*|` alone, so at
+        // column 0 EVERY `|` line opens an org table and there is no `|` case left to reject.
+        //
+        // A `:` line that is not fixed-width is a drawer opener (`:LOGBOOK:`) or something org
+        // treats as an ordinary paragraph (`:NOTADRAWER`, and a bare `:END:` with no opener above
+        // it -- both measured as paragraphs). Those two answers are deliberately collapsed into
+        // one throw: drawers are unimplemented, and emitting a paragraph for the rest would mean
+        // implementing the drawer PAIRING first, since which of the two a `:NAME:` line gets
+        // depends on whether a matching `:END:` follows.
+        if first == ":", !OrgParser.isFixedWidthLine(line) { return true }
         // Blocks and dynamic blocks. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }

@@ -78,6 +78,17 @@ struct ConformanceTests {
         "block-example-switches",
         "block-export-html",
         "block-comment-literal",
+        // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
+        // grid carries `value` instead of `children` and is still unimplemented, so it throws.
+        "easy-table-simple",
+        "table-tblfm-multiple",
+        "fixed-width-simple",
+        // The three affiliated cases this increment existed to convert from unverifiable to
+        // asserted -- each needed a real element to attach TO, which is why they waited on tables
+        // and fixed-width rather than on the affiliated machinery itself.
+        "keyword-name-attaches-to-table",
+        "affiliated-caption-forms",
+        "affiliated-header-results-attr-plot",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
