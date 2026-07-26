@@ -183,12 +183,25 @@ struct ConformanceTests {
                     "\(end) must EXPOSE #+STARTUP: odd to pass 1")
         }
 
-        // Controls. Both settings at top level are honored, so the protecting rows above are
-        // measuring protection rather than a parser that ignores these settings everywhere.
+        // Controls, BOTH poles. These are what make the protecting rows above mean anything, and
+        // they are deliberately in the test rather than only in a mutation campaign: a future
+        // reader sees both ends of the discriminator without having to know the campaign existed.
+        //
+        // POSITIVE: the same settings at top level are honored, so a protecting row is measuring
+        // protection rather than a parser that ignores `#+TODO:` and `#+STARTUP:` everywhere.
         let todoControl = try lastHeadline(try parseOrg("#+TODO: FOO BAR\n\n* FOO task\n"))
         #expect(todoControl["todo"] == OrgJSON.string("FOO"), "control: top-level #+TODO: is honored")
         #expect(titleText(todoControl) == "task")
         #expect(try lastHeadline(try parseOrg("#+STARTUP: odd\n\n* a\n*** b\n"))["level"]
                 == OrgJSON.int(2), "control: top-level #+STARTUP: odd is honored")
+
+        // NEGATIVE: with no setting anywhere, the headline reads exactly as it does for a
+        // PROTECTING block type. `todo null` + title "FOO task" is the shared value, so this
+        // pins what the protecting rows are asserting equality WITH. Without it, "verse
+        // protects" and "the classifier does nothing at all" produce identical evidence.
+        let noSetting = try lastHeadline(try parseOrg("* FOO task\n"))
+        #expect(noSetting["todo"] == OrgJSON.null, "control: no #+TODO: anywhere leaves todo null")
+        #expect(titleText(noSetting) == "FOO task",
+                "control: no #+TODO: anywhere leaves FOO in the title")
     }
 }
