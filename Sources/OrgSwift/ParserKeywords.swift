@@ -30,9 +30,9 @@ extension OrgParser {
     ///   leading non-whitespace run is the separator, not the first.
     /// - `#+: x` -> NOT a keyword. It is a paragraph, because `\S-+` requires a non-empty key.
     ///
-    /// The caller is responsible for rejecting block and dynamic-block lines BEFORE calling this
-    /// -- see `isBlockLine`, which documents why `#+END:` and `#+BEGIN:` end up on opposite sides
-    /// of that line.
+    /// The caller is responsible for rejecting the `#+` lines that are NOT keywords before
+    /// calling this -- see `isUnimplementedHashPlusElement`, which documents why `#+END:` and
+    /// `#+BEGIN:` end up on opposite sides of that line.
     static func keywordParts(of line: Line) -> (key: String, value: String)? {
         let text = line.text
         guard text.count > 2, text[0] == "#", text[1] == "+" else { return nil }
@@ -63,29 +63,40 @@ extension OrgParser {
         return (key, String(text[valueStart..<valueEnd]))
     }
 
-    /// True for the `#+` lines that open or close a BLOCK or a DYNAMIC BLOCK. Neither construct
-    /// is implemented, so these must keep throwing rather than be mistaken for keywords.
+    /// True for a `#+` line whose real element type is NOT `keyword` and is not implemented.
     ///
-    /// `#+BEGIN:` and `#+END:` land on opposite sides of this predicate, which looks like an
-    /// inconsistency and is not -- both behaviors are measured:
+    /// This is the "looks like a keyword, is not one" set. Every member would otherwise be
+    /// claimed by `keywordParts` and emitted as a confident `keyword` node, which is a silent
+    /// wrong tree rather than an honest error. All three families are measured:
     ///
-    /// - `#+BEGIN: clocktable :scope file` with a matching `#+END:` is a `dynamic-block`.
+    /// - **Blocks** (`#+begin_X` / `#+end_X`). These need no colon reasoning -- having no colon
+    ///   they are not keywords by `keywordParts` anyway -- but they are named so the throw is
+    ///   deliberate rather than incidental. Org parses an unterminated `#+begin_src elisp` as a
+    ///   paragraph containing a SUBSCRIPT node (`_src` lexes as one), which is emphatically not
+    ///   something to emit by accident.
+    /// - **Dynamic blocks** (`#+BEGIN:`). With a matching `#+END:` this is a `dynamic-block`;
     ///   WITHOUT one it is a `paragraph`, NOT a keyword -- org does not fall back to keyword
     ///   parsing for it. Two different unimplemented answers, so it throws either way.
-    /// - `#+END:` on its own IS an ordinary keyword, key `END`, value `""`. It only stops being
-    ///   one when a `#+BEGIN:` above it consumes it, and any document containing such a
-    ///   `#+BEGIN:` has already thrown by the time that could matter.
+    /// - **Babel calls** (`#+CALL:`, any case). Org parses this as a `babel-call` element, not a
+    ///   keyword: `#+CALL: myfunc()` gives `babel-call` with value `"myfunc()"`, and `#+CALL:`
+    ///   with an empty value still gives `babel-call`. `babel-call` is NOT one of the node types
+    ///   `schema/org-node.schema.json` maps, so the correct output is `notImplemented` -- not a
+    ///   `babel-call` node, and certainly not the `keyword` node this used to emit.
     ///
-    /// Block openers like `#+begin_src` need no dedicated colon reasoning: having no colon they
-    /// are not keywords by `keywordParts` anyway. They are named here so the throw is deliberate
-    /// rather than incidental -- org parses an unterminated `#+begin_src elisp` as a paragraph
-    /// containing a SUBSCRIPT node (`_src` lexes as one), which is emphatically not something to
-    /// emit by accident.
-    static func isBlockLine(_ line: Line) -> Bool {
+    /// `#+END:` deliberately sits on the OTHER side of this predicate, which looks like an
+    /// inconsistency and is not: `#+END:` on its own IS an ordinary keyword, key `END`, value
+    /// `""` (measured). It only stops being one when a `#+BEGIN:` above it consumes it, and any
+    /// document containing such a `#+BEGIN:` has already thrown by then.
+    ///
+    /// The `CALL` match is exact, not a prefix: `#+CALLX: v` and `#+CALLBACK: v` are ordinary
+    /// keywords, measured. So are `#+INCLUDE:`, `#+MACRO:`, `#+FILETAGS:`, and a `#+TBLFM:` with
+    /// no table above it -- that last one looks like it should be special and genuinely is not.
+    static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
         let lower = String(line.text).lowercased()
         return lower.hasPrefix("#+begin_") || lower.hasPrefix("#+end_")
             || lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
             || lower == "#+begin"
+            || lower.hasPrefix("#+call:")
     }
 
     // MARK: Affiliated keywords
@@ -155,13 +166,13 @@ extension OrgParser {
     /// is either a headline, a blank, or an element at section level. Once blocks land, a
     /// `#+TODO:` written INSIDE a `#+begin_example` is literal block content that must not
     /// declare anything, and this scan would wrongly pick it up. Blocks currently throw
-    /// (`isBlockLine`), so no such document can reach a tree -- the same landmine
+    /// (`isUnimplementedHashPlusElement`), so no such document reaches a tree -- the same landmine
     /// `isUnimplementedElementStart` documents from the element side, recorded here too because
     /// this is the other place that has to change.
     static func scanTodoKeywords(in lines: [Line]) -> Set<String>? {
         var declared: Set<String> = []
         var sawDeclaration = false
-        for line in lines where !isBlockLine(line) {
+        for line in lines where !isUnimplementedHashPlusElement(line) {
             guard let (key, value) = keywordParts(of: line),
                   key == "TODO" || key == "SEQ_TODO" || key == "TYP_TODO" else { continue }
             sawDeclaration = true
@@ -182,7 +193,7 @@ extension OrgParser {
     /// wrong. A `#+STARTUP:` line may carry several space-separated tokens, so the value is
     /// tokenized rather than compared whole.
     static func scanOddLevels(in lines: [Line]) -> Bool {
-        for line in lines where !isBlockLine(line) {
+        for line in lines where !isUnimplementedHashPlusElement(line) {
             guard let (key, value) = keywordParts(of: line), key == "STARTUP" else { continue }
             if value.split(whereSeparator: { $0 == " " || $0 == "\t" }).contains("odd") {
                 return true

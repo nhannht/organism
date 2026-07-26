@@ -58,7 +58,8 @@ extension OrgParser {
                 continue
             }
 
-            if let (key, value) = OrgParser.keywordParts(of: line), !OrgParser.isBlockLine(line) {
+            if !OrgParser.isUnimplementedHashPlusElement(line),
+               let (key, value) = OrgParser.keywordParts(of: line) {
                 // An AFFILIATED keyword attaches to the element on the very next line instead of
                 // standing alone (SCHEMA.md section 5), which is not implemented yet, so that
                 // shape throws. Standing alone is the implemented case, and it is the one that
@@ -188,7 +189,9 @@ extension OrgParser {
     ///
     /// - A valid `#+KEY: VALUE` line is dispatched as a `keyword` element by `parseSection`
     ///   BEFORE this predicate is consulted, so it never reaches here.
-    /// - A block or dynamic-block line still returns true and still throws (`isBlockLine`).
+    /// - A `#+` line whose real element type is something else and is unimplemented -- a block, a
+    ///   dynamic block, or a `#+CALL:` babel call -- still returns true and still throws
+    ///   (`isUnimplementedHashPlusElement`).
     /// - Anything else -- `#+foo` with no colon, `#+: x` with an empty key -- is ordinary
     ///   PARAGRAPH text, measured, and now correctly falls through instead of throwing.
     ///
@@ -217,7 +220,7 @@ extension OrgParser {
         if first == "|" || first == ":" { return true }
         // Blocks and dynamic blocks. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
-        if OrgParser.isBlockLine(line) { return true }
+        if OrgParser.isUnimplementedHashPlusElement(line) { return true }
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
         if first == "#", line.text.count > 1, line.text[1] == "\t" { return true }
         // List items: `-`/`+` bullets (followed by space, tab, or end of line) and ordered

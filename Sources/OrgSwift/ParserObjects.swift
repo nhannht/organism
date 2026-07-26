@@ -76,7 +76,11 @@ extension OrgParser {
     /// non-punctuation character. Both are skipped, which only widens this further, so every
     /// input org parses as a plain link trips this too.
     private func plainLinkCouldStart(in chars: [Character], at i: Int) -> Bool {
-        if i > 0, chars[i - 1].isLetter || chars[i - 1].isNumber { return false }
+        // `isASCII` first: see the doc comment. Without it this suppressed the guard after every
+        // non-ASCII letter or digit, where org links anyway.
+        if i > 0, chars[i - 1].isASCII, chars[i - 1].isLetter || chars[i - 1].isNumber {
+            return false
+        }
         for type in Self.linkTypes {
             let colon = i + type.count
             guard colon < chars.count, chars[colon] == ":" else { continue }
