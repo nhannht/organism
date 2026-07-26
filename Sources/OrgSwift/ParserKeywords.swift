@@ -132,11 +132,27 @@ extension OrgParser {
         "RESNAME", "RESULT", "RESULTS", "SOURCE", "SRCNAME", "TBLNAME",
     ]
 
+    /// Whether `key` names an AFFILIATED keyword, i.e. one that attaches to a following element.
+    ///
+    /// The 13-name constant above is NOT the whole rule, and treating it as such is the same
+    /// mistake as reading `org-link-types` before `org-mode` activation. Org matches with
+    /// `org-element--affiliated-re`, which carries a third alternation branch the constant does
+    /// not contain: `ATTR_[-_A-Za-z0-9]+`, the open-ended backend family. Three independent
+    /// sources agree it is affiliated -- that regexp, the live oracle
+    /// (`#+ATTR_HTML: :x 1` before a paragraph attaches as `{"ATTR_HTML": [":x 1"]}`), and this
+    /// repo's own `schema/org-node.schema.json`, whose `affiliated` def carries
+    /// `patternProperties: ^ATTR_[A-Z0-9_]+$` for exactly this.
+    ///
+    /// The `+` in that regexp needs at least ONE character after the underscore, so a bare
+    /// `#+ATTR_:` does NOT attach and stays an ordinary keyword -- measured. A hyphen is legal in
+    /// the backend name (`#+ATTR_MY-BACKEND:` attaches), which is why the check is "non-empty"
+    /// rather than a character-class test.
     static func isAffiliatedName(_ key: String) -> Bool {
         // A dual keyword carries its short form in brackets (`#+CAPTION[short]:`), so the base
         // name is whatever precedes the first `[`.
-        let base = key.prefix { $0 != "[" }
-        return affiliatedNames.contains(String(base)) || base.hasPrefix("ATTR_")
+        let base = String(key.prefix { $0 != "[" })
+        if affiliatedNames.contains(base) { return true }
+        return base.hasPrefix("ATTR_") && base.count > "ATTR_".count
     }
 
     // MARK: File-level settings (the two-pass scan)

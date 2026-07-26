@@ -67,15 +67,54 @@ extension OrgParser {
         return text[expected.count...].allSatisfy { $0 == " " || $0 == "\t" }
     }
 
-    /// Index of the line closing a block of `type` opened at `begin`, or `nil` when the block is
-    /// never closed inside `range`.
-    func blockEndIndex(openedAt begin: Int, type: String, in range: Range<Int>) -> Int? {
+    /// Index of the line CLOSING a construct opened at `begin`, or `nil` when nothing inside
+    /// `upperBound` closes it.
+    ///
+    /// This is the PAIRING primitive, deliberately generic over its closer recognizer rather than
+    /// specific to blocks, because pairing -- not position, and not the opener's own syntax -- is
+    /// the discriminator shared by every delimited construct org has:
+    ///
+    ///     #+begin_example ... #+end_example    paired -> example-block, unpaired -> paragraph
+    ///     #+BEGIN: ...        #+END:           paired -> dynamic-block, unpaired -> paragraph
+    ///     :PROPERTIES: ...    :END:            paired -> property-drawer, unpaired -> paragraph
+    ///     :LOGBOOK: ...       :END:            paired -> drawer, unpaired -> paragraph
+    ///
+    /// All four collapse onto one rule: an UNPAIRED opener opens nothing and is ordinary
+    /// paragraph text. Measured for blocks (an unterminated `#+begin_example` is a paragraph) and
+    /// independently for drawers (an unpaired `:PROPERTIES:` is paragraph text in EVERY position,
+    /// including directly after a headline, so it needs pairing logic and NOT position logic).
+    ///
+    /// Keeping this in one place is not tidiness. The block increment briefly had the end-line
+    /// search written TWICE -- once for the element dispatch, once for the pass-1 literal-content
+    /// classification -- which is two code paths that must agree about what closes a block, kept
+    /// in sync by hand. Both callers now share this one.
+    /// Static because pass 1 runs from `init`, before `self.lines` exists; the instance overload
+    /// below is the same function for every later caller.
+    static func pairedCloseIndex(
+        in lines: [Line], openedAt begin: Int, upperBound: Int, isCloser: (Line) -> Bool
+    ) -> Int? {
         var i = begin + 1
-        while i < range.upperBound {
-            if OrgParser.isBlockEndLine(lines[i], type: type) { return i }
+        while i < upperBound {
+            if isCloser(lines[i]) { return i }
             i += 1
         }
         return nil
+    }
+
+    func pairedCloseIndex(
+        openedAt begin: Int, upperBound: Int, isCloser: (Line) -> Bool
+    ) -> Int? {
+        OrgParser.pairedCloseIndex(
+            in: lines, openedAt: begin, upperBound: upperBound, isCloser: isCloser
+        )
+    }
+
+    /// Index of the line closing a block of `type` opened at `begin`. A thin naming of
+    /// `pairedCloseIndex` for the block case.
+    func blockEndIndex(openedAt begin: Int, type: String, in range: Range<Int>) -> Int? {
+        pairedCloseIndex(openedAt: begin, upperBound: range.upperBound) {
+            OrgParser.isBlockEndLine($0, type: type)
+        }
     }
 
     /// A block body's literal `value`: the body lines joined by `"\n"` INCLUDING the trailing
@@ -281,13 +320,12 @@ extension OrgParser {
         var i = 0
         while i < lines.count {
             guard let (type, _) = blockBeginLine(lines[i]) else { i += 1; continue }
-            var end = i + 1
-            var found = -1
-            while end < lines.count {
-                if isBlockEndLine(lines[end], type: type) { found = end; break }
-                end += 1
-            }
-            guard found >= 0 else { i += 1; continue } // unterminated: opens nothing
+            // The SAME pairing primitive the element dispatch uses, so pass 1 and pass 2 cannot
+            // disagree about what closes a block.
+            guard let found = pairedCloseIndex(
+                in: lines, openedAt: i, upperBound: lines.count,
+                isCloser: { isBlockEndLine($0, type: type) }
+            ) else { i += 1; continue } // unterminated: opens nothing
             if nonElementBlockTypes.contains(type) {
                 for body in (i + 1)..<found { flags[body] = true }
             }
