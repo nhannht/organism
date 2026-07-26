@@ -163,7 +163,7 @@ extension OrgParser {
         case "example":
             return .object([
                 "type": .string("example-block"),
-                "switches": trimmedRest.isEmpty ? .null : .string(trimmedRest),
+                "switches": OrgParser.exampleSwitches(rest).map(OrgJSON.string) ?? .null,
                 "value": .string(value),
                 "postBlank": .int(0),
             ])
@@ -187,6 +187,35 @@ extension OrgParser {
                 "postBlank": .int(0),
             ])
         }
+    }
+
+    /// `example-block`'s `switches`, which org keeps VERBATIM -- it does not trim, and this is
+    /// the one place where inferring a rule from the sibling type is wrong.
+    ///
+    /// `src-block` genuinely DOES trim its `switches` and `params`. `example-block` does not.
+    /// Same field name, same file, two different conventions, so the natural generalization is
+    /// the defect. Measured byte-exactly, ten forms:
+    ///
+    ///     #+begin_example                nil    no space at all
+    ///     #+begin_example<TAB>           nil    a TAB is not a delimiter
+    ///     #+begin_example<SP>            ""     empty is NOT nil
+    ///     #+begin_example<SP><SP>        ""     leading spaces consumed greedily
+    ///     #+begin_example<SP><TAB>       "\t"   only SPACES are consumed
+    ///     #+begin_example<SP>-n<SP>      "-n "  trailing whitespace KEPT
+    ///     #+begin_example<SP><SP>-n<SP>  "-n "
+    ///     #+begin_example<SP><TAB>foo    "\tfoo"
+    ///
+    /// Two things ride on this beyond matching the tree. The empty-versus-nil distinction is
+    /// real (`#+begin_example ` is `""`, a bare one is nil), and `switches` is the ONLY carrier
+    /// for a block opener's trailing whitespace -- so trimming makes `#+begin_example -n ` and
+    /// `#+begin_example -n` indistinguishable, which SCHEMA.md section 10's byte-exact
+    /// requirement forbids.
+    static func exampleSwitches(_ rest: String) -> String? {
+        let chars = Array(rest)
+        guard chars.first == " " else { return nil }
+        var i = 0
+        while i < chars.count, chars[i] == " " { i += 1 }
+        return String(chars[i...])
     }
 
     static func trimAsciiSpace(_ s: String) -> String {
@@ -315,6 +344,23 @@ extension OrgParser {
     /// - Fixed-width and comment LINES need no marking here. They are elements of another type,
     ///   so `keywordParts` already declines them: `: #+TODO: x` does not begin with `#+`, and
     ///   `# #+TODO: x` has a space where the `+` would be.
+    ///
+    /// **Two rows of that matrix are CORRECT-BY-REASONING and UNVERIFIED BY MEASUREMENT**, and
+    /// they are recorded here rather than in a message because this is where the next reader
+    /// will need them. Do not read the passing suite as evidence for either:
+    ///
+    /// 1. **The unterminated row cannot be exercised today.** An unterminated `#+begin_example`
+    ///    throws before this classification ever matters, so nothing checks that it marks no
+    ///    lines. It becomes live when unpaired openers parse as paragraphs, and must be
+    ///    re-measured then.
+    /// 2. **Nothing here yet distinguishes a correct classifier from one that hides everything
+    ///    inside any `#+begin_`.** Every currently-implemented block type is a protecting one, so
+    ///    both behave identically. The discriminator is the parsed-content trio: `verse` must
+    ///    PROTECT a setting while `quote` and `center` must EXPOSE it. That row goes live in the
+    ///    increment that implements them, and it is the row worth measuring first there.
+    ///
+    /// This is the same state the pass-1 scan itself was in before blocks landed -- a claim that
+    /// held by argument while no test could reach it.
     static func literalBodyLines(in lines: [Line]) -> [Bool] {
         var flags = [Bool](repeating: false, count: lines.count)
         var i = 0
