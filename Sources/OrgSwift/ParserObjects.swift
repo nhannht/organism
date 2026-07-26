@@ -220,6 +220,14 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
+                if let match = timestampMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let (node, next) = timestampNode(match, in: chars)
+                    nodes.append(node)
+                    i = next
+                    textStart = next
+                    continue
+                }
                 throw OrgError.notImplemented
             case "<":
                 // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
@@ -230,6 +238,14 @@ extension OrgParser {
                 if let match = try angleLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
+                    nodes.append(node)
+                    i = next
+                    textStart = next
+                    continue
+                }
+                if let match = timestampMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let (node, next) = timestampNode(match, in: chars)
                     nodes.append(node)
                     i = next
                     textStart = next

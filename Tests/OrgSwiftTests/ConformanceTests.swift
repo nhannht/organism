@@ -104,6 +104,17 @@ struct ConformanceTests {
         "link-plain",
         "link-regular-no-description",
         "link-regular-with-description",
+        // Timestamps. `link-radio` is still absent because a radio link needs a document-wide
+        // pass collecting `<<<target>>>` anchors, which is pass-1 work rather than object work.
+        "timestamp-active-simple",
+        "timestamp-inactive-simple",
+        "timestamp-active-range",
+        "timestamp-inactive-range",
+        "timestamp-timerange-contraction",
+        "timestamp-with-time",
+        "timestamp-with-repeater",
+        "timestamp-with-delay",
+        "timestamp-diary-sexp",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
