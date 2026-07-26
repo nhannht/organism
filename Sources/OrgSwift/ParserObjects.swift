@@ -41,11 +41,29 @@ extension OrgParser {
     /// Deliberately over-throws relative to org's own `org-link-plain-re`, never under-throws.
     /// Three conditions, each measured against the oracle:
     ///
-    /// - **Word boundary.** `org-link-plain-re` opens with `\<`, so a type name preceded by a
-    ///   letter or digit is not a link -- `I love Madrid: a city` is plain text, and without this
-    ///   the `id` type would fire on `Madrid:`. Treating only letters and digits as word
-    ///   constituents is the safe direction: a narrower notion than org's can only make this
-    ///   fire MORE often.
+    /// - **Word boundary, and it must be an ASCII letter or digit.** `org-link-plain-re` opens
+    ///   with `\<`, so a type name preceded by a word constituent is not a link -- `I love
+    ///   Madrid: a city` is plain text, and without this the `id` type would fire on `Madrid:`.
+    ///
+    ///   The `isASCII` half is not a refinement, it is a BUG FIX, and the reasoning it replaces
+    ///   was exactly backwards. This condition used to test `isLetter || isNumber` alone, on the
+    ///   stated argument that "a narrower notion than org's can only make this fire MORE often".
+    ///   That argument is sound and its premise was false: Swift's `Character.isLetter` and
+    ///   `.isNumber` are fully Unicode-aware, so they are true for `漢`, `α`, `한`, `٣`, `Ⅷ` and
+    ///   the rest, while Emacs breaks the word at a script transition and links anyway. The
+    ///   notion was WIDER than org's, not narrower, so `return false` suppressed the guard
+    ///   exactly where org still produced a link -- 16 measured silent wrong trees, e.g.
+    ///   `漢https://example.com end`, which org parses as text + link + text and this parser
+    ///   flattened into one text node.
+    ///
+    ///   Measured both sides: ASCII `a`, `9`, `Z` before a type genuinely suppress the link, and
+    ///   non-ASCII letters and digits do not. `_` and `-` do not suppress it either, and are
+    ///   already handled by being neither letter nor digit.
+    ///
+    ///   Two known over-throws remain, both deliberate: `¹` (and `² ³`) and `ʰ` are non-ASCII
+    ///   but org does NOT link after them, so this guard throws where org emits plain text.
+    ///   Over-throwing is the safe direction and is suite-visible; under-throwing is the silent
+    ///   one that produced the 16 wrong trees.
     /// - **A registered type name, matched CASE-INSENSITIVELY.** Measured: `HTTPS://example.com`
     ///   is a plain link, and its `pathType` comes back as the source's own `"HTTPS"`.
     /// - **A non-blank character immediately after the colon.** Measured: `a help: see below b`

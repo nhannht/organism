@@ -87,7 +87,10 @@ extension OrgParser {
                 let candidate = lines[i]
                 if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
                     || OrgParser.keywordParts(of: candidate) != nil
-                    || isUnimplementedElementStart(candidate) {
+                    || isUnimplementedElementStart(candidate)
+                    // A bare-star line ENDS the paragraph it follows, but is content of the one
+                    // it opens, so it only breaks when it is not the line we started on.
+                    || (isBareStarLine(candidate) && i > paragraphStart) {
                     break
                 }
                 i += 1
@@ -109,6 +112,42 @@ extension OrgParser {
             "children": .array(elements),
             "postBlank": .int(0),
         ])
+    }
+
+    /// A column-0 line of exactly ONE `*` followed by end of line or a TAB.
+    ///
+    /// Such a line is not a headline (org requires a space after the stars), is not an error, and
+    /// is not paragraph text that flows into whatever precedes it: org-element treats it as an
+    /// ELEMENT BOUNDARY. A single `*` at column 0 is a list-bullet candidate, so org opens an
+    /// element there; the list parser then rejects a `*` bullet at column 0 because it would
+    /// collide with headline syntax, and the line degrades to a paragraph of its own. The
+    /// boundary survives even though the list does not.
+    ///
+    /// Measured across the whole star family, which is what makes the predicate this narrow:
+    ///
+    ///     foo\n*\nbar\n         -> paragraph "foo\n" + paragraph "*\nbar\n"   SPLITS
+    ///     foo\n*\n*\n           -> THREE paragraphs                           each star splits
+    ///     foo\n*\t\n            -> paragraph "foo\n" + paragraph "*\t\n"      SPLITS
+    ///     foo\n*\ttabbed\n      -> paragraph "foo\n" + paragraph "*\ttabbed\n" SPLITS
+    ///     foo\n**\nbar\n        -> ONE paragraph                              two stars do NOT
+    ///     foo\n***\nbar\n       -> ONE paragraph                              nor three
+    ///     foo\n*bar\nbaz\n      -> ONE paragraph                              nor `*word`
+    ///     foo\n* \nbar\n        -> paragraph + HEADLINE, title [text ""]      star SPACE is a headline
+    ///     *\nfoo\n              -> ONE paragraph          nothing precedes it, so nothing to split
+    ///
+    /// This and the tab case in `headlineLevel` are ONE bug with two halves, and fixing either
+    /// alone leaves a silent wrong tree. Answering "is it a headline" with `nil` is only half the
+    /// question; without the boundary the line falls into paragraph accumulation and is GLUED to
+    /// the preceding paragraph, which is what `foo\n*\tbar\n` did after the headline half landed
+    /// on its own. Both halves belong to the same rule: not a headline AND ends the previous
+    /// element.
+    ///
+    /// The corpus cannot see any of this. Grepping all 92 shipped `.org` files for `^\*[ \t]*$`
+    /// returns zero hits, so ConformanceTests, verify-corpus.sh and the oracle-diff suite are all
+    /// blind to it -- it was found only by probing invented input against live Emacs.
+    private func isBareStarLine(_ line: Line) -> Bool {
+        guard line.text.first == "*" else { return false }
+        return line.text.count == 1 || line.text[1] == "\t"
     }
 
     /// A line of 5+ dashes (optionally followed by trailing spaces/tabs). Indented rules are
