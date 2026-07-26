@@ -5,19 +5,26 @@ A language-agnostic conformance suite for Emacs org-mode, graded against `org-el
 
 ## Current state (read this first)
 
-This suite is real and usable today. The Swift parser is not.
+This suite is real and usable today. The Swift parser is real and PARTIAL.
 
-- `Sources/OrgSwift/Parser.swift` and `Renderer.swift` - `parseOrg` and `renderOrg` - both
-  `throw OrgError.notImplemented` right now. There is no working Swift org-mode parser in this
-  repository yet.
-- `swift test` reports green, but not because the parser passes. Every case that depends on
-  `parseOrg`/`renderOrg` is wrapped in Swift Testing's `withKnownIssue`, so the suite reports
-  a passing run via 117 known issues, not via 117 real passes. See "What is verified" below for
-  the exact numbers, and SCHEMA.md section 8 for how `withKnownIssue` is meant to be removed,
-  case by case, once the parser actually exists.
-- If you came here looking for a working Swift org-mode parser, it is not here yet. What is
-  here, and is genuinely useful right now: a portable test corpus and harness that any parser,
-  in any language, can run against.
+- `parseOrg` parses a growing subset and refuses the rest honestly. On the 79 conformance
+  cases it produces a tree matching `org-element`'s own, node for node, on **47 of 79**. The
+  other 32 `throw OrgError.notImplemented` rather than guessing. On the 13 vendored real-world
+  files it is **1 of 13** - those files are dense, and one unimplemented construct anywhere in
+  a file fails the whole file.
+- `renderOrg` is still a stub. **0 of 13.** Round-trip is not usable at all yet.
+- **Implemented:** headlines and the two-pass `#+TODO:` keyword set, sections, paragraphs,
+  keywords and the affiliated-keyword grammar, the four literal block types, quote/center/verse,
+  src and example switch grammars, pipe tables, fixed-width, lists, and emphasis with org's
+  border rules. **Still refused:** links, entities, timestamps, planning lines, property
+  drawers, footnotes, latex fragments, statistics cookies, sub/superscript.
+- `swift test` reports green, and the reason matters. Every case the parser cannot yet handle
+  is wrapped in Swift Testing's `withKnownIssue`, so those are expected failures, not passes.
+  See "What is verified" below for the exact split, and SCHEMA.md section 8 for how a wrapper
+  is meant to be removed, case by case, as the parser grows.
+- If you came here looking for a COMPLETE Swift org-mode parser, it is not here yet. What is
+  here: a portable test corpus and harness that any parser in any language can run against,
+  and a Swift parser that is honest about where it stops.
 - The answer key this suite grades against has its own open risk: see "The oracle's answer key:
   the circularity remains, but it has now been audited" below before you adopt
   `conformance/*/expected.json` as ground truth.
@@ -30,9 +37,12 @@ the whole verification story - run them yourself rather than taking this table's
 | What | Result |
 |---|---|
 | `harness/verify-corpus.sh` | 79 of 79 cases pass, 0 fail |
-| `swift test` | 11 tests, 6 suites, 0 failures, 117 known issues |
+| `swift test` | 12 tests, 6 suites, 0 failures, 88 known issues |
 | Layer 1 conformance cases | 79 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
+| `parseOrg` matches the oracle tree, conformance | 47 of 79 |
+| `parseOrg` matches the oracle tree, real-world | 1 of 13 |
+| `renderOrg` round-trip | 0 of 13 - still a stub |
 | `org-element` types mapped by the oracle | 40 of 54 |
 | Mapped types that also have a fixture | 38 of 40 |
 | Byte-exact round-trip through `org-element` | 61 of 92 files |
@@ -40,10 +50,14 @@ the whole verification story - run them yourself rather than taking this table's
 
 Two of those numbers are easy to misread, so they are stated plainly here.
 
-**117 known issues are not 117 passes.** They are the parser-shaped hole: every case that needs
-`parseOrg`/`renderOrg` is wrapped in `withKnownIssue`, so the run is green because the failures
-are expected, not because they do not happen. That count goes DOWN as the parser gets written,
-and it goes UP whenever a new fixture is added ahead of the parser. Both directions are correct.
+**88 known issues are not 88 passes, and they are not one thing either.** A case the parser
+cannot yet handle is wrapped in `withKnownIssue`, so the run is green because those failures are
+expected, not because they do not happen. But only **57 of the 88 are parser-shaped** - 32
+conformance, 12 oracle diff, 13 round-trip - and those go to zero as the parser gets written.
+The other **31 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
+round-trip losses on its own parser. Writing a perfect Swift parser does not move that 31 at
+all. The parser-shaped 57 goes DOWN as the parser grows and UP whenever a new fixture is added
+ahead of it; both directions are correct.
 
 **The 9 round-trip losses are two different things.** 7 are irreducible - the byte is not
 recoverable from any tree built on `org-element`, so no parser on this foundation can fix them.
@@ -61,7 +75,8 @@ Two things live in the same repository, and the split matters:
    code, nothing to build. A parser author working in Rust, Go, Python, or anything else can use
    this suite without ever touching the rest of the repository.
 2. **A Swift reference adapter** - `Sources/OrgSwift/`, `Tests/OrgSwiftTests/`, `Package.swift`.
-   One implementation that plugs into the suite above, currently a stub (see "Current state").
+   One implementation that plugs into the suite above. `parseOrg` handles a growing subset and
+   refuses the rest; `renderOrg` is still a stub (see "Current state").
 
 ```
 organism/
@@ -136,7 +151,11 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 11 tests, 6 suites, 0 real failures, 117 known issues.
+- `swift test` on this commit: 12 tests, 6 suites, 0 real failures, 88 known issues, of which
+  57 are parser-shaped and 31 are org-mode's own `interpret-data` losses.
+- `parseOrg` on this commit: 47 of 79 conformance cases produce a tree matching the oracle's,
+  1 of 13 real-world files. `renderOrg` is still a stub, so round-trip is 0 of 13. Measured by
+  reading the per-suite known-issue counts off the run, not inferred from the total.
 - `harness/verify-corpus.sh` on this commit: 79/79 conformance cases pass (a runnable reference
   adapter that uses the Emacs oracle itself as the stand-in parser).
 - Every `conformance/*/expected.json` fixture validates against `schema/org-node.schema.json`:
