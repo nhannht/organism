@@ -7,27 +7,14 @@
 
 extension OrgParser {
 
-    /// The link types org recognizes, as scalar arrays for direct comparison against the scanner's
-    /// own array. MEASURED from a live Emacs, not read off a defcustom, because the set is
-    /// `org-modules`-dependent and GROWS once `org-mode` is actually activated in a buffer --
-    /// which is exactly what `harness/oracle-dump.el` does before parsing, so the activated set is
-    /// the contract:
+    /// True when a PLAIN link could begin at `i` -- the guard that stops a plain link this parser
+    /// cannot DELIMIT from silently flattening into plain text.
     ///
-    ///     emacs --batch -Q --eval '(progn (require (quote org)) (with-temp-buffer \
-    ///       (insert "x\n") (org-mode) (message "%S" (org-link-types))))'
-    ///
-    /// `(require (quote org))` alone reports 11 types; after `(org-mode)` it reports these 23
-    /// (Emacs 30.2 / org-mode 9.7.11, default `org-modules`). The difference is not academic --
-    /// `id`, `doi`, `info`, `irc`, `eww`, `w3m`, `mhe`, `gnus`, `rmail`, `bbdb`, `bibtex` and
-    /// `docview` exist ONLY in the activated set, and every one of them makes a real plain link.
-    private static let linkTypes: [[Unicode.Scalar]] = [
-        "file+emacs", "file+sys", "docview", "bibtex", "mailto", "elisp", "https", "rmail",
-        "shell", "bbdb", "gnus", "help", "http", "info", "news", "doi", "eww", "ftp", "irc",
-        "mhe", "w3m", "id", "file",
-    ].map { Array($0.unicodeScalars) }
-
-    /// True when a PLAIN link could begin at `i` -- the guard that stops an unimplemented plain
-    /// link from silently flattening into plain text.
+    /// Since links landed this is no longer the thing that refuses plain links; `plainLinkEnd` in
+    /// ParserLinks.swift parses them. It is kept, and kept deliberately wider than that parser,
+    /// as the backstop for the gap between them: `plainLinkEnd` implements org's delimitation
+    /// pattern, and any input where this guard fires but that parser returns nil is a form org
+    /// links and this parser cannot, which must throw rather than flatten. See `parseObjects`.
     ///
     /// This replaced a `s.contains("://") || s.contains("mailto:")` scan that was not merely
     /// coarse but UNSOUND, measured: `see file:foo.org and id:abc and doi:10.1/x end` contains
@@ -131,11 +118,12 @@ extension OrgParser {
     func parseObjects(_ s: String, permitsLineBreak: Bool = false) throws -> [OrgJSON] {
         let chars = Array(s.unicodeScalars)
 
-        // Plain links have no bracket to key off, so they are rejected by scanning the whole
-        // contents string up front (see `plainLinkCouldStart` for the match rule).
-        for i in chars.indices where plainLinkCouldStart(in: chars, at: i) {
-            throw OrgError.notImplemented
-        }
+        // The up-front plain-link rejection scan that used to stand here is GONE, and its removal
+        // is the narrowing its own comment asked for. It ran over the whole contents string
+        // including the interior of `code` and `verbatim`, which org keeps literal -- so
+        // `~https://e.com~` threw even though org emits a code node with a literal value and no
+        // link at all. Plain links are now found by the main scanner below, which never sees a
+        // literal region because the emphasis branch consumes it whole.
 
         var nodes: [OrgJSON] = []
         var textStart = 0
@@ -174,6 +162,33 @@ extension OrgParser {
 
         while i < chars.count {
             let c = chars[i]
+
+            // PLAIN links, checked before the switch because they have no distinguishing opener
+            // -- they begin with a bare type name, so every one of them would otherwise fall to
+            // `default` and be swallowed into a text run.
+            //
+            // The two-step is the safety property, not redundancy. `plainLinkEnd` implements
+            // org's delimitation pattern; `plainLinkCouldStart` is the deliberately WIDER guard
+            // that predates it. A position where the wide guard fires and the parser declines is
+            // a form org links and this parser cannot delimit, and it MUST throw: flattening it
+            // into text is the silent wrong tree ORG-19 and ORG-21 were both about, and no gate
+            // would show it.
+            if let end = plainLinkEnd(in: chars, at: i) {
+                flushText(upTo: i)
+                let match = LinkMatch(
+                    end: end,
+                    linkType: "plain",
+                    rawTarget: Array(chars[i..<end]),
+                    description: nil
+                )
+                let (node, next) = try linkNode(match, in: chars)
+                nodes.append(node)
+                i = next
+                textStart = next
+                continue
+            }
+            if plainLinkCouldStart(in: chars, at: i) { throw OrgError.notImplemented }
+
             switch c {
             case "\\":
                 // A FORCED line break, the one `\` construct implemented. Everything else a
@@ -190,9 +205,39 @@ extension OrgParser {
                     continue
                 }
                 throw OrgError.notImplemented
-            case "[", "<", "$":
-                // Links, targets, timestamps, footnote references, statistics cookies,
-                // entities, latex fragments: all unimplemented object triggers.
+            case "[":
+                // `[[...]]` is a bracket link. Every OTHER `[` construct still throws: footnote
+                // references (`[fn:1]`), citations (`[cite:...]`), statistics cookies (`[1/2]`,
+                // `[50%]`) and INACTIVE TIMESTAMPS (`[2024-01-01 Mon]`) all open with `[`, and
+                // none of them is implemented. So the fallthrough here is `throw`, not "treat as
+                // text" -- a bare `[` org keeps as literal text throws too, which over-throws by
+                // exactly the amount that keeps every unimplemented `[` construct visible.
+                if let match = try bracketLinkMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let (node, next) = try linkNode(match, in: chars)
+                    nodes.append(node)
+                    i = next
+                    textStart = next
+                    continue
+                }
+                throw OrgError.notImplemented
+            case "<":
+                // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
+                // from the other `<` constructs: targets (`<<x>>`), radio targets (`<<<x>>>`),
+                // active timestamps (`<2024-01-01 Mon>`) and diary sexps (`<%%(...)>`). Measured:
+                // `<fuzzy thing>` is plain text, so requiring the type is org's own rule, not a
+                // narrowing. Everything else throws, same reasoning as `[`.
+                if let match = try angleLinkMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let (node, next) = try linkNode(match, in: chars)
+                    nodes.append(node)
+                    i = next
+                    textStart = next
+                    continue
+                }
+                throw OrgError.notImplemented
+            case "$":
+                // Latex fragments. Unimplemented.
                 throw OrgError.notImplemented
             case "^":
                 // A `^` after a non-whitespace character could be a superscript.

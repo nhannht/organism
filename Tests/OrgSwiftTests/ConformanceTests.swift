@@ -100,6 +100,10 @@ struct ConformanceTests {
         "list-checkbox-states",
         "list-counter-override",
         "list-descriptive-term-def",
+        "link-angle",
+        "link-plain",
+        "link-regular-no-description",
+        "link-regular-with-description",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
