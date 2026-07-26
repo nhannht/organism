@@ -312,7 +312,18 @@ extension OrgParser {
             case "CAPTION":
                 var entries = fields["CAPTION"]?.arrayValue ?? []
                 entries.append(.object([
-                    "long": .array(try parseObjects(entry.value)),
+                    // ORG-22: a caption PERMITS `line-break`, so this is a whitelist `true` site.
+                    // SCHEMA.md section 4 always said so; the measurement that appeared to refute
+                    // it was reading a CAPTION's affiliated value with a tree walk that could not
+                    // reach `long` at all, because a DUAL keyword stores `{long, short}` dicts
+                    // rather than nodes. Re-measured by scanning the oracle's raw JSON bytes:
+                    //
+                    //     "#+CAPTION: cap\\" + a following element  ->  1 line-break node
+                    //
+                    // Until this landed, `#+CAPTION: cap\\` fell to the blanket `\` throw and
+                    // declined honestly, so the gap was a coverage loss and not a wrong tree.
+                    // Links landing is what would have turned it into one.
+                    "long": .array(try parseObjects(entry.value, permitsLineBreak: true)),
                     "short": try captionShort(entry.dual),
                 ]))
                 fields["CAPTION"] = .array(entries)
@@ -350,7 +361,12 @@ extension OrgParser {
     private func captionShort(_ dual: String?) throws -> OrgJSON {
         guard let dual else { return .null }
         guard !dual.isEmpty else { return .null }
-        let objects = try parseObjects(dual)
+        // The caption SHORT form is the same keyword container as `long`, so it carries the same
+        // ORG-22 permission. It is moot for the value this returns -- a short containing a
+        // `line-break` cannot be a single plain-text run, so it throws below either way -- but a
+        // whitelist whose two halves disagree about the same container is how the next reader
+        // learns the wrong rule.
+        let objects = try parseObjects(dual, permitsLineBreak: true)
         guard objects.count == 1,
               let only = objects.first?.objectValue,
               only["type"] == OrgJSON.string("text") else {
