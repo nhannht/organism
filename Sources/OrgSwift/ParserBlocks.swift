@@ -275,13 +275,38 @@ extension OrgParser {
     }
 
     /// Matches ONE src switch starting at `j`, returning the index just past it, or `nil`.
-    /// Order matters: `[+-]n` is tried before the single-flag-character branch so that the
-    /// optional line number in `-n 20` is consumed by the switch rather than left for `params`.
+    ///
+    /// The accepted set is EXACTLY `-i`, `-k`, `-n`, `-r`, plus `[+-]n` with an optional line
+    /// number and `-l "..."`. Nothing else is a switch, measured by running all 26 letters as
+    /// `#+begin_src elisp -X`: only those four produce a `switches` value and the other 22 land
+    /// in `params`.
+    ///
+    /// An earlier version accepted `[i-npr]`, written from a REMEMBERED `org-element` regex and
+    /// expanded as a range to {i,j,k,l,m,n,p,r}. That wrongly claimed `-j`, `-l`, `-m` and `-p`.
+    /// Reconstructing a character class from memory is the same defect as building the affiliated
+    /// keyword list from prose: a recalled pattern is not the behavior, and only the behavior is
+    /// authority.
+    ///
+    /// `-l` is the fiddly one and needs all three conditions, each measured:
+    ///
+    ///     -l "(ref:%s)"   switch
+    ///     -l ""           params    empty quotes do NOT qualify (org's `.+` needs a character)
+    ///     -l foo          params    an UNQUOTED argument does not qualify
+    ///     -l              params    bare does not qualify
+    ///     -l"x"           params    the space between `-l` and the quote is required
+    ///
+    /// The `-l foo` row is why this must not fall back to a bare `-l` match: doing so splits the
+    /// text into switches `-l` and params `foo`, where org keeps `-l foo` whole in `params`. That
+    /// relocates bytes across two fields rather than merely mislabelling one.
+    ///
+    /// `+` is only ever valid as `+n`: `-k` is a switch and `+k` is not, measured.
     private static func matchOneSrcSwitch(_ chars: [Character], at j: Int) -> Int? {
         guard chars[j] == "-" || chars[j] == "+" else { return nil }
         guard j + 1 < chars.count else { return nil }
         let flag = chars[j + 1]
 
+        // `[+-]n` with an optional line number, which the switch consumes rather than leaving to
+        // `params`: `-n 20` is one switch, measured.
         if flag == "n" {
             var k = j + 2
             var digitScan = k
@@ -296,22 +321,23 @@ extension OrgParser {
             return k
         }
         guard chars[j] == "-" else { return nil } // `+` is only ever valid as `+n`
+
         if flag == "l" {
-            // `-l "..."`: the quoted argument is greedy to the LAST quote on the line.
-            var k = j + 2
-            while k < chars.count, chars[k] == " " || chars[k] == "\t" { k += 1 }
-            if k < chars.count, chars[k] == "\"" {
-                var lastQuote = -1
-                var scan = k + 1
-                while scan < chars.count {
-                    if chars[scan] == "\"" { lastQuote = scan }
-                    scan += 1
-                }
-                if lastQuote > k { return lastQuote + 1 }
+            // Exactly one space, then `"`, then AT LEAST one character, then a closing `"`.
+            // The argument is greedy to the LAST quote on the line, matching org's `.+`.
+            let open = j + 3
+            guard j + 2 < chars.count, chars[j + 2] == " ", open < chars.count,
+                  chars[open] == "\"" else { return nil }
+            var lastQuote = -1
+            var scan = open + 1
+            while scan < chars.count {
+                if chars[scan] == "\"" { lastQuote = scan }
+                scan += 1
             }
-            return j + 2
+            guard lastQuote >= open + 2 else { return nil } // `-l ""` has no content
+            return lastQuote + 1
         }
-        return "ijkmpr".contains(flag) ? j + 2 : nil
+        return "ikr".contains(flag) ? j + 2 : nil
     }
 
     // MARK: Pass 1 -- which lines cannot carry a file-level setting
