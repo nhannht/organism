@@ -38,8 +38,18 @@ struct OracleDiffTests {
     /// `pathological.org` entered this set with the first parser increment: it is nothing but
     /// headlines with skipped levels and NUL-byte paragraph lines, all inside the
     /// skeleton-plus-emphasis subset, and `parseOrg`'s tree matches Emacs's own parse for it.
+    ///
+    /// Three more joined with the headline increment (priority, tags, COMMENT), and the reason is
+    /// worth recording because it is not "the parser got a bit better". A real-world file fails
+    /// on its FIRST unimplemented construct, so these three were never three separate problems --
+    /// they were one, the tag group, which every Doom and org-mode-samples file uses in its
+    /// headings. Nothing else in them was outside the subset. That is also why the count here
+    /// moves in jumps rather than one file at a time.
     static let implementedFiles: Set<String> = [
         "real/org-mode-samples/pathological.org",
+        "real/org-mode-samples/tags.org",
+        "real/doomemacs-docs/index.org",
+        "real/doomemacs-docs/contributing.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

@@ -119,6 +119,9 @@ struct ConformanceTests {
         "planning-closed",
         "planning-scheduled-and-deadline",
         "planning-scheduled-hugs-headline",
+        // Headline priority cookie, tag group, and the COMMENT keyword.
+        "easy-priority-and-tags-headline",
+        "easy-commented-headline",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

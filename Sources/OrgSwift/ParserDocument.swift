@@ -165,15 +165,24 @@ extension OrgParser {
         let trueLevel: Int
         let todo: OrgJSON
         let title: [OrgJSON]
+        let priority: OrgJSON
+        let commented: Bool
+        let tags: [String]
         var preBlank = 0
         var postBlank = 0
         var children: [OrgJSON] = []
 
-        init(level: Int, trueLevel: Int, todo: OrgJSON, title: [OrgJSON]) {
+        init(
+            level: Int, trueLevel: Int, todo: OrgJSON, title: [OrgJSON],
+            priority: OrgJSON, commented: Bool, tags: [String]
+        ) {
             self.level = level
             self.trueLevel = trueLevel
             self.todo = todo
             self.title = title
+            self.priority = priority
+            self.commented = commented
+            self.tags = tags
         }
 
         func build() -> OrgJSON {
@@ -182,9 +191,9 @@ extension OrgParser {
                 "level": .int(level),
                 "trueLevel": .int(trueLevel),
                 "todo": todo,
-                "priority": .null,
-                "commented": .bool(false),
-                "tags": .array([]),
+                "priority": priority,
+                "commented": .bool(commented),
+                "tags": .array(tags.map(OrgJSON.string)),
                 "title": .array(title),
                 "preBlank": .int(preBlank),
                 "children": .array(children),
@@ -204,14 +213,39 @@ extension OrgParser {
         // Empty titles are not exercised by any implemented case.
         guard !titleChars.isEmpty else { throw OrgError.notImplemented }
 
-        // Trailing `:tag:tag2:` groups are outside the implemented subset. (A `[#X]` priority
-        // cookie needs no dedicated check: `[` throws inside the title's object scan.)
-        var tagStart = titleChars.count
-        while tagStart > 0, titleChars[tagStart - 1] != " ", titleChars[tagStart - 1] != "\t" { tagStart -= 1 }
-        let lastWord = titleChars[tagStart...]
-        if lastWord.count >= 2, lastWord.first == ":", lastWord.last == ":",
-           lastWord.dropFirst().dropLast().allSatisfy({ isTagChar($0) }) {
-            throw OrgError.notImplemented
+        // TAGS. Org's rule is `[ \t]*:[[:alnum:]_@#%:]+:[ \t]*$` matched at the EARLIEST position
+        // that works, not "the last whitespace-delimited word". The difference is not academic --
+        // it decides four cases a word-based reading gets wrong, all measured:
+        //
+        //     * a:b:      title "a"      tags ["b"]     no whitespace needed before the group
+        //     * 12:30:    title "12"     tags ["30"]    same, and it bites ordinary text
+        //     * a:b:c:    title "a"      tags ["b","c"] `:` is itself a tag character
+        //     * a ::      title "a ::"   tags []        `::` is too short to be a group
+        //     * a :::     title "a"      tags ["", ""]  but `:::` is not, and yields TWO EMPTY tags
+        //
+        // The last one looks like a bug and is org's actual output, so the split keeps empty
+        // components rather than dropping them.
+        //
+        // Because `:` is in the tag class, the maximal run starting at the opening colon already
+        // swallows the closing one, so the group is the whole run and the shape test is
+        // "length >= 3, starts and ends with `:`" rather than a separate closing-colon search.
+        var titleEnd = titleChars.count
+        var tags: [String] = []
+        for p in 0...titleChars.count {
+            var q = p
+            while q < titleChars.count, titleChars[q] == " " || titleChars[q] == "\t" { q += 1 }
+            guard q < titleChars.count, titleChars[q] == ":" else { continue }
+            var r = q
+            while r < titleChars.count, isTagChar(titleChars[r]) { r += 1 }
+            guard r - q >= 3, titleChars[r - 1] == ":" else { continue }
+            var s = r
+            while s < titleChars.count, titleChars[s] == " " || titleChars[s] == "\t" { s += 1 }
+            guard s == titleChars.count else { continue }
+            tags = String(scalars: titleChars[(q + 1)..<(r - 1)])
+                .split(separator: ":", omittingEmptySubsequences: false)
+                .map(String.init)
+            titleEnd = p
+            break
         }
 
         // TODO keyword extraction: the first whitespace-delimited word is stripped and captured
@@ -221,38 +255,77 @@ extension OrgParser {
         // `* REVIEW Buy milk` -> todo null, title "REVIEW Buy milk".
         var todo: OrgJSON = .null
         var titleStart = 0
-        var wordEnd = 0
-        while wordEnd < titleChars.count, titleChars[wordEnd] != " ", titleChars[wordEnd] != "\t" { wordEnd += 1 }
-        let firstWord = String(scalars: titleChars[0..<wordEnd])
-        if todoSet.contains(firstWord) {
-            todo = .string(firstWord)
-            titleStart = wordEnd
-            while titleStart < titleChars.count,
+
+        /// The whitespace-delimited word at `titleStart`, and where the next one begins.
+        func word(at index: Int) -> (text: String, next: Int) {
+            var wordEnd = index
+            while wordEnd < titleEnd, titleChars[wordEnd] != " ", titleChars[wordEnd] != "\t" {
+                wordEnd += 1
+            }
+            var next = wordEnd
+            while next < titleEnd, titleChars[next] == " " || titleChars[next] == "\t" { next += 1 }
+            return (String(scalars: titleChars[index..<wordEnd]), next)
+        }
+
+        let first = word(at: 0)
+        if todoSet.contains(first.text) {
+            todo = .string(first.text)
+            titleStart = first.next
+            // `* TODO` with nothing after it used to throw as an unverified empty-title shape.
+            // It is verified now -- see the table at the title construction below -- so it falls
+            // through to the ordinary path.
+        }
+
+        // PRIORITY: `[#X]`, one character, and it comes AFTER the TODO keyword. The value is the
+        // bare character, not the cookie.
+        var priority: OrgJSON = .null
+        if titleStart + 3 < titleEnd,
+           titleChars[titleStart] == "[", titleChars[titleStart + 1] == "#",
+           titleChars[titleStart + 3] == "]" {
+            priority = .string(String(scalars: [titleChars[titleStart + 2]]))
+            titleStart += 4
+            while titleStart < titleEnd,
                   titleChars[titleStart] == " " || titleChars[titleStart] == "\t" {
                 titleStart += 1
             }
-            // A TODO keyword with nothing after it (`* TODO`) is not exercised by any
-            // implemented case and its empty-title shape is unverified.
-            guard titleStart < titleChars.count else { throw OrgError.notImplemented }
         }
 
-        // A COMMENT keyword (directly after the stars, or after a TODO keyword) is outside the
-        // implemented subset.
-        var commentEnd = titleStart
-        while commentEnd < titleChars.count, titleChars[commentEnd] != " ", titleChars[commentEnd] != "\t" {
-            commentEnd += 1
-        }
-        if String(scalars: titleChars[titleStart..<commentEnd]) == "COMMENT" {
-            throw OrgError.notImplemented
+        // COMMENT: directly after the stars, or after TODO and priority. It is a keyword, not
+        // title text, so it is stripped and reported through `commented`.
+        var commented = false
+        let afterPriority = word(at: titleStart)
+        if afterPriority.text == "COMMENT" {
+            commented = true
+            titleStart = afterPriority.next
         }
 
         // A headline title is one of the two containers org REFUSES `line-break` in: `* a\\`
         // keeps the backslashes as literal text, measured. Without this the trailing `\\` of a
         // title would silently become a break, since a title has no trailing newline and end of
         // contents otherwise counts as end of line.
-        let title = try parseObjects(String(scalars: titleChars[titleStart...]))
+        // An EMPTY title is two different values depending on whether tags are present, which is
+        // not guessable and was measured across all seven degenerate forms:
+        //
+        //     * COMMENT        title []                    * COMMENT :t:   title [text ""]
+        //     * [#A]           title []                    * [#A] :t:      title [text ""]
+        //     * TODO           title []                    * TODO :t:      title [text ""]
+        //     * :onlytags:     title [text ""]
+        //
+        // So the discriminator is the TAG group, not which keyword emptied the title.
+        // `parseObjects("")` returns `[]`, which is the right answer for the no-tags column and
+        // the wrong one for the other.
+        let titleText = String(scalars: titleChars[titleStart..<titleEnd])
+        let title: [OrgJSON]
+        if titleText.isEmpty {
+            title = tags.isEmpty
+                ? []
+                : [OrgJSON.object(["type": .string("text"), "value": .string("")])]
+        } else {
+            title = try parseObjects(titleText)
+        }
         return HeadlineBuilder(
-            level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title
+            level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title,
+            priority: priority, commented: commented, tags: tags
         )
     }
 
