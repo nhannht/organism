@@ -9,14 +9,21 @@ extension OrgParser {
     // MARK: Document
 
     func parseDocument() throws -> OrgJSON {
-        // CRLF (or stray CR) input is outside the implemented subset. Checked on the SCALAR
-        // view, deliberately: "\r\n" is a single Swift grapheme cluster, so a Character-level
-        // `source.contains("\r")` is FALSE for a CRLF file -- the guard would silently never
-        // fire, the tokenizer below (which splits on the Character "\n") would never split, and
-        // the whole file would collapse into one line and emit a wrong tree instead of throwing.
-        // With the scalar-level guard in place, no CR in any form can reach the tokenizer, so
-        // the rest of the parser safely stays on `[Character]` (grapheme clusters are correct
-        // for content: decomposed accents, emoji, and NUL bytes all round-trip byte-exact).
+        // CRLF (or stray CR) input is outside the implemented subset. This is now ORDINARY input
+        // validation, and it is worth recording that it used to be load-bearing for correctness.
+        //
+        // When `Line.text` was `[Character]`, `"\r\n"` was a single grapheme cluster, so a
+        // Character-level `source.contains("\r")` was FALSE for a CRLF file: the guard would
+        // silently never fire, the tokenizer would never split on the cluster, and the whole file
+        // would collapse into one line and emit a wrong tree instead of throwing. Checking the
+        // SCALAR view fixed that.
+        //
+        // The comment that used to sit here then drew the wrong conclusion -- "so the rest of the
+        // parser safely stays on `[Character]`" -- and that false generalization IS ORG-19. CRLF
+        // was one instance of a grapheme cluster swallowing a delimiter; 2,619 scalars do the same
+        // thing to every other delimiter, and this guard never touched them. The parser now scans
+        // scalars throughout (see `OrgParser.Line`), which is org's own unit, so CR is just an
+        // unsupported byte rather than a hole in the tokenizer.
         guard !source.unicodeScalars.contains(where: { $0.value == 0x0D }) else {
             throw OrgError.notImplemented
         }
@@ -210,7 +217,7 @@ extension OrgParser {
         var titleStart = 0
         var wordEnd = 0
         while wordEnd < titleChars.count, titleChars[wordEnd] != " ", titleChars[wordEnd] != "\t" { wordEnd += 1 }
-        let firstWord = String(titleChars[0..<wordEnd])
+        let firstWord = String(scalars: titleChars[0..<wordEnd])
         if todoSet.contains(firstWord) {
             todo = .string(firstWord)
             titleStart = wordEnd
@@ -229,11 +236,11 @@ extension OrgParser {
         while commentEnd < titleChars.count, titleChars[commentEnd] != " ", titleChars[commentEnd] != "\t" {
             commentEnd += 1
         }
-        if String(titleChars[titleStart..<commentEnd]) == "COMMENT" {
+        if String(scalars: titleChars[titleStart..<commentEnd]) == "COMMENT" {
             throw OrgError.notImplemented
         }
 
-        let title = try parseObjects(String(titleChars[titleStart...]))
+        let title = try parseObjects(String(scalars: titleChars[titleStart...]))
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title
         )
@@ -258,7 +265,8 @@ extension OrgParser {
         oddLevels ? 1 + stars / 2 : stars
     }
 
-    private func isTagChar(_ ch: Character) -> Bool {
-        ch.isLetter || ch.isNumber || ch == "_" || ch == "@" || ch == "#" || ch == "%" || ch == ":"
+    private func isTagChar(_ ch: Unicode.Scalar) -> Bool {
+        OrgParser.isLetterScalar(ch) || OrgParser.isNumberScalar(ch)
+            || ch == "_" || ch == "@" || ch == "#" || ch == "%" || ch == ":"
     }
 }

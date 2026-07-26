@@ -194,7 +194,7 @@ extension OrgParser {
         }
         var text = ""
         for lineIndex in paragraphStart..<i {
-            text.append(String(lines[lineIndex].text))
+            text.append(String(scalars: lines[lineIndex].text))
             if lines[lineIndex].hasNewline { text.append("\n") }
         }
         return (.object([
@@ -260,7 +260,7 @@ extension OrgParser {
     /// The comment marker `#` and exactly one following space are stripped (SCHEMA.md).
     private func commentValue(of line: Line) -> String {
         if line.text.count <= 1 { return "" }
-        return String(line.text[2...])
+        return String(scalars: line.text[2...])
     }
 
     private func throwIfUnimplementedElementStart(_ line: Line) throws {
@@ -328,7 +328,7 @@ extension OrgParser {
             if line.text[1] == " " || line.text[1] == "\t" { return true }
         }
         var digitEnd = 0
-        while digitEnd < line.text.count, line.text[digitEnd].isNumber { digitEnd += 1 }
+        while digitEnd < line.text.count, OrgParser.isNumberScalar(line.text[digitEnd]) { digitEnd += 1 }
         if digitEnd > 0, digitEnd < line.text.count,
            line.text[digitEnd] == "." || line.text[digitEnd] == ")" {
             let after = digitEnd + 1
@@ -336,14 +336,14 @@ extension OrgParser {
                 return true
             }
         }
-        if line.text.count >= 3, first.isLetter, line.text.count > 2,
+        if line.text.count >= 3, OrgParser.isLetterScalar(first), line.text.count > 2,
            line.text[1] == "." || line.text[1] == ")",
            line.text[2] == " " || line.text[2] == "\t" {
             return true
         }
         // Planning/clock lines, diary sexps, footnote definitions.
         for prefix in ["SCHEDULED:", "DEADLINE:", "CLOSED:", "CLOCK:", "%%(", "[fn:"] {
-            if line.text.starts(with: prefix) { return true }
+            if line.text.starts(with: prefix.unicodeScalars) { return true }
         }
         return false
     }

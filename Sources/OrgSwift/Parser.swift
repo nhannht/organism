@@ -56,6 +56,15 @@ public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> 
     try OrgParser(source: source, todoKeywords: todoKeywords).parseDocument()
 }
 
+extension String {
+    /// Builds a `String` from a scalar sequence. `String.init` has no `[Unicode.Scalar]` overload,
+    /// and this parser slices `Line.text` constantly, so the conversion is named once here rather
+    /// than spelled `String(String.UnicodeScalarView(...))` at thirty call sites.
+    init(scalars: some Sequence<Unicode.Scalar>) {
+        self.init(String.UnicodeScalarView(scalars))
+    }
+}
+
 // MARK: - Parser
 
 /// The parser's own state: the source, its line tokenization, and the active TODO keyword set.
@@ -78,8 +87,28 @@ struct OrgParser {
     /// One physical line of the source, without its terminating `"\n"`. `hasNewline` records
     /// whether a `"\n"` followed it in `source` -- false only for the final line of a file that
     /// does not end with a newline, so paragraph text can reproduce the source bytes exactly.
+    ///
+    /// **`text` is `[Unicode.Scalar]`, not `[Character]`, and that is the whole of ORG-19.**
+    /// A Swift `Character` is a grapheme CLUSTER; org's own unit is the CODEPOINT. Every
+    /// structural decision org makes -- where an emphasis marker is, where a cell boundary is,
+    /// what counts as border whitespace -- is defined over codepoints, and Emacs buffer positions
+    /// count codepoints. Measured on one input: `z *<ZWNJ>b* z` is 9 characters to Emacs, 9
+    /// codepoints to Python, and 8 Characters to Swift.
+    ///
+    /// On `[Character]` the disagreement was not academic. Any Extend, ZWJ or SpacingMark scalar
+    /// placed immediately after a delimiter FUSES INTO it, so the scanner never saw the delimiter
+    /// at all. Enumerated: 2,619 scalars across 334 contiguous ranges do this, and the class is
+    /// identical for every delimiter this parser looks for (`* / ~ = _ + # | - :`), measured. The
+    /// result was a silently wrong tree with no throw -- `z *<ZWNJ>b* z` parsed as one flat text
+    /// node where org produces bold.
+    ///
+    /// This is also why the CRLF guard in `parseDocument` exists: `"\r\n"` was ONE instance of
+    /// this same class, caught early and fixed by moving that single decision to the scalar view.
+    /// The generalization it drew -- "so the rest of the parser safely stays on `[Character]`" --
+    /// was false, and 2,619 scalars were waiting behind it. On scalars the guard is ordinary
+    /// input validation rather than a correctness crutch.
     struct Line {
-        let text: [Character]
+        let text: [Unicode.Scalar]
         let hasNewline: Bool
 
         var isBlank: Bool { text.allSatisfy { $0 == " " || $0 == "\t" } }
@@ -95,8 +124,8 @@ struct OrgParser {
         self.source = source
 
         var built: [Line] = []
-        var current: [Character] = []
-        for ch in source {
+        var current: [Unicode.Scalar] = []
+        for ch in source.unicodeScalars {
             if ch == "\n" {
                 built.append(Line(text: current, hasNewline: true))
                 current = []

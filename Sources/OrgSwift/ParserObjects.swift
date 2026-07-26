@@ -7,7 +7,7 @@
 
 extension OrgParser {
 
-    /// The link types org recognizes, as `[Character]` for direct comparison against the scanner's
+    /// The link types org recognizes, as scalar arrays for direct comparison against the scanner's
     /// own array. MEASURED from a live Emacs, not read off a defcustom, because the set is
     /// `org-modules`-dependent and GROWS once `org-mode` is actually activated in a buffer --
     /// which is exactly what `harness/oracle-dump.el` does before parsing, so the activated set is
@@ -20,11 +20,11 @@ extension OrgParser {
     /// (Emacs 30.2 / org-mode 9.7.11, default `org-modules`). The difference is not academic --
     /// `id`, `doi`, `info`, `irc`, `eww`, `w3m`, `mhe`, `gnus`, `rmail`, `bbdb`, `bibtex` and
     /// `docview` exist ONLY in the activated set, and every one of them makes a real plain link.
-    private static let linkTypes: [[Character]] = [
+    private static let linkTypes: [[Unicode.Scalar]] = [
         "file+emacs", "file+sys", "docview", "bibtex", "mailto", "elisp", "https", "rmail",
         "shell", "bbdb", "gnus", "help", "http", "info", "news", "doi", "eww", "ftp", "irc",
         "mhe", "w3m", "id", "file",
-    ].map(Array.init)
+    ].map { Array($0.unicodeScalars) }
 
     /// True when a PLAIN link could begin at `i` -- the guard that stops an unimplemented plain
     /// link from silently flattening into plain text.
@@ -48,8 +48,8 @@ extension OrgParser {
     ///   The `isASCII` half is not a refinement, it is a BUG FIX, and the reasoning it replaces
     ///   was exactly backwards. This condition used to test `isLetter || isNumber` alone, on the
     ///   stated argument that "a narrower notion than org's can only make this fire MORE often".
-    ///   That argument is sound and its premise was false: Swift's `Character.isLetter` and
-    ///   `.isNumber` are fully Unicode-aware, so they are true for `漢`, `α`, `한`, `٣`, `Ⅷ` and
+    ///   That argument is sound and its premise was false: Swift's letter and number predicates
+    ///   are fully Unicode-aware, so they are true for `漢`, `α`, `한`, `٣`, `Ⅷ` and
     ///   the rest, while Emacs breaks the word at a script transition and links anyway. The
     ///   notion was WIDER than org's, not narrower, so `return false` suppressed the guard
     ///   exactly where org still produced a link -- 16 measured silent wrong trees, e.g.
@@ -75,10 +75,11 @@ extension OrgParser {
     /// Org additionally requires the path to be at least two characters and to end on a
     /// non-punctuation character. Both are skipped, which only widens this further, so every
     /// input org parses as a plain link trips this too.
-    private func plainLinkCouldStart(in chars: [Character], at i: Int) -> Bool {
+    private func plainLinkCouldStart(in chars: [Unicode.Scalar], at i: Int) -> Bool {
         // `isASCII` first: see the doc comment. Without it this suppressed the guard after every
         // non-ASCII letter or digit, where org links anyway.
-        if i > 0, chars[i - 1].isASCII, chars[i - 1].isLetter || chars[i - 1].isNumber {
+        if i > 0, chars[i - 1].isASCII,
+           OrgParser.isLetterScalar(chars[i - 1]) || OrgParser.isNumberScalar(chars[i - 1]) {
             return false
         }
         for type in Self.linkTypes {
@@ -88,11 +89,10 @@ extension OrgParser {
             let afterColon = chars[colon + 1]
             guard afterColon != " ", afterColon != "\t", afterColon != "\n" else { continue }
             var matched = true
-            // Case-folds document text against an ASCII keyword: see the case-FOLD note in
-            // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in
-            // Emacs). No registered link type contains `k`, which is why this is inert today.
+            // ASCII-only fold, per `asciiLowered`: Swift's own fold maps U+212A to `k` and
+            // Emacs folds nothing non-ASCII onto an ASCII letter.
             for (offset, expected) in type.enumerated()
-            where !chars[i + offset].lowercased().elementsEqual(String(expected)) {
+            where OrgParser.asciiLowered(chars[i + offset]) != expected {
                 matched = false
                 break
             }
@@ -115,7 +115,7 @@ extension OrgParser {
     /// from a "char before the contents" model, were verified against real Emacs. The practical
     /// consequence: recursion needs no context beyond the substring itself.
     func parseObjects(_ s: String) throws -> [OrgJSON] {
-        let chars = Array(s)
+        let chars = Array(s.unicodeScalars)
 
         // Plain links have no bracket to key off, so they are rejected by scanning the whole
         // contents string up front (see `plainLinkCouldStart` for the match rule).
@@ -132,10 +132,10 @@ extension OrgParser {
             // A bare text leaf carries NO postBlank key (SCHEMA.md section 1, exception).
             nodes.append(.object([
                 "type": .string("text"),
-                "value": .string(String(chars[textStart..<end])),
+                "value": .string(String(scalars: chars[textStart..<end])),
             ]))
         }
-        func charBefore(_ index: Int) -> Character? {
+        func charBefore(_ index: Int) -> Unicode.Scalar? {
             index > 0 ? chars[index - 1] : nil
         }
 
@@ -171,7 +171,7 @@ extension OrgParser {
             case "*", "/", "=", "~":
                 if let match = emphasisMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let contents = String(chars[(i + 1)..<match.closer])
+                    let contents = String(scalars: chars[(i + 1)..<match.closer])
                     let objectNode: OrgJSON
                     switch c {
                     case "*", "/":
@@ -229,7 +229,7 @@ extension OrgParser {
     /// requires on the object, never on the following text run. Newlines are never consumed:
     /// they stay as literal text (oracle-confirmed: `*bold* \nrest` parses as bold `postBlank` 1
     /// + text `"\nrest\n"`).
-    private func emphasisMatch(in chars: [Character], at i: Int) -> EmphasisMatch? {
+    private func emphasisMatch(in chars: [Unicode.Scalar], at i: Int) -> EmphasisMatch? {
         let marker = chars[i]
 
         if i > 0, !isPreChar(chars[i - 1]) {

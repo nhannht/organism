@@ -37,7 +37,7 @@ extension OrgParser {
     /// it does not collapse the run. Same convention as `comment`'s `# ` stripping.
     static func fixedWidthValue(of line: Line) -> String {
         guard line.text.count > 1 else { return "" }
-        return String(line.text[2...])
+        return String(scalars: line.text[2...])
     }
 
     /// Consecutive `: ` lines merge into ONE `fixed-width` element, values joined by `"\n"` with
@@ -158,7 +158,7 @@ extension OrgParser {
             while upper > lower, text[upper - 1] == " " || text[upper - 1] == "\t" { upper -= 1 }
             cells.append(.object([
                 "type": .string("table-cell"),
-                "children": .array(try parseObjects(String(text[lower..<upper]))),
+                "children": .array(try parseObjects(String(scalars: text[lower..<upper]))),
                 "postBlank": .int(0),
             ]))
             // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.
@@ -185,10 +185,10 @@ extension OrgParser {
 
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        let marker = Array("#+tblfm:")
+        let marker = Array("#+tblfm:".unicodeScalars)
         guard text.count >= idx + marker.count else { return nil }
         for (offset, expected) in marker.enumerated()
-        where text[idx + offset].lowercased() != String(expected) {
+        where OrgParser.asciiLowered(text[idx + offset]) != expected {
             return nil
         }
 
@@ -196,7 +196,7 @@ extension OrgParser {
         var spaces = 0
         while value < text.count, text[value] == " " { value += 1; spaces += 1 }
         guard spaces >= 1 else { return nil }
-        return String(text[value...])
+        return String(scalars: text[value...])
     }
 
     /// A table: its rows, then any `#+TBLFM:` lines it absorbs.

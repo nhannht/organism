@@ -35,7 +35,7 @@ extension OrgParser {
     /// mis-parsed here.
     static func blockBeginLine(_ line: Line) -> (type: String, rest: String)? {
         let text = line.text
-        let prefix = Array("#+begin_")
+        let prefix = Array("#+begin_".unicodeScalars)
         guard text.count > prefix.count else { return nil }
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
@@ -43,14 +43,14 @@ extension OrgParser {
         // Compared as Strings, not by building a Character from `lowercased()`: that initializer
         // traps when a character lowercases to anything other than exactly one grapheme, which is
         // reachable from arbitrary document text.
-        for (i, ch) in prefix.enumerated() where text[i].lowercased() != String(ch) {
+        for (i, ch) in prefix.enumerated() where asciiLowered(text[i]) != ch {
             return nil
         }
         var typeEnd = prefix.count
         while typeEnd < text.count, text[typeEnd] != " ", text[typeEnd] != "\t" { typeEnd += 1 }
-        let type = String(text[prefix.count..<typeEnd]).lowercased()
+        let type = OrgParser.asciiLowered(String(scalars: text[prefix.count..<typeEnd]))
         guard !type.isEmpty else { return nil }
-        return (type, String(text[typeEnd...]))
+        return (type, String(scalars: text[typeEnd...]))
     }
 
     /// True when `line` is the `#+end_TYPE` that closes a block of `type`. Case-insensitive, and
@@ -61,12 +61,12 @@ extension OrgParser {
     /// one), measured. So a mismatched end leaves the begin line unclaimed, which is what makes
     /// an unterminated block fall through to the paragraph path.
     static func isBlockEndLine(_ line: Line, type: String) -> Bool {
-        let expected = Array("#+end_" + type)
+        let expected = Array(("#+end_" + type).unicodeScalars)
         let text = line.text
         guard text.count >= expected.count else { return false }
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        for (i, ch) in expected.enumerated() where text[i].lowercased() != ch.lowercased() {
+        for (i, ch) in expected.enumerated() where asciiLowered(text[i]) != asciiLowered(ch) {
             return false
         }
         return text[expected.count...].allSatisfy { $0 == " " || $0 == "\t" }
@@ -165,7 +165,7 @@ extension OrgParser {
     func blockValue(bodyFrom start: Int, to end: Int) -> String {
         var value = ""
         for i in start..<end {
-            value.append(String(lines[i].text))
+            value.append(String(scalars: lines[i].text))
             value.append("\n")
         }
         return value
@@ -252,20 +252,20 @@ extension OrgParser {
     /// `#+begin_example -n` indistinguishable, which SCHEMA.md section 10's byte-exact
     /// requirement forbids.
     static func exampleSwitches(_ rest: String) -> String? {
-        let chars = Array(rest)
+        let chars = Array(rest.unicodeScalars)
         guard chars.first == " " else { return nil }
         var i = 0
         while i < chars.count, chars[i] == " " { i += 1 }
-        return String(chars[i...])
+        return String(scalars: chars[i...])
     }
 
     static func trimAsciiSpace(_ s: String) -> String {
-        let chars = Array(s)
+        let chars = Array(s.unicodeScalars)
         var start = 0
         while start < chars.count, chars[start] == " " || chars[start] == "\t" { start += 1 }
         var end = chars.count
         while end > start, chars[end - 1] == " " || chars[end - 1] == "\t" { end -= 1 }
-        return String(chars[start..<end])
+        return String(scalars: chars[start..<end])
     }
 
     /// Splits the text after `#+begin_src` into `(language, switches, params)`.
@@ -284,7 +284,7 @@ extension OrgParser {
     /// `-x` lands in `switches` where org puts it in `params`; too strict and `-n 20` splits in
     /// half across the two fields.
     static func splitSrcHead(_ rest: String) -> (String?, String?, String?) {
-        let chars = Array(rest)
+        let chars = Array(rest.unicodeScalars)
         var i = 0
 
         func skipSpaces() { while i < chars.count, chars[i] == " " || chars[i] == "\t" { i += 1 } }
@@ -294,7 +294,7 @@ extension OrgParser {
         while languageEnd < chars.count, chars[languageEnd] != " ", chars[languageEnd] != "\t" {
             languageEnd += 1
         }
-        let language = languageEnd > i ? String(chars[i..<languageEnd]) : nil
+        let language = languageEnd > i ? String(scalars: chars[i..<languageEnd]) : nil
         i = languageEnd
 
         let switchesStart = i
@@ -308,10 +308,10 @@ extension OrgParser {
             switchesEnd = after
         }
         let switches = switchesEnd > switchesStart
-            ? trimAsciiSpace(String(chars[switchesStart..<switchesEnd]))
+            ? trimAsciiSpace(String(scalars: chars[switchesStart..<switchesEnd]))
             : nil
 
-        let params = trimAsciiSpace(String(chars[i...]))
+        let params = trimAsciiSpace(String(scalars: chars[i...]))
         return (language, switches?.isEmpty == false ? switches : nil, params.isEmpty ? nil : params)
     }
 
@@ -341,7 +341,7 @@ extension OrgParser {
     /// relocates bytes across two fields rather than merely mislabelling one.
     ///
     /// `+` is only ever valid as `+n`: `-k` is a switch and `+k` is not, measured.
-    private static func matchOneSrcSwitch(_ chars: [Character], at j: Int) -> Int? {
+    private static func matchOneSrcSwitch(_ chars: [Unicode.Scalar], at j: Int) -> Int? {
         guard chars[j] == "-" || chars[j] == "+" else { return nil }
         guard j + 1 < chars.count else { return nil }
         let flag = chars[j + 1]
@@ -355,7 +355,8 @@ extension OrgParser {
                 digitScan += 1
             }
             var digitEnd = digitScan
-            while digitEnd < chars.count, chars[digitEnd].isASCII, chars[digitEnd].isNumber {
+            while digitEnd < chars.count, chars[digitEnd].isASCII,
+                  isNumberScalar(chars[digitEnd]) {
                 digitEnd += 1
             }
             if digitEnd > digitScan { k = digitEnd }
@@ -378,7 +379,7 @@ extension OrgParser {
             guard lastQuote >= open + 2 else { return nil } // `-l ""` has no content
             return lastQuote + 1
         }
-        return "ikr".contains(flag) ? j + 2 : nil
+        return "ikr".unicodeScalars.contains(flag) ? j + 2 : nil
     }
 
     // MARK: Pass 1 -- which lines cannot carry a file-level setting

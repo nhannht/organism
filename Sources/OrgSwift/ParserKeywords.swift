@@ -62,7 +62,7 @@ extension OrgParser {
         }
         guard colon > 2 else { return nil } // no colon, or an empty key: not a keyword
 
-        let key = emacsUpcased(String(text[2..<colon]))
+        let key = emacsUpcased(String(scalars: text[2..<colon]))
         var valueStart = colon + 1
         while valueStart < text.count, text[valueStart] == " " || text[valueStart] == "\t" {
             valueStart += 1
@@ -72,7 +72,7 @@ extension OrgParser {
               text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
             valueEnd -= 1
         }
-        return (key, String(text[valueStart..<valueEnd]))
+        return (key, String(scalars: text[valueStart..<valueEnd]))
     }
 
     /// True for a `#+` line whose real element type is NOT `keyword` and is not implemented.
@@ -106,7 +106,7 @@ extension OrgParser {
     static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        let lower = String(line.text).lowercased()
+        let lower = OrgParser.asciiLowered(String(scalars: line.text))
         return lower.hasPrefix("#+begin_") || lower.hasPrefix("#+end_")
             || lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
             || lower == "#+begin"
@@ -232,7 +232,7 @@ extension OrgParser {
         var nameEnd = idx
         while nameEnd < text.count, text[nameEnd] != "[", text[nameEnd] != ":" { nameEnd += 1 }
         guard nameEnd < text.count, nameEnd > idx else { return nil }
-        let name = emacsUpcased(String(text[idx..<nameEnd]))
+        let name = emacsUpcased(String(scalars: text[idx..<nameEnd]))
         guard isAffiliatedName(name) else { return nil }
 
         var dual: String?
@@ -247,7 +247,7 @@ extension OrgParser {
                 scan -= 1
             }
             guard let closeIndex = close else { return nil }
-            dual = String(text[(cursor + 1)..<closeIndex])
+            dual = String(scalars: text[(cursor + 1)..<closeIndex])
             cursor = closeIndex + 1
         }
         guard cursor < text.count, text[cursor] == ":" else { return nil }
@@ -260,7 +260,7 @@ extension OrgParser {
         while valueEnd > valueStart, text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
             valueEnd -= 1
         }
-        return (affiliatedAliases[name] ?? name, dual, String(text[valueStart..<valueEnd]))
+        return (affiliatedAliases[name] ?? name, dual, String(scalars: text[valueStart..<valueEnd]))
     }
 
     /// The spellings `org-element` NORMALIZES away before this schema ever sees the tree

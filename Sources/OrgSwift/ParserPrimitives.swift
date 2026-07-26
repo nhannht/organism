@@ -186,34 +186,81 @@ extension OrgParser {
         return String(out)
     }
 
-    // MARK: The case-FOLD side, which has had no equivalent treatment
+    // MARK: Scalar predicates, each MEASURED against the Character predicate it replaces
+    //
+    // The ORG-19 port moved `Line.text` from `[Character]` to `[Unicode.Scalar]`, which forced
+    // every `Character` predicate to be re-derived. None of these were renamed: each was
+    // enumerated over all 1,112,064 single-scalar characters against its predecessor, because
+    // this parser has been bitten three times by a Swift predicate answering an ADJACENT question
+    // (`Character.isWhitespace` at the border class, `Character.isLetter` at the link guard,
+    // `.uppercased()` at F19).
+
+    /// `Character.isLetter`, exactly, evaluated on one scalar.
+    ///
+    /// MEASURED: `Character.isLetter` and `Unicode.Scalar.Properties.isAlphabetic` agree on ALL
+    /// 1,112,064 single-scalar characters -- 0 differences. This is worth stating because the
+    /// obvious alternative is wrong and was proposed during scoping: general category L* differs
+    /// from both on 1,784 scalars, since `isAlphabetic` and `isLetter` alike include
+    /// Other_Alphabetic (U+0345, U+0363 and the rest of the combining-mark letters) which L* does
+    /// not. So this is a behaviour-PRESERVING port, not a widening.
+    static func isLetterScalar(_ s: Unicode.Scalar) -> Bool { s.properties.isAlphabetic }
+
+    /// `Character.isNumber`, exactly, evaluated on one scalar.
+    ///
+    /// MEASURED the same way: 0 differences against `properties.numericType != nil` over all
+    /// 1,112,064. General category N* is again the wrong answer, differing on 99 scalars -- the
+    /// CJK ideographic numerals (U+3405, U+4E00, ...) are `otherLetter` by category yet carry a
+    /// numeric type, and `Character.isNumber` counts them.
+    static func isNumberScalar(_ s: Unicode.Scalar) -> Bool { s.properties.numericType != nil }
+
+    /// ASCII-only case fold: what org actually asks wherever this parser matches document text
+    /// against a literal ASCII keyword (`#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, link types).
+    ///
+    /// This REPLACES `Character.lowercased()` at those sites and closes the Kelvin hazard the
+    /// note below describes, rather than merely documenting it. Both sides measured over the full
+    /// scalar space:
+    ///
+    ///     Emacs `downcase` folds 0 non-ASCII scalars onto an ASCII letter.
+    ///     Swift `.lowercased()` folds exactly 1: U+212A KELVIN SIGN -> `k`.
+    ///
+    /// So Swift's fold could match a literal `k` where Emacs never would, and ASCII-only folding
+    /// is the predicate that agrees with org. No input changes behaviour today -- `k` appears in
+    /// none of the matched keywords or link types, which is why the hazard was inert -- but the
+    /// predicate is now correct rather than accidentally safe.
+    static func asciiLowered(_ s: Unicode.Scalar) -> Unicode.Scalar {
+        (s.value >= 0x41 && s.value <= 0x5A) ? Unicode.Scalar(s.value + 0x20)! : s
+    }
+
+    /// ASCII-only fold of a whole string, for the one site that matches a prefix rather than
+    /// scanning scalar by scalar.
+    static func asciiLowered(_ s: String) -> String {
+        String(scalars: s.unicodeScalars.map(asciiLowered))
+    }
+
+    // MARK: The case-FOLD side, which the port has now settled
     //
     // `emacsUpcased` above exists because Swift and Emacs disagree about UPCASING. The mirror
-    // question -- do they agree about case-FOLDING, which is what every `.lowercased()` comparison
-    // in this parser relies on -- was enumerated in both directions and the answer is nearly, but
-    // not exactly, yes:
+    // question is case-FOLDING, which every keyword match in this parser relies on, and it had no
+    // equivalent treatment until the ORG-19 port. It does now: `asciiLowered` above.
     //
-    //     Emacs's canon table folds ZERO non-ASCII scalars onto an ASCII letter.
-    //     Swift folds exactly ONE: U+212A KELVIN SIGN lowercases to `k`.
+    // The disagreement, enumerated in both directions over the full scalar space:
     //
-    // So a document containing U+212A can make a Swift `.lowercased()` comparison match a literal
-    // `k` where Emacs would not, at any site that case-folds document text against an ASCII
-    // keyword. The sites are `blockBeginLine` and `isBlockEndLine` (ParserBlocks),
+    //     Emacs `downcase` folds ZERO non-ASCII scalars onto an ASCII letter.
+    //     Swift `.lowercased()` folds exactly ONE: U+212A KELVIN SIGN -> `k`.
+    //
+    // Every site that folds document text against a literal ASCII keyword now uses `asciiLowered`
+    // rather than Swift's fold: `blockBeginLine` and `isBlockEndLine` (ParserBlocks),
     // `isUnimplementedHashPlusElement` (ParserKeywords), the plain-link scheme match
     // (ParserObjects), and `tblfmValue` (ParserTables).
     //
-    // UNREACHABLE TODAY, and the reason is worth writing down because it is a coincidence rather
-    // than a safeguard: no `k` appears in `#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, or in any
-    // of the 23 registered link types, so there is nothing for a folded U+212A to collide with. It
-    // goes LIVE the moment a block TYPE containing `k` can be matched, which is special blocks --
-    // `blockBeginLine` lowercases the type straight out of the document.
-    //
-    // Deliberately a note and not a guard: adding an exception table here would be inventing a
-    // defense for a case no input can currently reach, and the correct fix is likely to fall out
-    // of the pending unit question rather than to be bolted on now.
+    // This changed no behaviour on any input, and the note is kept so nobody "simplifies" it back:
+    // no `k` appears in `#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, or in any of the 23 registered
+    // link types, so a folded U+212A had nothing to collide with. That was a COINCIDENCE, not a
+    // safeguard, and it would have expired the moment a block type containing `k` became matchable
+    // -- which is special blocks. The predicate is now correct rather than accidentally safe.
 
-    static let prePunctuation: Set<Character> = ["-", "(", "{", "'", "\""]
-    static let postPunctuation: Set<Character> = [
+    static let prePunctuation: Set<Unicode.Scalar> = ["-", "(", "{", "'", "\""]
+    static let postPunctuation: Set<Unicode.Scalar> = [
         "-", ".", ",", ";", ":", "!", "?", "'", ")", "}", "[", "\"", "\\",
     ]
 
@@ -231,7 +278,7 @@ extension OrgParser {
     ///
     /// Deliberately distinct from the two other whitespace notions listed in this file's header,
     /// both also measured.
-    func isBorderWhitespace(_ ch: Character) -> Bool {
+    func isBorderWhitespace(_ ch: Unicode.Scalar) -> Bool {
         switch ch {
         case " ", "\t", "\n", "\u{0C}", "\u{A0}", "\u{202F}", "\u{205F}", "\u{3000}":
             return true
@@ -242,11 +289,11 @@ extension OrgParser {
         }
     }
 
-    func isPreChar(_ ch: Character) -> Bool {
+    func isPreChar(_ ch: Unicode.Scalar) -> Bool {
         isBorderWhitespace(ch) || Self.prePunctuation.contains(ch)
     }
 
-    func isPostChar(_ ch: Character) -> Bool {
+    func isPostChar(_ ch: Unicode.Scalar) -> Bool {
         isBorderWhitespace(ch) || Self.postPunctuation.contains(ch)
     }
 }
