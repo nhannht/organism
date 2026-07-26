@@ -1,0 +1,3 @@
+:́LOGBOOK:
+Inside a drawer whose name starts with a combining mark.
+:END:

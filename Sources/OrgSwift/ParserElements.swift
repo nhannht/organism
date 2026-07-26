@@ -235,6 +235,14 @@ extension OrgParser {
         // throws while an indented CONTINUATION row inside a table started at column 0 parses.
         // Dispatching these first would silently accept indented starts that the rest of the
         // parser still refuses.
+        // Drawers are dispatched before fixed-width for the same ordering reason the comment above
+        // gives: both can open with `:`, and `isFixedWidthLine` would claim `:PROPERTIES:` first.
+        // An UNPAIRED opener returns nil rather than throwing, because it is paragraph text in
+        // every position, so control falls through to the paragraph path below.
+        if let drawer = try parseDrawer(at: i, in: range) {
+            return (drawer.node, drawer.next)
+        }
+
         if OrgParser.isFixedWidthLine(line) {
             return parseFixedWidth(at: i, in: range)
         }
@@ -397,13 +405,12 @@ extension OrgParser {
         // list entirely: `org-element` decides `org` vs `table.el` on `[ \t]*|` alone, so at
         // column 0 EVERY `|` line opens an org table and there is no `|` case left to reject.
         //
-        // A `:` line that is not fixed-width is a drawer opener (`:LOGBOOK:`) or something org
-        // treats as an ordinary paragraph (`:NOTADRAWER`, and a bare `:END:` with no opener above
-        // it -- both measured as paragraphs). Those two answers are deliberately collapsed into
-        // one throw: drawers are unimplemented, and emitting a paragraph for the rest would mean
-        // implementing the drawer PAIRING first, since which of the two a `:NAME:` line gets
-        // depends on whether a matching `:END:` follows.
-        if first == ":", !OrgParser.isFixedWidthLine(line) { return true }
+        // NOTE what is deliberately GONE: the blanket `:` throw. It collapsed two answers into
+        // one because deciding between them needs the drawer PAIRING -- which of a paragraph or a
+        // drawer a `:NAME:` line gets depends on whether a matching `:END:` follows, so the throw
+        // stood in for a decision this parser could not yet make. It can now: `parseDrawer`
+        // returns nil for an unpaired opener, and control falls through to the paragraph path,
+        // which is org's own answer for `:NOTADRAWER` and for a bare `:END:` alike.
         // Blocks and dynamic blocks. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }

@@ -122,6 +122,14 @@ struct ConformanceTests {
         // Headline priority cookie, tag group, and the COMMENT keyword.
         "easy-priority-and-tags-headline",
         "easy-commented-headline",
+        // Drawers, property drawers, and the ORG-20 fixture. `drawer-fused-name` is the one that
+        // earns its place: a parser scanning grapheme clusters sees no `:` at all in
+        // `:<U+0301>LOGBOOK:` and emits a paragraph, so this case FAILS for such a parser and
+        // passes for a scalar-based one. Every other drawer case passes for both.
+        "drawer-simple",
+        "drawer-fused-name",
+        "property-drawer-simple",
+        "property-drawer-after-planning",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

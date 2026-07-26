@@ -1,0 +1,29 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "drawer",
+          "name": "́LOGBOOK",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Inside a drawer whose name starts with a combining mark.\n"
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}
