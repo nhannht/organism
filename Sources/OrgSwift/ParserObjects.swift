@@ -114,7 +114,21 @@ extension OrgParser {
     /// not a PRE char). Both behaviors, and the `a **bold**` case that discriminates this model
     /// from a "char before the contents" model, were verified against real Emacs. The practical
     /// consequence: recursion needs no context beyond the substring itself.
-    func parseObjects(_ s: String) throws -> [OrgJSON] {
+    /// - Parameter permitsLineBreak: whether a `line-break` object may form here. This is ONE ROW
+    ///   of `org-element-object-restrictions`, not a mode switch: org itself decides the legal
+    ///   object set from the CONTAINER, and `line-break` is the first object this parser
+    ///   implements whose legality actually varies. SCHEMA.md section 4 lists the containers that
+    ///   permit it (`bold`, `italic`, `keyword`, `paragraph`, `verse-block`, ... ) and the two
+    ///   that refuse it, and both refusals are measured here, not inferred:
+    ///
+    ///       * a\\           headline title   text `a\\` literal, NO line-break
+    ///       | a\\ | b |     table cell       text `a\\` literal, NO line-break
+    ///       a\\<newline>b   paragraph        text `a`, line-break, text `b\n`
+    ///
+    ///   Defaulting to `true` matches the shape of org's own table, where permission is the rule
+    ///   and the refusals are enumerated. When a second restricted object lands this parameter
+    ///   becomes the container type instead of growing a second boolean beside it.
+    func parseObjects(_ s: String, permitsLineBreak: Bool = true) throws -> [OrgJSON] {
         let chars = Array(s.unicodeScalars)
 
         // Plain links have no bracket to key off, so they are rejected by scanning the whole
@@ -138,13 +152,47 @@ extension OrgParser {
         func charBefore(_ index: Int) -> Unicode.Scalar? {
             index > 0 ? chars[index - 1] : nil
         }
+        /// Index just past a FORCED line break starting at `index`, or nil if there is none.
+        ///
+        /// org's pattern is `\\\\[ \t]*$`, and three details are MEASURED rather than read off
+        /// it. The break owns its own newline, so the returned index is past the `\n` and the
+        /// preceding text ends before the backslashes: `a\\<nl>b` is text `a`, line-break, text
+        /// `b\n`, never a `\n` left dangling on either neighbour. Trailing spaces and tabs after
+        /// the pair belong to the break, not to the text that follows. And a THIRD backslash
+        /// disqualifies -- `a\\\` is one plain text node in org -- so the pair must not itself
+        /// be preceded by a backslash. End of contents counts as end of line: `a\\` with no
+        /// trailing newline still breaks, measured on a file that does not end in one.
+        func lineBreakEnd(at index: Int) -> Int? {
+            guard index + 1 < chars.count,
+                  chars[index] == "\\", chars[index + 1] == "\\",
+                  charBefore(index) != "\\" else { return nil }
+            var j = index + 2
+            while j < chars.count, chars[j] == " " || chars[j] == "\t" { j += 1 }
+            if j == chars.count { return j }
+            return chars[j] == "\n" ? j + 1 : nil
+        }
 
         while i < chars.count {
             let c = chars[i]
             switch c {
-            case "[", "<", "\\", "$":
-                // Links, targets, timestamps, footnote references, statistics cookies, entities,
-                // latex fragments, line breaks: all unimplemented object triggers.
+            case "\\":
+                // A FORCED line break, the one `\` construct implemented. Everything else a
+                // backslash can start -- entities (`\alpha`), latex fragments (`\\b`, measured as
+                // a latex-fragment rather than a break) -- is still unimplemented.
+                if permitsLineBreak, let past = lineBreakEnd(at: i) {
+                    flushText(upTo: i)
+                    // A leaf with NO `value` and NO `children`, exactly like horizontal-rule:
+                    // org-element builds it with only :begin, :end and :post-blank, so the type
+                    // carries the whole meaning (SCHEMA.md section 4).
+                    nodes.append(.object(["type": .string("line-break"), "postBlank": .int(0)]))
+                    i = past
+                    textStart = past
+                    continue
+                }
+                throw OrgError.notImplemented
+            case "[", "<", "$":
+                // Links, targets, timestamps, footnote references, statistics cookies,
+                // entities, latex fragments: all unimplemented object triggers.
                 throw OrgError.notImplemented
             case "^":
                 // A `^` after a non-whitespace character could be a superscript.

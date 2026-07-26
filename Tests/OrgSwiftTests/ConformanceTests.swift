@@ -89,6 +89,11 @@ struct ConformanceTests {
         "keyword-name-attaches-to-table",
         "affiliated-caption-forms",
         "affiliated-header-results-attr-plot",
+        "block-quote-parsed",
+        "block-center-parsed",
+        "block-verse-parsed-objects",
+        "line-break-simple",
+        "line-break-in-verse",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
@@ -102,5 +107,88 @@ struct ConformanceTests {
                 #expect(actual == testCase.expected, "\(testCase.name): parsed tree does not match expected.json")
             }
         }
+    }
+
+    // MARK: Register row 3 -- the pass-1 classifier
+
+    /// The pass-1 file-setting scan is a REAL per-block-type classifier, not "hide everything
+    /// inside any `#+begin_`".
+    ///
+    /// This is register row 3, and it is the end-to-end half. The org side was measured long
+    /// before quote/center/verse parsed, but until they did, no document containing a block
+    /// produced a tree at all, so nothing in the suite could tell a real classifier from a
+    /// blanket one. Both parsers pass every other gate identically.
+    ///
+    /// Measured against the live oracle, on TWO independent settings, all seven block types:
+    ///
+    ///     block type                          #+TODO: FOO BAR      #+STARTUP: odd
+    ///     src, example, export, comment       todo null            level 3
+    ///     verse                               todo null            level 3
+    ///     quote, center                       todo "FOO"           level 2
+    ///     (no block, top level -- control)    todo "FOO"           level 2
+    ///
+    /// `verse` is the row's whole point and the reason `nonElementBlockTypes` is not simply
+    /// `literalBlockTypes`. A verse body IS parsed, but as OBJECTS, so a `#+TODO:` line inside
+    /// one is object-level text and never becomes a `keyword` element for pass 1 to read. A
+    /// classifier keyed on "is the content literal" gets verse wrong; one keyed on "does the
+    /// content yield elements" gets it right.
+    ///
+    /// The controls are what make this non-vacuous: the same two settings at top level MUST be
+    /// honored. Without them a parser that ignored both settings everywhere would pass the
+    /// protecting rows and look correct.
+    @Test("row 3: pass-1 hides a file setting for exactly the non-element block types")
+    func passOneClassifierIsPerBlockType() throws {
+        // `begin` carries the head (some types need an argument); `end` is the bare type.
+        let protecting = [("src emacs-lisp", "src"), ("example", "example"),
+                          ("export html", "export"), ("comment", "comment"), ("verse", "verse")]
+        let exposing = [("quote", "quote"), ("center", "center")]
+
+        func lastHeadline(_ doc: OrgJSON) throws -> [String: OrgJSON] {
+            var found: [String: OrgJSON]?
+            func walk(_ n: OrgJSON) {
+                guard let o = n.objectValue else { return }
+                if o["type"]?.stringValue == "headline" { found = o }
+                for c in o["children"]?.arrayValue ?? [] { walk(c) }
+            }
+            walk(doc)
+            return try #require(found, "probe produced no headline")
+        }
+        func titleText(_ h: [String: OrgJSON]) -> String {
+            (h["title"]?.arrayValue ?? []).compactMap { $0.objectValue?["value"]?.stringValue }
+                .joined()
+        }
+
+        for (begin, end) in protecting {
+            // A throw here is a FAILURE, not a skip: the whole point of this test is that these
+            // documents parse. It is deliberately not wrapped in `withKnownIssue`, which goes
+            // red on a match and silently green on a mismatch.
+            let todoDoc = try parseOrg("#+begin_\(begin)\n#+TODO: FOO BAR\n#+end_\(end)\n\n* FOO task\n")
+            let h = try lastHeadline(todoDoc)
+            #expect(h["todo"] == OrgJSON.null, "\(end) must PROTECT #+TODO: from pass 1")
+            #expect(titleText(h) == "FOO task", "\(end): FOO must stay in the title")
+
+            let startupDoc = try parseOrg("#+begin_\(begin)\n#+STARTUP: odd\n#+end_\(end)\n\n* a\n*** b\n")
+            #expect(try lastHeadline(startupDoc)["level"] == OrgJSON.int(3),
+                    "\(end) must PROTECT #+STARTUP: odd from pass 1")
+        }
+
+        for (begin, end) in exposing {
+            let todoDoc = try parseOrg("#+begin_\(begin)\n#+TODO: FOO BAR\n#+end_\(end)\n\n* FOO task\n")
+            let h = try lastHeadline(todoDoc)
+            #expect(h["todo"] == OrgJSON.string("FOO"), "\(end) must EXPOSE #+TODO: to pass 1")
+            #expect(titleText(h) == "task", "\(end): FOO must be consumed as the keyword")
+
+            let startupDoc = try parseOrg("#+begin_\(begin)\n#+STARTUP: odd\n#+end_\(end)\n\n* a\n*** b\n")
+            #expect(try lastHeadline(startupDoc)["level"] == OrgJSON.int(2),
+                    "\(end) must EXPOSE #+STARTUP: odd to pass 1")
+        }
+
+        // Controls. Both settings at top level are honored, so the protecting rows above are
+        // measuring protection rather than a parser that ignores these settings everywhere.
+        let todoControl = try lastHeadline(try parseOrg("#+TODO: FOO BAR\n\n* FOO task\n"))
+        #expect(todoControl["todo"] == OrgJSON.string("FOO"), "control: top-level #+TODO: is honored")
+        #expect(titleText(todoControl) == "task")
+        #expect(try lastHeadline(try parseOrg("#+STARTUP: odd\n\n* a\n*** b\n"))["level"]
+                == OrgJSON.int(2), "control: top-level #+STARTUP: odd is honored")
     }
 }

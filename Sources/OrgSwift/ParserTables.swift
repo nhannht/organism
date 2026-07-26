@@ -158,7 +158,12 @@ extension OrgParser {
             while upper > lower, text[upper - 1] == " " || text[upper - 1] == "\t" { upper -= 1 }
             cells.append(.object([
                 "type": .string("table-cell"),
-                "children": .array(try parseObjects(String(scalars: text[lower..<upper]))),
+                // The other container org REFUSES `line-break` in: `| a\\ | b |` keeps `a\\` as
+                // literal cell text, measured. A cell's contents end without a newline, so end
+                // of contents would otherwise read as end of line and manufacture a break.
+                "children": .array(try parseObjects(
+                    String(scalars: text[lower..<upper]), permitsLineBreak: false
+                )),
                 "postBlank": .int(0),
             ]))
             // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.

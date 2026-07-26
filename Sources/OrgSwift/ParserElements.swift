@@ -13,6 +13,23 @@ extension OrgParser {
     /// `postBlank` is always 0 (oracle-confirmed: trailing blanks belong to the innermost
     /// element, never the section).
     func parseSection(in range: Range<Int>) throws -> OrgJSON {
+        .object([
+            "type": .string("section"),
+            "children": .array(try parseElementRun(in: range)),
+            "postBlank": .int(0),
+        ])
+    }
+
+    /// Parses the run of ELEMENTS filling `range`, with no container node wrapped around them.
+    ///
+    /// Split out of `parseSection` for the same reason `parseOneElement` was split out of it: a
+    /// second caller needs exactly this list and nothing else. `quote-block` and `center-block`
+    /// are GREATER elements -- SCHEMA.md section 4 gives their `children` as element nodes, not a
+    /// section and not objects -- so they parse their body with this and hang the result on
+    /// themselves directly. Duplicating the loop for them would be the two-paths-kept-in-sync
+    /// shape this parser has already been bitten by once (the block end-line search, before the
+    /// pairing collapse).
+    func parseElementRun(in range: Range<Int>) throws -> [OrgJSON] {
         var elements: [OrgJSON] = []
         var i = range.lowerBound
 
@@ -24,8 +41,15 @@ extension OrgParser {
                 while i < range.upperBound, lines[i].isBlank { count += 1; i += 1 }
                 guard var last = elements.popLast()?.objectValue,
                       case .int(let existing)? = last["postBlank"] else {
-                    // Leading blanks were stripped by the caller; reaching here means the
-                    // bookkeeping is wrong, not that the input is unsupported.
+                    // No preceding element for these blanks to attach to. That means different
+                    // things per caller now that there are two, so do NOT read this as a
+                    // bookkeeping bug. `parseSection`'s callers strip leading blanks into
+                    // `preBlank`, so it genuinely cannot reach here. A quote or center body can:
+                    // `#+begin_quote` followed by a blank line is ordinary UNSUPPORTED input,
+                    // and org's shape for it is not obvious enough to build to yet -- measured,
+                    // one leading blank gives `paragraph postBlank=1` whose text is `"\n"`, two
+                    // blanks give `postBlank=2` with the text unchanged. Throwing is the honest
+                    // answer until that rule is derived rather than guessed.
                     throw OrgError.notImplemented
                 }
                 last["postBlank"] = .int(existing + count)
@@ -81,11 +105,7 @@ extension OrgParser {
             i = next
         }
 
-        return .object([
-            "type": .string("section"),
-            "children": .array(elements),
-            "postBlank": .int(0),
-        ])
+        return elements
     }
 
     /// Parses the ONE element beginning at `i` (which must not be a blank line), returning the
@@ -132,15 +152,37 @@ extension OrgParser {
         if let (type, rest) = OrgParser.blockBeginLine(line),
            let end = blockEndIndex(openedAt: i, type: type, in: range) {
             // Content mode is decided from the `#+begin_` line alone, before any content is
-            // consumed (SCHEMA.md rule 3). Only the LITERAL modes are implemented; quote and
-            // center (elements), verse (objects), and every other type -- which org parses as
-            // an unmapped `special-block` -- still throw.
-            guard OrgParser.literalBlockTypes.contains(type) else {
+            // consumed (SCHEMA.md rule 3). All three modes are implemented: LITERAL (src,
+            // example, export, comment), ELEMENTS (quote, center) and OBJECTS (verse). Every
+            // other type is an unmapped `special-block` and still throws.
+            if OrgParser.literalBlockTypes.contains(type) {
+                return (literalBlockNode(
+                    type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
+                ), end + 1)
+            }
+            switch type {
+            case "quote", "center":
+                // GREATER elements: their children are ELEMENT nodes, so the body re-enters the
+                // element layer. Nothing about the body is literal -- a table, a fixed-width
+                // line or a comment inside a quote block is that element, measured.
+                return (.object([
+                    "type": .string(type == "quote" ? "quote-block" : "center-block"),
+                    "children": .array(try parseElementRun(in: (i + 1)..<end)),
+                    "postBlank": .int(0),
+                ]), end + 1)
+            case "verse":
+                // The one block whose children are OBJECTS rather than elements or a literal
+                // value (SCHEMA.md section 4). Its body is therefore parsed exactly like a
+                // paragraph's contents, newlines and all.
+                return (.object([
+                    "type": .string("verse-block"),
+                    "children": .array(try parseObjects(blockValue(bodyFrom: i + 1, to: end))),
+                    "postBlank": .int(0),
+                ]), end + 1)
+            default:
+                // Every other `#+begin_X` is a `special-block`, a type the schema does not map.
                 throw OrgError.notImplemented
             }
-            return (literalBlockNode(
-                type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
-            ), end + 1)
         }
 
         if !OrgParser.isUnimplementedHashPlusElement(line),

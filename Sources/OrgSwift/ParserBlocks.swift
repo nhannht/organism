@@ -7,9 +7,11 @@
 //     ELEMENTS  quote, center                    `children`, element nodes
 //     OBJECTS   verse                            `children`, object nodes
 //
-// This file implements the LITERAL four. Quote, center and verse still throw, and so does every
-// other `#+begin_X`, which org parses as a `special-block` -- a type `schema/org-node.schema.json`
-// does not map, so it must throw permanently rather than be approximated.
+// This file implements the LITERAL four; the node shapes for the other three live at their
+// dispatch in ParserElements.swift, since quote and center re-enter the element layer and verse
+// re-enters the object layer rather than building a value here. Every other `#+begin_X` is a
+// `special-block` -- a type `schema/org-node.schema.json` does not map, so it must throw
+// permanently rather than be approximated.
 //
 // The mode split is also what drives the pass-1 setting scan (`literalBodyLines`), because the
 // literal modes are exactly the ones whose contents yield no elements at all.
