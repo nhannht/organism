@@ -67,6 +67,17 @@ struct ConformanceTests {
         "todo-runtime-custom",
         // `#+STARTUP: odd` makes `level` and `trueLevel` genuinely diverge.
         "headline-odd-levels",
+        // LITERAL blocks: contents carried as `value`, never parsed (SCHEMA.md rule 3). The
+        // parsed-content block types -- quote and center (elements), verse (objects) -- are not
+        // implemented yet and still throw, as does every other `#+begin_X`, which org parses as
+        // an unmapped `special-block`.
+        "block-src-literal",
+        "block-src-switches",
+        "block-src-with-params",
+        "block-example-literal",
+        "block-example-switches",
+        "block-export-html",
+        "block-comment-literal",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

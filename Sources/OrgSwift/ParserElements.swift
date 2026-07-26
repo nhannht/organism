@@ -58,6 +58,24 @@ extension OrgParser {
                 continue
             }
 
+            // Blocks are dispatched BEFORE keywords and before the unimplemented-element check,
+            // because a `#+begin_X` line is claimed by neither and would otherwise throw.
+            if let (type, rest) = OrgParser.blockBeginLine(line),
+               let end = blockEndIndex(openedAt: i, type: type, in: range) {
+                // Content mode is decided from the `#+begin_` line alone, before any content is
+                // consumed (SCHEMA.md rule 3). Only the LITERAL modes are implemented; quote and
+                // center (elements), verse (objects), and every other type -- which org parses as
+                // an unmapped `special-block` -- still throw.
+                guard OrgParser.literalBlockTypes.contains(type) else {
+                    throw OrgError.notImplemented
+                }
+                elements.append(literalBlockNode(
+                    type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
+                ))
+                i = end + 1
+                continue
+            }
+
             if !OrgParser.isUnimplementedHashPlusElement(line),
                let (key, value) = OrgParser.keywordParts(of: line) {
                 // An AFFILIATED keyword attaches to the element on the very next line instead of

@@ -172,7 +172,9 @@ extension OrgParser {
     static func scanTodoKeywords(in lines: [Line]) -> Set<String>? {
         var declared: Set<String> = []
         var sawDeclaration = false
-        for line in lines where !isUnimplementedHashPlusElement(line) {
+        let literal = literalBodyLines(in: lines)
+        for (i, line) in lines.enumerated()
+        where !literal[i] && !isUnimplementedHashPlusElement(line) {
             guard let (key, value) = keywordParts(of: line),
                   key == "TODO" || key == "SEQ_TODO" || key == "TYP_TODO" else { continue }
             sawDeclaration = true
@@ -193,7 +195,9 @@ extension OrgParser {
     /// wrong. A `#+STARTUP:` line may carry several space-separated tokens, so the value is
     /// tokenized rather than compared whole.
     static func scanOddLevels(in lines: [Line]) -> Bool {
-        for line in lines where !isUnimplementedHashPlusElement(line) {
+        let literal = literalBodyLines(in: lines)
+        for (i, line) in lines.enumerated()
+        where !literal[i] && !isUnimplementedHashPlusElement(line) {
             guard let (key, value) = keywordParts(of: line), key == "STARTUP" else { continue }
             if value.split(whereSeparator: { $0 == " " || $0 == "\t" }).contains("odd") {
                 return true
