@@ -191,8 +191,13 @@ Rules:
 ### Lists
 
 - `list` -- `kind`: `"ordered"` | `"unordered"` | `"descriptive"`. `children`: `[item*]`.
-- `item` -- `bullet` (string, the literal bullet text actually used, e.g. `"-"`, `"+"`, `"1."`,
-  `"a)"`), `checkbox` (`"on"` | `"off"` | `"trans"` | `null` for `[X]`/`[ ]`/`[-]`/none),
+- `item` -- `bullet` (string, the literal bullet text actually used, TRAILING WHITESPACE
+  INCLUDED, e.g. `"- "`, `"+ "`, `"1. "`, `"a) "`. The whitespace is part of the value, not
+  formatting noise: `org-element` records `- one` as `"- "` and `-   three` as `"-   "`, and
+  Layer 2 byte-exact round-trip needs that distinction. An earlier revision trimmed it and
+  these examples were written against the trimmed form, which made them the one place in this
+  document disagreeing with sections 1 and 10 - see ORG-14),
+  `checkbox` (`"on"` | `"off"` | `"trans"` | `null` for `[X]`/`[ ]`/`[-]`/none),
   `counter` (int or `null`, `org-element`'s `:counter` - the explicit `[@N]` override, e.g. the
   `5` in `1. [@5] five`. Always present. Set on unordered items too, so `- [@5]` reports `5`.
   Note it is an INTEGER, not the source text: `1. [@c]` reports `3`, because `org-element`

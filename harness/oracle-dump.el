@@ -741,7 +741,12 @@ earlier, hand-picked allowlist wrongly excluded it - confirmed live via
 
            ('item
             (org-swift--make-node schema-type
-              `(("bullet" . ,(string-trim-right (or (org-swift--prop node :bullet) "")))
+              ;; The bullet is kept LITERAL, trailing whitespace included: `org-element'
+              ;; records `- ' and `-   ' distinctly, and SCHEMA.md sections 1, 4 and 10 all
+              ;; require that byte.  An earlier revision trimmed it, which made those two
+              ;; source lines produce an identical tree and put Layer 2 byte-exact
+              ;; round-trip out of reach for any list indented past one space (ORG-14).
+              `(("bullet" . ,(or (org-swift--prop node :bullet) ""))
                 ("checkbox" . ,(org-swift--symbol-or-null (org-swift--prop node :checkbox)))
                 ;; :counter is the explicit `[@N]' ordered-list counter
                 ;; override, nil when absent. Confirmed live against Emacs

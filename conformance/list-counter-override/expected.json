@@ -10,7 +10,7 @@
           "children": [
             {
               "type": "item",
-              "bullet": "1.",
+              "bullet": "1. ",
               "checkbox": null,
               "counter": 5,
               "tag": null,
@@ -31,7 +31,7 @@
             },
             {
               "type": "item",
-              "bullet": "2.",
+              "bullet": "2. ",
               "checkbox": null,
               "counter": null,
               "tag": null,
