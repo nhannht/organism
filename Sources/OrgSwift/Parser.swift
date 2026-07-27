@@ -141,7 +141,18 @@ struct OrgParser {
     /// `org-odd-levels-only`, from a `#+STARTUP: odd` line. See `OrgParser.scanOddLevels`.
     let oddLevels: Bool
 
+    /// Whether line 0 of `lines` was SLICED out of the middle of a source line, as an item's
+    /// first body line and a footnote definition's are.
+    ///
+    /// It is the sub-parser's stand-in for org narrowing the buffer to a region that does not
+    /// begin at a line start, and it exists because column 0 is load-bearing: a footnote
+    /// DEFINITION requires it, so `- [fn:1] x` is an item holding a REFERENCE rather than a
+    /// definition, measured. Without this the slice looks like column 0 and the wrong node is
+    /// built.
+    let firstLineIsSliced: Bool
+
     init(source: String, todoKeywords: [String]?) {
+        self.firstLineIsSliced = false
         self.source = source
 
         var built: [Line] = []
@@ -181,10 +192,11 @@ struct OrgParser {
     /// keyword set for that fragment alone, which is a second source of truth for a document-wide
     /// setting. `source` is empty because it feeds exactly one thing, `parseDocument`'s CRLF
     /// guard, and a sub-parser never runs it: the document was already validated as a whole.
-    init(lines: [Line], todoSet: Set<String>, oddLevels: Bool) {
+    init(lines: [Line], todoSet: Set<String>, oddLevels: Bool, firstLineIsSliced: Bool = false) {
         self.source = ""
         self.lines = lines
         self.todoSet = todoSet
         self.oddLevels = oddLevels
+        self.firstLineIsSliced = firstLineIsSliced
     }
 }

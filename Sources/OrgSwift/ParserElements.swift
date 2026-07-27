@@ -36,6 +36,59 @@ extension OrgParser {
         return (index, index - range.lowerBound)
     }
 
+    // MARK: Footnote definitions
+
+    /// A column-0 footnote DEFINITION opener, or nil.
+    ///
+    /// Only the STANDARD `[fn:LABEL]` form opens one. `[fn::body]` and `[fn:name:body]` carry a
+    /// second colon and are INLINE REFERENCES inside an ordinary paragraph, measured -- which is
+    /// why this reuses the shared `footnoteMatch` and rejects anything with a body, rather than
+    /// scanning to the first `]`.
+    ///
+    /// No space is required after the bracket: `[fn:1]x` and `[fn:1]: x` are both definitions,
+    /// with bodies `x` and `: x`.
+    func footnoteDefinitionMatch(_ line: Line) throws -> (label: String, end: Int)? {
+        guard let match = try footnoteMatch(in: line.text, at: 0),
+              match.body == nil, let label = match.label else { return nil }
+        return (label, match.end)
+    }
+
+    /// Where a footnote definition opened at `open` stops.
+    ///
+    /// The terminator set is far narrower than a reader assumes, and it was measured rather than
+    /// inferred. A definition ENDS at exactly three things, plus the end of the range:
+    ///
+    ///     [fn:1] a / [fn:2] b            another COLUMN-0 definition
+    ///     [fn:1] a / * H                 a headline (already outside `range`, by construction)
+    ///     [fn:1] a / blank / blank / b   TWO blank lines
+    ///
+    /// Everything else is a CHILD. One blank line does NOT end it -- it splits the body into two
+    /// paragraphs inside the definition -- and a src block, a horizontal rule, a keyword and a
+    /// table all land inside it too. So this is a container consuming an element run, and
+    /// "read until the next blank line" gets five of those wrong.
+    ///
+    /// Trailing blanks are left OUTSIDE the returned bound so `parseElementRun` attaches them as
+    /// this definition's `postBlank`, which is what produces the measured `postBlank` 2 on
+    /// `[fn:1]` followed by three blank lines and a paragraph.
+    func footnoteDefinitionEnd(openedAt open: Int, in range: Range<Int>) -> Int {
+        var contentEnd = open + 1
+        var blankRun = 0
+        var i = open + 1
+        while i < range.upperBound {
+            if lines[i].isBlank {
+                blankRun += 1
+                if blankRun == 2 { break }
+            } else {
+                if lines[i].contentStart == 0,
+                   (try? footnoteDefinitionMatch(lines[i])) ?? nil != nil { break }
+                blankRun = 0
+                contentEnd = i + 1
+            }
+            i += 1
+        }
+        return contentEnd
+    }
+
     // MARK: Sections and elements
 
     /// Parses a run of lines (already known to start and end at non-blank content boundaries --
@@ -237,6 +290,59 @@ extension OrgParser {
             }
         }
 
+        // FOOTNOTE DEFINITIONS. Column 0 only, and the label line may carry the first content.
+        if line.contentStart == 0, !(i == range.lowerBound && firstLineIsSliced && i == 0),
+           let match = try footnoteDefinitionMatch(line) {
+            let contentEnd = footnoteDefinitionEnd(openedAt: i, in: range)
+
+            var bodyLines: [Line] = []
+            // The whitespace run after `]` belongs to the marker, not the body: `[fn:1]   x`
+            // and `[fn:1]x` both have body `x`, measured, while `[fn:1]  : x` keeps its colon.
+            var bodyStart = match.end
+            while bodyStart < line.text.count,
+                  line.text[bodyStart] == " " || line.text[bodyStart] == "\t" {
+                bodyStart += 1
+            }
+            let firstRest = Array(line.text[bodyStart...])
+            if !firstRest.isEmpty {
+                bodyLines.append(Line(text: firstRest, hasNewline: line.hasNewline))
+            }
+            // The third `:pre-blank` carrier, sharing ORG-24's one derivation. It counts like an
+            // ITEM rather than a headline, because the label line CAN hold the first content.
+            //
+            // Unlike the item, the leading blanks ARE consumed here, and that is safe for a
+            // reason specific to this construct: the two-blank terminator is already applied by
+            // `footnoteDefinitionEnd`, so anything still inside this range is genuinely the
+            // definition's. Measured, and the one-blank row is the one a reader gets wrong:
+            //
+            //     [fn:1] Body.        preBlank 0, contents on the label line
+            //     [fn:1]<nl>Body.     preBlank 1
+            //     [fn:1]<nl><nl>Body. preBlank 2, contents STILL present
+            //     [fn:1] a<nl><nl>b   ONE blank SPLITS the body into TWO paragraphs INSIDE
+            // Leading blanks are skipped ONLY when the label line carries no content. With
+            // content on it the contents have already begun, so a following blank is INTERIOR
+            // and must reach the element run -- that is what splits `[fn:1] a` / blank / `b`
+            // into two paragraphs inside the definition rather than joining them into one.
+            let (contentFrom, blanks) = firstRest.isEmpty
+                ? OrgParser.contentsStart(in: lines, of: (i + 1)..<contentEnd)
+                : (i + 1, 0)
+            let preBlank = firstRest.isEmpty && contentFrom < contentEnd ? blanks + 1 : 0
+            for k in contentFrom..<contentEnd { bodyLines.append(lines[k]) }
+
+            let children = bodyLines.isEmpty ? [] : try OrgParser(
+                lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,
+                firstLineIsSliced: !firstRest.isEmpty
+            ).parseElementRun(in: 0..<bodyLines.count)
+
+            return (.object([
+                "type": .string("footnote-definition"),
+                "label": .string(match.label),
+                "preBlank": .int(preBlank),
+                "children": .array(children),
+                "postBlank": .int(0),
+            ]), contentEnd)
+        }
+
         // Dynamic blocks, dispatched here for the same reason `#+begin_X` is: the opener is
         // claimed by `isUnimplementedHashPlusElement` and would otherwise throw.
         //
@@ -300,7 +406,12 @@ extension OrgParser {
             return (drawer.node, drawer.next)
         }
 
-        if OrgParser.isFixedWidthLine(line) {
+        // `fixed-width` is COLUMN 0 only, by its own predicate, so it cannot start on a SLICED
+        // first line -- that position is mid-line in the source. Measured on both carriers of a
+        // slice: `- : x` and `[fn:1]: x` are each a PARAGRAPH whose text is `: x`, not a
+        // fixed-width area. The item half of that was a pre-existing wrong tree.
+        if !(i == range.lowerBound && i == 0 && firstLineIsSliced),
+           OrgParser.isFixedWidthLine(line) {
             return parseFixedWidth(at: i, in: range)
         }
 
@@ -320,12 +431,23 @@ extension OrgParser {
                 // Both are measured: `text` then `| a |` is a paragraph AND a table, never one
                 // paragraph, and the same holds for `text` then `: a`.
                 || OrgParser.isTableLine(candidate)
-                || OrgParser.isFixedWidthLine(candidate)
+                || (OrgParser.isFixedWidthLine(candidate)
+                    && !(i == 0 && firstLineIsSliced))
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
                 // paragraph and START a child list. Without it the bullet line is swallowed as
                 // paragraph text ("one\n  - nested\n") and nesting silently disappears.
                 || OrgParser.bulletMatch(of: candidate) != nil
+                // A column-0 footnote definition INTERRUPTS an open paragraph with no blank line
+                // between them, measured: `text` then `[fn:1] a` is a paragraph AND a
+                // definition. Same reason tables and fixed-width lines are on this list.
+                // `i > paragraphStart` for the same reason the bare-star line has it: a definition
+                // line ENDS the paragraph before it, but is the START of its own node, so it must
+                // not break the paragraph it opens. Without that this loops forever on a SLICED
+                // first line, where the definition dispatch is gated off but the line still looks
+                // like one -- `- [fn:1] x` hangs.
+                || (i > paragraphStart && candidate.contentStart == 0
+                    && ((try? footnoteDefinitionMatch(candidate)) ?? nil) != nil)
                 // A bare-star line ENDS the paragraph it follows, but is content of the one
                 // it opens, so it only breaks when it is not the line we started on.
                 || (isBareStarLine(candidate) && i > paragraphStart) {
@@ -500,7 +622,11 @@ extension OrgParser {
         //
         // so the paragraph path is org's own answer for all of them, and it reaches it only
         // because timestamps parse as objects now.
-        for prefix in ["CLOCK:", "%%(", "[fn:"] {
+        // `[fn:` is GONE from this list: a column-0 standard form is now a real definition, and
+        // every other `[fn:` shape is an INLINE REFERENCE inside an ordinary paragraph, which
+        // the object layer handles. An indented one is a paragraph too, and stays refused by the
+        // indentation guard above rather than by a prefix.
+        for prefix in ["CLOCK:", "%%("] {
             if line.text[s...].starts(with: prefix.unicodeScalars) { return true }
         }
         return false

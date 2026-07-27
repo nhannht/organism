@@ -90,6 +90,12 @@ struct ConformanceTests {
         // `useBrackets`, while parentheses are kept and do not.
         "subscript-simple",
         "superscript-simple",
+        // Footnotes. The definition is a CONTAINER consuming an element run: one blank line
+        // splits its body into two paragraphs INSIDE it, and only another column-0 `[fn:N]`, a
+        // headline or TWO blank lines end it. Neither fixture reaches that boundary.
+        "footnote-definition-simple",
+        "footnote-definition-preblank",
+        "footnote-reference-simple",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",

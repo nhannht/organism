@@ -303,7 +303,8 @@ extension OrgParser {
         for k in bodyFrom..<bodyEnd { bodyLines.append(lines[k]) }
 
         let children = bodyLines.isEmpty ? [] : try OrgParser(
-            lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels
+            lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,
+            firstLineIsSliced: !firstRest.isEmpty
         ).parseElementRun(in: 0..<bodyLines.count)
 
         // An item with an EMPTY body reports postBlank 1, and blank lines after it add to that

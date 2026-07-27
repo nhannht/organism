@@ -451,6 +451,37 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
+                // Gated on the container's own row, which is what stops ORG-23 recurring: a link
+                // description REFUSES `footnote-reference`, and org keeps `[fn:1]` there as
+                // plain text. Without this gate increment 4 would have added a wrong tree of
+                // exactly the class ORG-23 closed.
+                if container.permits(.footnoteReference),
+                   let match = try footnoteMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    var fields: [String: OrgJSON] = [
+                        "type": .string("footnote-reference"),
+                        "label": match.label.map(OrgJSON.string) ?? .null,
+                        "inline": .bool(match.body != nil),
+                        "postBlank": .int(postBlank),
+                    ]
+                    // `children` is present ONLY when inline is true -- absent entirely, not an
+                    // empty array, when it is false. The schema enforces that with an if/then.
+                    if let body = match.body {
+                        fields["children"] = .array(try parseObjects(
+                            String(scalars: chars[body]), in: .footnoteReference
+                        ))
+                    }
+                    nodes.append(.object(fields))
+                    i = k
+                    textStart = k
+                    continue
+                }
                 if container.permits(.statisticsCookie),
                    let end = statisticsCookieEnd(in: chars, at: i) {
                     flushText(upTo: i)
@@ -608,6 +639,64 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// A matched `[fn:` construct: where it ends, its label, and its inline body when it has one.
+    ///
+    /// One matcher serves both footnote types because they share the grammar up to the label.
+    /// What separates them is the SECOND COLON, and it is the trap: at column 0,
+    ///
+    ///     [fn:1] body        a footnote DEFINITION, body is an element run
+    ///     [fn::body]         a PARAGRAPH holding an anonymous inline REFERENCE
+    ///     [fn:name:body]     a PARAGRAPH holding a named inline REFERENCE
+    ///
+    /// so a definition parser that scans to the first `]` swallows both inline forms. Measured.
+    ///
+    /// The label class is `[-_[:word:]]+`, and `[:word:]` is Unicode-aware -- `[fn:café]` is a
+    /// real definition. That is the same undecidable class as the dynamic-block name and the
+    /// sub/superscript body, so it is ASCII-only here and a non-ASCII scalar where the label
+    /// could continue THROWS rather than guessing. Fourth construct with that shape; all four
+    /// narrow together when the class is enumerated once.
+    struct FootnoteMatch {
+        let end: Int
+        let label: String?
+        let body: Range<Int>?
+    }
+
+    /// `[-_[:word:]]`, ASCII half only. See `FootnoteMatch`.
+    private static func isFootnoteLabelScalar(_ s: Unicode.Scalar) -> Bool {
+        (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+            || s == "-" || s == "_"
+    }
+
+    /// Matches a `[fn:` construct at `i`, or nil when there is none.
+    func footnoteMatch(in chars: [Unicode.Scalar], at i: Int) throws -> FootnoteMatch? {
+        let prefix = Array("[fn:".unicodeScalars)
+        guard i + prefix.count <= chars.count else { return nil }
+        for (offset, expected) in prefix.enumerated() where chars[i + offset] != expected {
+            return nil
+        }
+        var j = i + prefix.count
+        let labelStart = j
+        while j < chars.count, OrgParser.isFootnoteLabelScalar(chars[j]) { j += 1 }
+        // A non-ASCII scalar sitting where the label could continue is undecidable, exactly as
+        // in `dynamicBlockBeginLine`. Declining is the only safe answer.
+        if j < chars.count, !chars[j].isASCII { throw OrgError.notImplemented }
+        let label = j > labelStart ? String(scalars: chars[labelStart..<j]) : nil
+
+        guard j < chars.count else { return nil }
+        if chars[j] == "]" {
+            // A STANDARD reference. `[fn:]` with no label is not one at all.
+            guard label != nil else { return nil }
+            return FootnoteMatch(end: j + 1, label: label, body: nil)
+        }
+        guard chars[j] == ":" else { return nil }
+        // INLINE. The body runs to the bracket matching the opener, so a `[...]` inside it is
+        // carried rather than ending it.
+        guard let end = balancedEnd(
+            in: chars, openAt: i, opener: "[", closer: "]", maxDepth: Int.max
+        ) else { return nil }
+        return FootnoteMatch(end: end, label: label, body: (j + 1)..<(end - 1))
     }
 
     /// A matched `_` or `^` script: where it ends, the region to re-parse as its children, and
