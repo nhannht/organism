@@ -600,6 +600,23 @@ extension OrgParser {
     /// A multi-scalar Swift fold maps to the identity, which is the measured Emacs answer for the
     /// one scalar whose folds differ in SHAPE: U+0130 does not fold to `i`, and matches only
     /// itself.
+    ///
+    /// **There IS a `.lowercased()` call below, and the invariant that makes it safe is not
+    /// visible from the call site, so it is stated here.** The tables are consulted FIRST and
+    /// between them cover every scalar where the two authorities disagree; `.lowercased()` runs
+    /// only on the residue, where they provably agree. That rests on a full-space enumeration of
+    /// all 1,114,112 scalars, which found exactly four classes and no fifth:
+    ///
+    ///     canon folds, Swift does not         21   ->  radioCanonExtra
+    ///     Swift folds, canon does not         56   ->  radioCanonDeclined
+    ///     both fold, to DIFFERENT values       0   <-- the load-bearing zero
+    ///     Swift fold is multi-scalar           1   ->  the count guard below (U+0130)
+    ///
+    /// The zero is what licenses the fallthrough. If a future Unicode or Emacs revision makes it
+    /// non-zero, this function is silently wrong for every scalar in that class and no table
+    /// lookup here will say so -- re-run the enumeration on any toolchain bump, per ORG-17.
+    /// Do NOT "simplify" this by deleting a table: each one is the complement of a measurement,
+    /// not a list of special cases.
     static func radioCanon(_ s: Unicode.Scalar) -> Unicode.Scalar {
         if let mapped = radioCanonExtra[s.value] { return Unicode.Scalar(mapped)! }
         for range in radioCanonDeclined where range.contains(s.value) { return s }
