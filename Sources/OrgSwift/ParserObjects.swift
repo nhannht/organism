@@ -164,15 +164,48 @@ extension ObjectContainer {
     }
 
     /// Whether an object of `kind` may form directly inside this container.
-    ///
-    /// Only `.lineBreak` is asked today. Every other row is data that no code path reads yet, and
-    /// that is deliberate: this type landed as a behaviour-preserving refactor, and a restriction
-    /// starts being consulted in the increment that implements the object it restricts, with its
-    /// own differential sweep behind it.
     func permits(_ kind: ObjectKind) -> Bool { permittedObjects.contains(kind) }
+
+    /// Whether ANY of `kinds` may form directly inside this container.
+    ///
+    /// Used to decide whether a `throw` is still earned. A branch that refuses to guess at an
+    /// unimplemented construct is only correct while the container admits such a construct at
+    /// all; where it admits none, the character is ordinary text and throwing would be inventing
+    /// a refusal org does not have. See `angleOpenableObjects`.
+    func permitsAny(of kinds: Set<ObjectKind>) -> Bool {
+        !permittedObjects.isDisjoint(with: kinds)
+    }
 }
 
 extension OrgParser {
+
+    /// The object types that can BEGIN with `<`, and with `[`.
+    ///
+    /// These decide when the matching branch in `parseObjects` has still earned its `throw`. That
+    /// throw exists to keep an unimplemented construct VISIBLE, so it is correct exactly while the
+    /// container admits some construct that could start there. Where the container admits none,
+    /// the character is ordinary text, and throwing would invent a refusal org does not have.
+    ///
+    /// A link description refuses `link`, `radio-target`, `target` and `timestamp`, which is all
+    /// four of `<`'s openers, so a `<` inside one can only ever be text. Measured:
+    ///
+    ///     [[http://x][a <<t>> b]]           description is ONE text node `a <<t>> b`
+    ///     [[http://x][a <<<rt>>> b]]        description is ONE text node
+    ///     [[http://x][<2024-01-01 Mon>]]    description is ONE text node
+    ///
+    /// **`[` is not symmetric with it, and that asymmetry is the trap.** A link description
+    /// PERMITS `statistics-cookie`, so `[` keeps throwing there even though `footnote-reference`
+    /// and `citation` are refused and org keeps both as plain text. Measured, both halves:
+    ///
+    ///     [[http://x][a [1/2] b]]           text, STATISTICS-COOKIE, text   -- so `[` can open
+    ///     [[http://x][a [fn:1] b]]          description is ONE text node    -- but this is text
+    ///
+    /// Over-throwing on the cookie's account is correct until cookies are implemented. Guessing
+    /// which `[` construct is present in order to text-ify the other two is not, and it is exactly
+    /// the shape that produced ORG-19.
+    static let angleOpenableObjects: Set<ObjectKind> = [.link, .radioTarget, .target, .timestamp]
+    static let bracketOpenableObjects: Set<ObjectKind> =
+        [.link, .timestamp, .footnoteReference, .citation, .statisticsCookie]
 
     /// True when a PLAIN link could begin at `i` -- the guard that stops a plain link this parser
     /// cannot DELIMIT from silently flattening into plain text.
@@ -341,21 +374,31 @@ extension OrgParser {
             // a form org links and this parser cannot delimit, and it MUST throw: flattening it
             // into text is the silent wrong tree ORG-19 and ORG-21 were both about, and no gate
             // would show it.
-            if let end = plainLinkEnd(in: chars, at: i) {
-                flushText(upTo: i)
-                let match = LinkMatch(
-                    end: end,
-                    linkType: "plain",
-                    rawTarget: Array(chars[i..<end]),
-                    description: nil
-                )
-                let (node, next) = try linkNode(match, in: chars)
-                nodes.append(node)
-                i = next
-                textStart = next
-                continue
+            //
+            // BOTH steps are inside the permission check, and that is ORG-23. A container that
+            // refuses `link` does not merely decline to build the node -- org's lexer never looks
+            // for one, so the characters are ordinary text and the wide guard must not fire
+            // either. Running the scan unconditionally is what shipped five wrong trees:
+            //
+            //     [[http://x][see http://y now]]   org: description is ONE text node
+            //                                      us:  text + LINK + text
+            if container.permits(.link) {
+                if let end = plainLinkEnd(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let match = LinkMatch(
+                        end: end,
+                        linkType: "plain",
+                        rawTarget: Array(chars[i..<end]),
+                        description: nil
+                    )
+                    let (node, next) = try linkNode(match, in: chars)
+                    nodes.append(node)
+                    i = next
+                    textStart = next
+                    continue
+                }
+                if plainLinkCouldStart(in: chars, at: i) { throw OrgError.notImplemented }
             }
-            if plainLinkCouldStart(in: chars, at: i) { throw OrgError.notImplemented }
 
             switch c {
             case "\\":
@@ -380,7 +423,7 @@ extension OrgParser {
                 // none of them is implemented. So the fallthrough here is `throw`, not "treat as
                 // text" -- a bare `[` org keeps as literal text throws too, which over-throws by
                 // exactly the amount that keeps every unimplemented `[` construct visible.
-                if let match = try bracketLinkMatch(in: chars, at: i) {
+                if container.permits(.link), let match = try bracketLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
                     nodes.append(node)
@@ -388,7 +431,7 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if let match = timestampMatch(in: chars, at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = timestampNode(match, in: chars)
                     nodes.append(node)
@@ -396,14 +439,22 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                throw OrgError.notImplemented
+                // Still throwing wherever ANY `[` construct is legal, which is every container
+                // this parser builds today -- a link description refuses three of the five but
+                // permits `statistics-cookie`, so it throws with the rest. See
+                // `bracketOpenableObjects` for why that is not symmetric with `<`.
+                if container.permitsAny(of: Self.bracketOpenableObjects) {
+                    throw OrgError.notImplemented
+                }
             case "<":
                 // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
                 // from the other `<` constructs: targets (`<<x>>`), radio targets (`<<<x>>>`),
                 // active timestamps (`<2024-01-01 Mon>`) and diary sexps (`<%%(...)>`). Measured:
                 // `<fuzzy thing>` is plain text, so requiring the type is org's own rule, not a
-                // narrowing. Everything else throws, same reasoning as `[`.
-                if let match = try angleLinkMatch(in: chars, at: i) {
+                // narrowing. Everything else throws WHERE ANY of them is legal -- and in a link
+                // description none of the four is, which is the one place this falls through to
+                // text instead. See `angleOpenableObjects`.
+                if container.permits(.link), let match = try angleLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
                     nodes.append(node)
@@ -411,7 +462,7 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if let match = timestampMatch(in: chars, at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = timestampNode(match, in: chars)
                     nodes.append(node)
@@ -419,7 +470,9 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                throw OrgError.notImplemented
+                if container.permitsAny(of: Self.angleOpenableObjects) {
+                    throw OrgError.notImplemented
+                }
             case "$":
                 // Latex fragments. Unimplemented.
                 throw OrgError.notImplemented

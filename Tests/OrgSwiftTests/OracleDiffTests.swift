@@ -50,6 +50,7 @@ struct OracleDiffTests {
         "real/org-mode-samples/tags.org",
         "real/doomemacs-docs/index.org",
         "real/doomemacs-docs/contributing.org",
+        "real/doomemacs-docs/examples.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)
