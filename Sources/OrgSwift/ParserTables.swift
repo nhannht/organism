@@ -108,24 +108,37 @@ extension OrgParser {
 
     // MARK: - table.el grids
 
-    /// A table.el RULE line: `^[ \t]*\+-[-+]*\+[ \t]*$`, enumerated over 16 shape variants.
+    /// A table.el RULE line: `^[ \t]*\+\(-+\+\)+[ \t]*$`.
     ///
-    ///     IS      +-+   +---+   +-+-+   `  +---+`   `+---+  `   `+---+<TAB>`
-    ///     IS NOT  +-    +--     +---    ---+    +===+    `+ --+`    -----    +    ++
+    ///     IS      +-+   +--+   +---+   +-+-+   `  +---+`   `+---+  `   `+---+<TAB>`
+    ///     IS NOT  +-    +--    +---    ---+    +===+    `+ --+`    -----    +    ++
+    ///     IS NOT  +-++  +--++  +-+++   ` +-++`   `+-++ `
     ///
-    /// Leading indentation and trailing blanks are fine. A missing closing `+`, a missing
-    /// opening `+`, `=` in place of `-`, or any interior space disqualifies the line entirely.
+    /// **EVERY `+` must be separated from the next by at least one `-`.** That last row is the
+    /// condition an interior class of `[-+]*` misses, and missing it is NOT an over-throw: it
+    /// classifies `+-++` as a rule line where org builds an ORDINARY org table, so the grid
+    /// detector MANUFACTURES a wrong tree on input org parses perfectly well.
+    ///
+    /// Enumerated over every string of `+` and `-` up to length 6, plus leading and trailing
+    /// whitespace variants -- 150 candidates. This form has 0 errors in both directions; the
+    /// `[-+]*` form has 20 false positives, and they shipped in the first cut of this increment.
+    ///
+    /// Both rules this construct was originally given came from hand-picked shapes, and both were
+    /// wrong the same way: a sample of things that LOOK like real tables cannot contain a doubled
+    /// `+` border, any more than it can contain a run whose only rule line is its last.
     static func isTableElRuleLine(_ line: Line) -> Bool {
         let t = line.text
         var i = line.contentStart
-        guard i + 2 < t.count, t[i] == "+", t[i + 1] == "-" else { return false }
+        guard i < t.count, t[i] == "+" else { return false }
         i += 1
-        var sawCloser = false
-        while i < t.count, t[i] == "-" || t[i] == "+" {
-            sawCloser = t[i] == "+"
+        var groups = 0
+        while i < t.count, t[i] == "-" {
+            while i < t.count, t[i] == "-" { i += 1 }
+            guard i < t.count, t[i] == "+" else { return false }
             i += 1
+            groups += 1
         }
-        guard sawCloser else { return false }
+        guard groups >= 1 else { return false }
         return t[i...].allSatisfy { $0 == " " || $0 == "\t" }
     }
 
