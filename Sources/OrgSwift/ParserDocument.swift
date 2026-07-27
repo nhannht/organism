@@ -83,9 +83,10 @@ extension OrgParser {
                 : lines.count
             let region = (entry.index + 1)..<regionEnd
 
-            var contentStart = region.lowerBound
-            while contentStart < region.upperBound, lines[contentStart].isBlank { contentStart += 1 }
-            let leadingBlanks = contentStart - region.lowerBound
+            // `region` opens on the line AFTER the headline, because a headline line never holds
+            // its own section. That is this call site's half of the `preBlank` rule; the shared
+            // half is in `contentsStart`.
+            let (contentStart, leadingBlanks) = OrgParser.contentsStart(in: lines, of: region)
 
             if contentStart < region.upperBound {
                 // The headline has section content: blanks between the headline line and that

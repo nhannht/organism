@@ -5,6 +5,37 @@
 
 extension OrgParser {
 
+    // MARK: pre-blank
+
+    /// Where a construct's contents actually begin inside `range`, and how many blank lines were
+    /// skipped to get there.
+    ///
+    /// **This is the one place `:pre-blank` is derived.** org-element tracks that property on
+    /// exactly three node types -- `headline`, `item` and `footnote-definition` (`inlinetask` is
+    /// the fourth, unmapped) -- and they share one rule: contents start at the first non-blank
+    /// line, and the blanks skipped on the way are the construct's `preBlank`.
+    ///
+    /// It exists because they did NOT share it. `headline` computed this inline, `item`
+    /// hardcoded `.int(0)`, and nothing made them agree, which is ORG-24: `-` followed by an
+    /// indented `a` on the next line is `pre-blank` 1 in org and was 0 here, a silent wrong tree
+    /// no gate could see. A third hand-rolled copy was about to land with footnote definitions,
+    /// so the divergence is closed before the third carrier rather than after it.
+    ///
+    /// The per-type part that is NOT shared, and must not be: WHICH line can first hold contents.
+    /// A headline line never holds its section, so its range opens on the line after it. A bullet
+    /// line usually does hold the item's first line, so an item's count starts on the bullet line
+    /// itself and the caller adds that line back. Measured, and the two tables only line up once
+    /// that difference is stated:
+    ///
+    ///     * h<nl>content        headline preBlank 0     - a          item preBlank 0
+    ///     * h<nl><nl>content    headline preBlank 1     -<nl>  a     item preBlank 1
+    ///                                                   -<nl><nl>  a item preBlank 2
+    static func contentsStart(in lines: [Line], of range: Range<Int>) -> (index: Int, blanks: Int) {
+        var index = range.lowerBound
+        while index < range.upperBound, lines[index].isBlank { index += 1 }
+        return (index, index - range.lowerBound)
+    }
+
     // MARK: Sections and elements
 
     /// Parses a run of lines (already known to start and end at non-blank content boundaries --

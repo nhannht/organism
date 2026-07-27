@@ -245,6 +245,21 @@ extension OrgParser {
         if !firstRest.isEmpty {
             bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline))
         }
+        // ORG-24. The bullet line CAN hold the item's first content, unlike a headline line, so
+        // this call site's `preBlank` counts from the bullet line itself. When the bullet line
+        // carries content the answer is 0 whatever follows; otherwise the bullet line is the
+        // first skipped line, hence the `+ 1`. Measured: `-` then `  a` is 1, with a blank line
+        // between them 2, and an item whose body is entirely blank is 0 with the blanks becoming
+        // `postBlank` instead.
+        let (contentFrom, blanksBefore) = OrgParser.contentsStart(in: lines, of: bodyFrom..<bodyEnd)
+        let preBlank = firstRest.isEmpty && contentFrom < bodyEnd ? blanksBefore + 1 : 0
+        // The leading blanks are NOT consumed here, deliberately. Handing them to the element run
+        // keeps `-` then a blank then `  a` THROWING, which is where it already was. Consuming
+        // them makes that shape parse -- and the shape one blank further on, `-` then two blanks
+        // then `  a`, parse WRONGLY: two blank lines END an item body in org, so `  a` is a
+        // sibling paragraph, and this parser would swallow it into the item. That terminator is
+        // the list parser's to own, not `preBlank`'s, so ORG-24 fixes the count and leaves the
+        // over-throw standing rather than trading it for a wrong tree.
         for k in bodyFrom..<bodyEnd { bodyLines.append(lines[k]) }
 
         let children = bodyLines.isEmpty ? [] : try OrgParser(
@@ -268,7 +283,7 @@ extension OrgParser {
             "counter": counter,
             "tag": tag,
             "children": .array(children),
-            "preBlank": .int(0),
+            "preBlank": .int(preBlank),
             "postBlank": .int(base),
         ]), descriptive, base)
     }
