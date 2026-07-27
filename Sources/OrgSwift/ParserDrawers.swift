@@ -98,11 +98,22 @@ extension OrgParser {
 
     /// Parses the drawer opened at `i`, or returns nil when it is unpaired (an unpaired opener is
     /// paragraph text in EVERY position, which the caller's paragraph path then handles).
+    /// Index of the `:END:` closing a drawer opened at `i`, or nil when no drawer opens there.
+    ///
+    /// ORG-27. This is the pairing test `parseDrawer` already performed inline, extracted so the
+    /// PARAGRAPH BOUNDARY can ask the same question without building the node. It has to be the
+    /// same question: an UNPAIRED `:LOGBOOK:` is ordinary paragraph text in every position, so a
+    /// boundary keyed on the name alone would split a paragraph org keeps whole.
+    func drawerCloseIndex(openedAt i: Int, in range: Range<Int>) -> Int? {
+        guard OrgParser.drawerName(of: lines[i]) != nil else { return nil }
+        return pairedCloseIndex(openedAt: i, upperBound: range.upperBound) {
+            OrgParser.isDrawerEndLine($0)
+        }
+    }
+
     func parseDrawer(at i: Int, in range: Range<Int>) throws -> (node: OrgJSON, next: Int)? {
         guard let name = OrgParser.drawerName(of: lines[i]) else { return nil }
-        guard let end = pairedCloseIndex(openedAt: i, upperBound: range.upperBound, isCloser: {
-            OrgParser.isDrawerEndLine($0)
-        }) else { return nil }
+        guard let end = drawerCloseIndex(openedAt: i, in: range) else { return nil }
 
         let body = (i + 1)..<end
 

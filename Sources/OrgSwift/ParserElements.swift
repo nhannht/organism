@@ -517,6 +517,14 @@ extension OrgParser {
                 // between them, measured: `text` then `[fn:1] a` is a paragraph AND a definition.
                 || (candidate.contentStart == 0
                     && ((try? footnoteDefinitionMatch(candidate)) ?? nil) != nil)
+                // ORG-27. A PAIRED drawer opener ends the paragraph before it, exactly as a
+                // table or a fixed-width line does. Without this the drawer and everything the
+                // element run would have built after it are swallowed into the paragraph's text
+                // -- CONTENT LOSS rather than a mis-shaped tree, and it happened in every
+                // container: top level, a headline section, an item body, a quote block and a
+                // footnote definition. Unpaired openers are excluded by construction, since
+                // `drawerCloseIndex` is the same pairing test `parseDrawer` uses.
+                || drawerCloseIndex(openedAt: i, in: range) != nil
                 || isBareStarLine(candidate) {
                 break
             }
