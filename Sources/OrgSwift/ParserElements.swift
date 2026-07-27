@@ -232,9 +232,11 @@ extension OrgParser {
         // `bolp` false, so NO element can open on it. It is paragraph content whatever it looks
         // like, and this is ONE rule rather than a column-0 gate per construct.
         //
-        // Enumerated over 16 constructs x 3 carriers before it was written, and 9 constructs were
-        // wrong on each of the two sliced carriers -- 18 wrong trees. Every oracle answer had the
-        // same shape, which is what makes one rule right and nine gates wrong:
+        // Enumerated over 13 constructs x 3 carriers before it was written, and 9 constructs were
+        // wrong on each of the two sliced carriers -- 18 wrong trees.
+        //
+        // ORG's answer, which had the SAME shape for every one of them -- that sameness is what
+        // makes one rule right and nine gates wrong:
         //
         //     - - inner            ONE item, paragraph text `- inner`, NOT a nested list
         //     - # c                paragraph text `# c`, not a comment
@@ -242,11 +244,18 @@ extension OrgParser {
         //     - | a | b |          paragraph text, not a table
         //     - #+TITLE: x         paragraph text, not a keyword
         //     [fn:1] :D: / :END:   paragraph text, not a drawer
-        //     [fn:1] #+begin_src   paragraph text -- with `_s` lexing as a SUBSCRIPT
+        //     [fn:1] #+begin_src   paragraph text, with `_s` lexing as a SUBSCRIPT
         //
-        // The last row is the one that shows this is org's own model rather than a special case:
-        // the slice is lexed as ordinary paragraph OBJECTS, so `#+begin_src` yields a subscript.
-        // The 12 column-0 controls all matched before and after.
+        // That last row shows this is org's own model rather than a special case: the slice is
+        // lexed as ordinary paragraph OBJECTS, so `#+begin_src` yields a subscript.
+        //
+        // THIS PARSER's answer, which is not identical to org's and should not be read as if it
+        // were: 8 of the 9 now produce org's tree. `src-block` OVER-THROWS instead, because the
+        // paragraph ends at the closing `#+end_src` and that line is still an unimplemented
+        // element start on its own. Safe direction, and it is a THROW rather than a match.
+        //
+        // The 12 COLUMN-0 controls matched before this rule and after it, which is what shows it
+        // narrows the sliced carriers and nothing else.
         if i == 0, firstLineIsSliced {
             return try parseParagraph(at: i, in: range)
         }
