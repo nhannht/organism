@@ -447,6 +447,37 @@ extension OrgParser {
             return parseFixedWidth(at: i, in: range)
         }
 
+        // table.el grids, dispatched BEFORE org tables because the two kinds sit adjacent: `| a |`
+        // then two rule lines is an ORG table followed by a SEPARATE table.el grid, and the split
+        // is at the first rule line. `isTableLine` tests only for a leading `|`, so it never
+        // claims a rule line and the org table above stops there of its own accord.
+        //
+        // A rule line that opens NO grid falls through untouched, which is the important half:
+        // org parses a lone `+---+` as a paragraph containing a STRIKE-THROUGH, so the emphasis
+        // guard's refusal is correct behaviour and this must not replace it. See `tableElEnd`.
+        if OrgParser.isTableElRuleLine(line), let end = tableElEnd(openedAt: i, in: range) {
+            var value = ""
+            for lineIndex in i..<end {
+                value.append(String(scalars: lines[lineIndex].text))
+                if lines[lineIndex].hasNewline { value.append("\n") }
+            }
+            var formulas: [OrgJSON] = []
+            var next = end
+            while next < range.upperBound, let formula = OrgParser.tblfmValue(of: lines[next]) {
+                formulas.append(.string(formula))
+                next += 1
+            }
+            // A LEAF: `value` is the raw literal grid and there is no `children` key at all.
+            // org-element never decomposes a table.el grid into rows and cells, so the two table
+            // shapes are genuinely different nodes rather than one node with an empty `children`.
+            return (.object([
+                "type": .string("table"),
+                "tblfm": formulas.isEmpty ? .null : .array(formulas),
+                "value": .string(value),
+                "postBlank": .int(0),
+            ]), next)
+        }
+
         if OrgParser.isTableLine(line) {
             return try parseTable(at: i, in: range)
         }

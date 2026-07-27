@@ -106,6 +106,71 @@ extension OrgParser {
         return false
     }
 
+    // MARK: - table.el grids
+
+    /// A table.el RULE line: `^[ \t]*\+-[-+]*\+[ \t]*$`, enumerated over 16 shape variants.
+    ///
+    ///     IS      +-+   +---+   +-+-+   `  +---+`   `+---+  `   `+---+<TAB>`
+    ///     IS NOT  +-    +--     +---    ---+    +===+    `+ --+`    -----    +    ++
+    ///
+    /// Leading indentation and trailing blanks are fine. A missing closing `+`, a missing
+    /// opening `+`, `=` in place of `-`, or any interior space disqualifies the line entirely.
+    static func isTableElRuleLine(_ line: Line) -> Bool {
+        let t = line.text
+        var i = line.contentStart
+        guard i + 2 < t.count, t[i] == "+", t[i + 1] == "-" else { return false }
+        i += 1
+        var sawCloser = false
+        while i < t.count, t[i] == "-" || t[i] == "+" {
+            sawCloser = t[i] == "+"
+            i += 1
+        }
+        guard sawCloser else { return false }
+        return t[i...].allSatisfy { $0 == " " || $0 == "\t" }
+    }
+
+    /// Index just past a `table.el` grid opening at `start`, or nil when this rule line opens
+    /// none.
+    ///
+    /// **Detection needs the whole RUN, and this is the correction that matters.** The obvious
+    /// rule -- "a `+---+` line starts a table.el table" -- is wrong in both directions and would
+    /// MANUFACTURE a wrong tree, because org genuinely parses a lone `+---+` as a paragraph
+    /// containing a STRIKE-THROUGH. So the current refusal at the emphasis guard is correct
+    /// behaviour rather than a lucky accident, and a single-line detector would replace it.
+    ///
+    /// The rule, enumerated over every R/D sequence up to length 4 (R a rule line, D a `|` row),
+    /// 30 cases with 0 mispredictions:
+    ///
+    ///     from the FIRST rule line, the contiguous run must
+    ///       (a) END on a rule line, AND
+    ///       (b) contain AT LEAST TWO rule lines
+    ///
+    /// Condition (b) is the one a first pass misses. `R`, `DR`, `DDR` and `DDDR` all END on a
+    /// rule line and are NOT table.el grids -- their only rule line is the last one. A sample of
+    /// hand-picked shapes hides that, because every natural example carries two.
+    ///
+    /// Condition (a) is why the run is classified from the first rule line rather than as a
+    /// whole: `RRD` and `DRRD` hold two rule lines and are still not grids. And `DRR` is an
+    /// ORDINARY org table followed by a SEPARATE table.el grid, so the two kinds sit adjacent
+    /// with the split at the first rule line.
+    func tableElEnd(openedAt start: Int, in range: Range<Int>) -> Int? {
+        var i = start
+        var lastRule = start
+        var ruleCount = 0
+        while i < range.upperBound,
+              OrgParser.isTableElRuleLine(lines[i]) || OrgParser.isTableLine(lines[i]) {
+            if OrgParser.isTableElRuleLine(lines[i]) {
+                ruleCount += 1
+                lastRule = i
+            }
+            i += 1
+        }
+        // (a) the run must END on a rule line -- `lastRule` being the final line consumed --
+        // and (b) it must carry at least two.
+        guard ruleCount >= 2, lastRule == i - 1 else { return nil }
+        return i
+    }
+
     /// A rule row (`|---+---|`). Org's test is the whole of `"^[ \t]*|-"`
     /// (`org-element-table-row-parser`): a `|` immediately followed by `-`, and nothing more.
     ///

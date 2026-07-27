@@ -100,6 +100,11 @@ struct ConformanceTests {
         // an entity and a `\name` fragment are told apart by a lookup in org's 414-name table,
         // not by shape, so narrowing further needs the whole table.
         "latex-fragment-inline",
+        // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
+        // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
+        // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a
+        // correct refusal with a wrong tree.
+        "table-el-flavour",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",
