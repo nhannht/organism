@@ -615,6 +615,20 @@ extension OrgParser {
                 if emphasisMatch(in: chars, at: i) != nil {
                     throw OrgError.notImplemented
                 }
+            case "c", "s":
+                // `call_NAME(ARGS)` and `src_LANG{BODY}`. Both unimplemented and both OUTSIDE the
+                // schema, so this refuses rather than guessing -- see
+                // `inlineSrcOrCallCouldStart` for the measured grammar and for what the refusal
+                // is wider than.
+                //
+                // Container-gated, and the gate is load-bearing rather than decorative: a table
+                // cell and a radio target both REFUSE these two, and org builds an ordinary
+                // subscript there. Measured: `| src_a{b} |` is a cell holding text, a subscript
+                // and more text, and so are the contents of `<<<src_a{b}>>>`.
+                let inlineKind: ObjectKind = c == "s" ? .inlineSrcBlock : .inlineBabelCall
+                if container.permits(inlineKind), inlineSrcOrCallCouldStart(in: chars, at: i) {
+                    throw OrgError.notImplemented
+                }
             case "{":
                 if i + 2 < chars.count, chars[i + 1] == "{", chars[i + 2] == "{" {
                     throw OrgError.notImplemented // macro
@@ -662,6 +676,67 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// True when org's own inline-src-block / inline-babel-call CANDIDATE test matches at `i` --
+    /// the guard that stops two constructs this parser will never build from silently becoming a
+    /// subscript.
+    ///
+    /// `org-element--object-regexp` carries `\(?:call\|src\)_` as its OWN alternative, tried
+    /// BEFORE the `?_` branch that reaches `org-element-subscript-parser`
+    /// (org-element.el:5309-5316). Without this, `x src_a{b} y` fell to `case "^", "_"`,
+    /// `scriptMatch` took the alnum body `a`, and the parser emitted text + SUBSCRIPT + text where
+    /// org emits an `inline-src-block` -- a plausible-looking tree, no throw, and nothing in the
+    /// repository able to see it: `grep -rlE 'src_|call_' conformance/ real/` matches no file at
+    /// all. Same shape as ORG-19 and ORG-21.
+    ///
+    /// Neither type is in this schema (`parseOrg`'s scope boundary names `inline-src-block` and
+    /// `babel-call` among the constructs that must throw permanently), so this is a REFUSAL, never
+    /// a step towards implementing them.
+    ///
+    /// This is org's `looking-at` from the two parsers, matched with `case-fold-search` bound to
+    /// nil in both:
+    ///
+    ///     \<src_\([^ \t\n[{]+\)[{[]      then optional balanced [..], then a MANDATORY {..}
+    ///     \<call_\([^ \t\n[(]+\)[([]     then optional balanced [..], then a MANDATORY (..)
+    ///
+    /// so a decline HERE proves the candidate is absent, while a match only proves it might be
+    /// present -- the balanced-bracket half is deliberately not implemented, which makes this
+    /// wider than org and never narrower. All 28 shapes measured; the three that a hand-written
+    /// guard gets wrong are the reason each condition is spelled out:
+    ///
+    ///     src_a{b}  src_a{}  src_a[p]{b}  src_a{b{c}d}  -src_a{b}     org BUILDS one
+    ///     call_a()  call_a[i]()  call_a()[e]  call_a(b(c)d)           org BUILDS one
+    ///     SRC_a{b}  Src_a{b}     subscript -- the type name is CASE-SENSITIVE
+    ///     src_{b}   call_()      subscript -- the name part must be NON-EMPTY
+    ///     src_a[p]  call_a[i]    subscript -- the brace/paren is MANDATORY
+    ///     src_a{    src_a{b      subscript -- and both are over-thrown here, deliberately
+    ///
+    /// **org's leading `\<` is deliberately NOT implemented, and that only widens this.** It needs
+    /// org-mode's word-constituent syntax table, which would be a fifth Emacs table pinned for one
+    /// condition; without it `asrc_a{b}` throws where org builds a subscript. Over-throwing is the
+    /// safe direction and it is suite-visible. Measured on the other side of that boundary too:
+    /// `-src_a{b}` really is an inline-src-block, so `-` must NOT suppress the guard.
+    private func inlineSrcOrCallCouldStart(in chars: [Unicode.Scalar], at i: Int) -> Bool {
+        /// `prefix` then one or more scalars outside `excluded` then one of `openers`.
+        func candidate(_ prefix: String, excluded: Set<Unicode.Scalar>, openers: Set<Unicode.Scalar>) -> Bool {
+            let p = Array(prefix.unicodeScalars)
+            guard i + p.count < chars.count else { return false }
+            // Case-SENSITIVE: `SRC_a{b}` is a subscript in org, measured.
+            for (offset, expected) in p.enumerated() where chars[i + offset] != expected {
+                return false
+            }
+            var j = i + p.count
+            while j < chars.count, !excluded.contains(chars[j]), !openers.contains(chars[j]) {
+                j += 1
+            }
+            // The name part must be non-empty, and what STOPS it must be an opener.
+            return j > i + p.count && j < chars.count && openers.contains(chars[j])
+        }
+        if chars[i] == "s" {
+            return candidate("src_", excluded: [" ", "\t", "\n"], openers: ["{", "["])
+        }
+        return candidate("call_", excluded: [" ", "\t", "\n"], openers: ["(", "["])
     }
 
     /// A matched `[fn:` construct: where it ends, its label, and its inline body when it has one.
