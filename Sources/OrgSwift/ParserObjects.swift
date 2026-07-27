@@ -963,25 +963,38 @@ extension OrgParser {
     /// safe direction and it is suite-visible. Measured on the other side of that boundary too:
     /// `-src_a{b}` really is an inline-src-block, so `-` must NOT suppress the guard.
     private func inlineSrcOrCallCouldStart(in chars: [Unicode.Scalar], at i: Int) -> Bool {
-        /// `prefix` then one or more scalars outside `excluded` then one of `openers`.
-        func candidate(_ prefix: String, excluded: Set<Unicode.Scalar>, openers: Set<Unicode.Scalar>) -> Bool {
+        /// `prefix`, a non-empty name run, an OPTIONAL balanced `[..]`, then the MANDATORY
+        /// balanced pair -- `{..}` for src, `(..)` for call.
+        func candidate(_ prefix: String, mandatory: (Unicode.Scalar, Unicode.Scalar)) -> Bool {
             let p = Array(prefix.unicodeScalars)
             guard i + p.count < chars.count else { return false }
             // Case-SENSITIVE: `SRC_a{b}` is a subscript in org, measured.
             for (offset, expected) in p.enumerated() where chars[i + offset] != expected {
                 return false
             }
+            // The name run is `[^ \t\n[OPEN]+`, so it stops on whitespace or on either bracket.
             var j = i + p.count
-            while j < chars.count, !excluded.contains(chars[j]), !openers.contains(chars[j]) {
+            while j < chars.count, chars[j] != " ", chars[j] != "\t", chars[j] != "\n",
+                  chars[j] != "[", chars[j] != mandatory.0 {
                 j += 1
             }
-            // The name part must be non-empty, and what STOPS it must be an opener.
-            return j > i + p.count && j < chars.count && openers.contains(chars[j])
+            guard j > i + p.count, j < chars.count else { return false }
+            // The OPTIONAL `[..]` must BALANCE when present. An unbalanced one declines the whole
+            // construct rather than being skipped past: `a src_py[p{b} c` is a subscript in org,
+            // measured, even though a `{..}` follows.
+            if chars[j] == "[" {
+                guard let past = balancedEnd(
+                    in: chars, openAt: j, opener: "[", closer: "]", maxDepth: Int.max
+                ) else { return false }
+                j = past
+            }
+            guard j < chars.count, chars[j] == mandatory.0 else { return false }
+            return balancedEnd(
+                in: chars, openAt: j, opener: mandatory.0, closer: mandatory.1, maxDepth: Int.max
+            ) != nil
         }
-        if chars[i] == "s" {
-            return candidate("src_", excluded: [" ", "\t", "\n"], openers: ["{", "["])
-        }
-        return candidate("call_", excluded: [" ", "\t", "\n"], openers: ["(", "["])
+        if chars[i] == "s" { return candidate("src_", mandatory: ("{", "}")) }
+        return candidate("call_", mandatory: ("(", ")"))
     }
 
     /// A matched `[fn:` construct: where it ends, its label, and its inline body when it has one.
