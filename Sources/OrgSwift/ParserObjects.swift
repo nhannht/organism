@@ -432,6 +432,28 @@ extension OrgParser {
                 // inside its own description, forever -- swapping `.link` for `.paragraph`
                 // crashes the parser rather than producing a wrong tree. `linkSet` refuses
                 // `link`, so org's own restriction row is the recursion's base case.
+                //
+                // MEASURED, not reasoned: the mutation exits 139 (SIGSEGV), a stack overflow
+                // rather than a hang. That distinction matters to an embedder -- a spin can be
+                // cancelled, a blown stack takes the process. A ONE-CHARACTER target crashes
+                // exactly as a long one does, so the depth is input-independent: the recursion
+                // re-parses the same string, a true fixed point rather than deep nesting.
+                //
+                // WHY THIS IS RADIO-ONLY, and the rule to apply to any future object. Making
+                // bold's contents AND radio-target's own contents maximally permissive at the
+                // same time crashes NOTHING. Every other re-lex site passes an INTERIOR span --
+                // inside `[fn:...]`, inside `<<<...>>>`, after `_`, inside `*...*`, the `[desc]`
+                // of a bracket link -- and an interior is strictly shorter than its match, so it
+                // cannot reproduce it. A radio link's delimiters are ZERO-WIDTH: the match is
+                // bounded by boundary CONDITIONS, not by consumed characters, so its interior is
+                // its match.
+                //
+                //     An object needs a restriction-row base case for TERMINATION iff it has
+                //     zero-width delimiters AND re-lexes its own match.
+                //
+                // That is decidable for a new object without repeating the experiment. See the
+                // plain-link site below: it is the parser's OTHER zero-width object, and it is
+                // safe only because it passes `description: nil`.
                 let matched = String(scalars: chars[i..<end])
                 nodes.append(.object([
                     "type": .string("link"),
@@ -467,6 +489,19 @@ extension OrgParser {
             if container.permits(.link) {
                 if let end = plainLinkEnd(in: chars, at: i) {
                     flushText(upTo: i)
+                    // `description: nil` IS LOAD-BEARING, and not for the reason it looks like.
+                    // A plain link is the parser's second ZERO-WIDTH object: like a radio link it
+                    // is bounded by conditions rather than by consumed delimiters, so its interior
+                    // equals its match. It is safe from the radio-link recursion documented above
+                    // ONLY because it never re-lexes anything. Give it a description built from
+                    // its matched text and the identical SIGSEGV returns, and the `link` row does
+                    // NOT save it -- that row is exactly what such a description would be lexed
+                    // under, so it would be leaning on a base case that is already there and
+                    // still crash the moment the container were widened.
+                    //
+                    // org agrees a plain link has no description, so this is reference-faithful
+                    // as well. But the two facts are independent and only one of them is load
+                    // bearing for termination.
                     let match = LinkMatch(
                         end: end,
                         linkType: "plain",
