@@ -1,0 +1,2 @@
+#+STARTUP: overview
+Some text.

@@ -1,0 +1,2 @@
+#+OPTIONS: ^:{}
+a_b and a_{c} end

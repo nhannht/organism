@@ -47,9 +47,10 @@ the whole verification story - run them yourself rather than taking this table's
 | What | Result |
 |---|---|
 | `harness/verify-corpus.sh` | 80 of 80 cases pass, 0 fail |
-| `swift test` | 12 tests, 6 suites, 0 failures, 52 known issues |
+| `swift test` | 14 tests, 7 suites, 0 failures, 52 known issues |
 | Layer 1 conformance cases | 80 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
+| `sweep/` differential corpus | 1,208 inputs, 0 wrong trees - see `sweep/README.md` |
 | `parseOrg` matches the oracle tree, conformance | 80 of 80 |
 | `parseOrg` matches the oracle tree, real-world | 5 of 13 |
 | `renderOrg` round-trip | 0 of 13 - still a stub |
@@ -75,6 +76,14 @@ mean the parser handles org; it means no case in this corpus is beyond it, which
 why the real-world row and the refused-constructs list above are the honest counterweight.
 `withKnownIssue` records a THROW and a WRONG TREE identically, so a green suite has never been
 evidence of correctness here - see SCHEMA.md section 8.
+
+**`sweep/` is the answer to that last problem, and it is the only gate here that can fail on a
+wrong tree.** 1,208 generated inputs, each with org's own answer stored beside it, reporting
+three states rather than two: MATCH, MISMATCH (a wrong tree, right now) and THROW. A MISMATCH
+fails the build; a THROW does not, because over-throwing costs a construct while a wrong tree
+costs trust in every tree. Eight defects were found this way in one session - five of them live
+in this repository at the time, none visible to `swift test`, `verify-corpus.sh` or the 80
+fixtures. Its count is NOT a correctness proof and `sweep/README.md` says at length why.
 
 **The 9 round-trip losses are two different things.** 7 are irreducible - the byte is not
 recoverable from any tree built on `org-element`, so no parser on this foundation can fix them.
@@ -168,8 +177,11 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 12 tests, 6 suites, 0 real failures, 52 known issues, of which
+- `swift test` on this commit: 14 tests, 7 suites, 0 real failures, 52 known issues, of which
   21 are parser-shaped and 31 are org-mode's own `interpret-data` losses.
+- 1,208 `sweep/` inputs on this commit: 0 wrong trees. The 30 cases that DO produce one are
+  named individually in `SweepTests.knownWrongTrees` and are all ORG-28; a thirty-first fails
+  the build. Read `sweep/README.md` before quoting that zero anywhere.
 - `parseOrg` on this commit: 80 of 80 conformance cases produce a tree matching the oracle's,
   5 of 13 real-world files. `renderOrg` is still a stub, so round-trip is 0 of 13. Measured by
   reading the per-suite known-issue counts off the run, not inferred from the total.

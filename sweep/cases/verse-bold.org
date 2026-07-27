@@ -1,0 +1,3 @@
+#+begin_verse
+a *b\\* c
+#+end_verse

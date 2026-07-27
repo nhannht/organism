@@ -1,0 +1,3 @@
+#+begin_verse
+[1/2]
+#+end_verse

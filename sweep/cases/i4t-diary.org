@@ -1,0 +1,2 @@
+[fn:1] body
+%%(diary-date 1 1)

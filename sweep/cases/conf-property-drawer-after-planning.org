@@ -1,0 +1,5 @@
+* Task
+SCHEDULED: <2026-01-01 Thu>
+:PROPERTIES:
+:ID: abc-123
+:END:

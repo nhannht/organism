@@ -1,0 +1,4 @@
+[fn:1] body
+#+begin_example
+e
+#+end_example

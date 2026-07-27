@@ -1,0 +1,12 @@
+#+HEADER: :var x=1
+#+HEADER: :results output
+#+ATTR_HTML: :width 100
+#+ATTR_LATEX: :scale 0.8
+#+PLOT: title:"demo"
+#+NAME: mysrc
+#+begin_src emacs-lisp
+(+ 1 2)
+#+end_src
+
+#+RESULTS[abc123]: mysrc
+: 3

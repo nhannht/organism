@@ -1,0 +1,3 @@
+#+CAPTION[short one]: The *long* caption
+#+CAPTION: A second caption
+| a | b |

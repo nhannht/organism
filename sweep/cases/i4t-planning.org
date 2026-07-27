@@ -1,0 +1,2 @@
+[fn:1] body
+SCHEDULED: <2024-01-01 Mon>

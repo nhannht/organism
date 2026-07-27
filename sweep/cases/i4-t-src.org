@@ -1,0 +1,4 @@
+[fn:1] a
+#+begin_src x
+code
+#+end_src

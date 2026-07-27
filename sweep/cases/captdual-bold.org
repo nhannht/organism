@@ -1,0 +1,2 @@
+#+CAPTION[s *b\\*]: long *c\\*
+| x |

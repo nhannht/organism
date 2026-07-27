@@ -1,0 +1,6 @@
+#+BEGIN: myblock
+#+STARTUP: odd
+#+END:
+
+* a
+*** b

@@ -1,0 +1,4 @@
+[fn:1] body
+#+begin_quote
+q
+#+end_quote

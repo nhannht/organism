@@ -1,0 +1,1 @@
+Text with a labelled reference[fn:1] and an inline one[fn::inline body].

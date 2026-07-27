@@ -1,0 +1,4 @@
+[fn:1] body
+#+begin_center
+c
+#+end_center

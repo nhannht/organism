@@ -1,0 +1,4 @@
+#+begin_verse
+Roses are *red*.
+Violets are /blue/.
+#+end_verse

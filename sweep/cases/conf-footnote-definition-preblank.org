@@ -1,0 +1,3 @@
+[fn:1]
+
+The body, after a blank line.

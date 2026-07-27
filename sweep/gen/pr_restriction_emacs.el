@@ -1,0 +1,6 @@
+(require 'org-element)
+(princ (format "ALLOBJ %S\n" (sort (mapcar #'symbol-name org-element-all-objects) #'string<)))
+(dolist (row (sort (copy-sequence org-element-object-restrictions)
+                   (lambda (a b) (string< (symbol-name (car a)) (symbol-name (car b))))))
+  (princ (format "ROW %s %S\n" (car row)
+                 (sort (mapcar #'symbol-name (cdr row)) #'string<))))

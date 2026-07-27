@@ -1,0 +1,4 @@
+[fn:1] body
+#+begin_verse
+v
+#+end_verse

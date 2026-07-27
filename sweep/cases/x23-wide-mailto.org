@@ -1,0 +1,1 @@
+[[http://x][mail me at mailto:a@b.c ok]]

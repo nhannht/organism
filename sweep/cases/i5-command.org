@@ -1,0 +1,1 @@
+a \command{arg} b

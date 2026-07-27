@@ -1,0 +1,4 @@
+[fn:1] body
+:PROPERTIES:
+:K: v
+:END:

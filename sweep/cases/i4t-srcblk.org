@@ -1,0 +1,4 @@
+[fn:1] body
+#+begin_src x
+code
+#+end_src

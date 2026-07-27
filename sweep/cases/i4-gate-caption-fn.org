@@ -1,0 +1,2 @@
+#+CAPTION: a [fn:1] b
+| x |

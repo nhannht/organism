@@ -1,0 +1,1 @@
+[fn:nm:inline body] text

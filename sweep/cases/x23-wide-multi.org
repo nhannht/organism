@@ -1,0 +1,1 @@
+[[http://x][see file:foo.org and id:abc and doi:10.1/x end]]

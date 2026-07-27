@@ -1,0 +1,1 @@
+{"type":"document","children":[{"type":"section","children":[{"type":"paragraph","children":[{"type":"text","value":"a call"},{"type":"subscript","useBrackets":false,"children":[{"type":"text","value":"foo"}],"postBlank":0},{"type":"text","value":"[a] b\n"}],"postBlank":0}],"postBlank":0}],"postBlank":0}

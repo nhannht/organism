@@ -1,0 +1,5 @@
+#+BEGIN: myblock
+#+TODO: FOO BAR
+#+END:
+
+* FOO task

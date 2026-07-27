@@ -1,0 +1,37 @@
+;; EXHAUSTIVE statistics-cookie enumeration. My negatives were 13 hand-picked shapes.
+;; This enumerates every bracket content over {0 1 / % space x . -} up to length 4
+;; (8^1..8^4 = 4680 candidates), wraps each in [...], and asks org.
+;; Then checks the inferred regexp against the whole result set, both directions.
+(require 'org-element)
+(defun pr-cookie-p (inner)
+  (with-temp-buffer
+    (set-buffer-multibyte t)
+    (insert "a [" inner "] b\n")
+    (let ((org-inhibit-startup t)) (org-mode))
+    (let (found)
+      (org-element-map (org-element-parse-buffer) 'statistics-cookie
+        (lambda (n) (setq found (org-element-property :value n))))
+      found)))
+(let* ((alpha '(?0 ?1 ?/ ?% ?\s ?x ?. ?-))
+       (yes '()) (total 0)
+       (re "\\`\\[[0-9]*\\(?:%\\|/[0-9]*\\)\\]\\'"))
+  (cl-labels ((gen (p d)
+                (when (> (length p) 0)
+                  (setq total (1+ total))
+                  (when (pr-cookie-p p) (push p yes)))
+                (when (< d 4) (dolist (c alpha) (gen (concat p (char-to-string c)) (1+ d))))))
+    (gen "" 0))
+  (princ (format "candidates tested: %d\n" total))
+  (princ (format "form a cookie:     %d\n" (length yes)))
+  (princ (format "the set: %S\n" (sort (copy-sequence yes) #'string<)))
+  (let ((fp '()) (fn '()))
+    (cl-labels ((chk (p d)
+                  (when (> (length p) 0)
+                    (let ((a (and (member p yes) t))
+                          (b (and (string-match-p re (concat "[" p "]")) t)))
+                      (cond ((and b (not a)) (push p fp)) ((and a (not b)) (push p fn)))))
+                  (when (< d 4) (dolist (c alpha) (chk (concat p (char-to-string c)) (1+ d))))))
+      (chk "" 0))
+    (princ (format "\nINFERRED REGEXP on [inner]: %s\n" re))
+    (princ (format "  false positives: %d %S\n" (length fp) (last fp 10)))
+    (princ (format "  false negatives: %d %S\n" (length fn) (last fn 10)))))

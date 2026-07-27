@@ -1,0 +1,4 @@
+#+begin_example
+a
+* not a headline
+#+end_example

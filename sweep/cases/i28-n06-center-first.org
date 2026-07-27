@@ -1,0 +1,5 @@
+#+begin_center
+:PROPERTIES:
+:K: v
+:END:
+#+end_center

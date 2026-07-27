@@ -1,0 +1,2 @@
+* Footnotes
+[fn:1] a
