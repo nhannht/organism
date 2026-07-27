@@ -228,6 +228,29 @@ extension OrgParser {
         var i = start
         let line = lines[i]
 
+        // ORG-26. A SLICED first line begins mid-line in the source, where org's narrowing leaves
+        // `bolp` false, so NO element can open on it. It is paragraph content whatever it looks
+        // like, and this is ONE rule rather than a column-0 gate per construct.
+        //
+        // Enumerated over 16 constructs x 3 carriers before it was written, and 9 constructs were
+        // wrong on each of the two sliced carriers -- 18 wrong trees. Every oracle answer had the
+        // same shape, which is what makes one rule right and nine gates wrong:
+        //
+        //     - - inner            ONE item, paragraph text `- inner`, NOT a nested list
+        //     - # c                paragraph text `# c`, not a comment
+        //     - -----              paragraph text, not a horizontal rule
+        //     - | a | b |          paragraph text, not a table
+        //     - #+TITLE: x         paragraph text, not a keyword
+        //     [fn:1] :D: / :END:   paragraph text, not a drawer
+        //     [fn:1] #+begin_src   paragraph text -- with `_s` lexing as a SUBSCRIPT
+        //
+        // The last row is the one that shows this is org's own model rather than a special case:
+        // the slice is lexed as ordinary paragraph OBJECTS, so `#+begin_src` yields a subscript.
+        // The 12 column-0 controls all matched before and after.
+        if i == 0, firstLineIsSliced {
+            return try parseParagraph(at: i, in: range)
+        }
+
         if isHorizontalRule(line) {
             return (.object([
                 "type": .string("horizontal-rule"),
@@ -419,11 +442,24 @@ extension OrgParser {
             return try parseTable(at: i, in: range)
         }
 
-        // Paragraph: consecutive lines up to a blank line or the start of another element.
+        return try parseParagraph(at: i, in: range)
+    }
+
+    /// A paragraph: consecutive lines up to a blank line or the start of another element.
+    ///
+    /// **The boundary never fires on the paragraph's OWN first line.** That single guard replaces
+    /// three ad-hoc ones and is what makes ORG-26's rule expressible: a sliced first line reaches
+    /// here looking like a table, a comment or a bullet, and any of those breaking at
+    /// `paragraphStart` yields an empty paragraph and an infinite loop. It is also simply true of
+    /// a normal paragraph -- a line that could open an element never gets here, because
+    /// `parseOneElement` would have dispatched it.
+    private func parseParagraph(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+        var i = start
         let paragraphStart = i
         while i < range.upperBound {
             let candidate = lines[i]
-            if candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
+            if i > paragraphStart,
+                candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
                 || OrgParser.keywordParts(of: candidate) != nil
                 || isUnimplementedElementStart(candidate)
                 // Now that these two parse rather than throw, they no longer reach the paragraph
@@ -431,26 +467,17 @@ extension OrgParser {
                 // Both are measured: `text` then `| a |` is a paragraph AND a table, never one
                 // paragraph, and the same holds for `text` then `: a`.
                 || OrgParser.isTableLine(candidate)
-                || (OrgParser.isFixedWidthLine(candidate)
-                    && !(i == 0 && firstLineIsSliced))
+                || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
                 // paragraph and START a child list. Without it the bullet line is swallowed as
                 // paragraph text ("one\n  - nested\n") and nesting silently disappears.
                 || OrgParser.bulletMatch(of: candidate) != nil
                 // A column-0 footnote definition INTERRUPTS an open paragraph with no blank line
-                // between them, measured: `text` then `[fn:1] a` is a paragraph AND a
-                // definition. Same reason tables and fixed-width lines are on this list.
-                // `i > paragraphStart` for the same reason the bare-star line has it: a definition
-                // line ENDS the paragraph before it, but is the START of its own node, so it must
-                // not break the paragraph it opens. Without that this loops forever on a SLICED
-                // first line, where the definition dispatch is gated off but the line still looks
-                // like one -- `- [fn:1] x` hangs.
-                || (i > paragraphStart && candidate.contentStart == 0
+                // between them, measured: `text` then `[fn:1] a` is a paragraph AND a definition.
+                || (candidate.contentStart == 0
                     && ((try? footnoteDefinitionMatch(candidate)) ?? nil) != nil)
-                // A bare-star line ENDS the paragraph it follows, but is content of the one
-                // it opens, so it only breaks when it is not the line we started on.
-                || (isBareStarLine(candidate) && i > paragraphStart) {
+                || isBareStarLine(candidate) {
                 break
             }
             i += 1
