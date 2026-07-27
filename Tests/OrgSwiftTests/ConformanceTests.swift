@@ -81,6 +81,10 @@ struct ConformanceTests {
         // Dynamic blocks. `#+BEGIN:` pairs with `#+END:` through the same `pairedCloseIndex`
         // primitive the four literal blocks and the drawers use; only the node build was missing.
         "dynamic-block-simple",
+        // Statistics cookies. The first object whose legality VARIES by container in a way the
+        // corpus can see: a table cell refuses one, and a bold inside that same cell permits it.
+        "statistics-cookie-fraction",
+        "statistics-cookie-percent",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",

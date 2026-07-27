@@ -186,6 +186,13 @@ extension OrgParser {
     /// container admits some construct that could start there. Where the container admits none,
     /// the character is ordinary text, and throwing would invent a refusal org does not have.
     ///
+    /// Membership means "this parser cannot PROVE the construct is absent here", which is a
+    /// narrower claim than "this character can open it". `statistics-cookie` opens with `[` and
+    /// is deliberately NOT in the bracket set: its grammar is org's whole regexp
+    /// `\[[0-9]*\(?:%\|/[0-9]*\)\]`, implemented exactly, so a declined cookie is a PROOF that no
+    /// cookie is there. `link` and `timestamp` are implemented too and stay in, because their
+    /// matchers over-throw by design and a decline from them proves nothing.
+    ///
     /// A link description refuses `link`, `radio-target`, `target` and `timestamp`, which is all
     /// four of `<`'s openers, so a `<` inside one can only ever be text. Measured:
     ///
@@ -193,19 +200,24 @@ extension OrgParser {
     ///     [[http://x][a <<<rt>>> b]]        description is ONE text node
     ///     [[http://x][<2024-01-01 Mon>]]    description is ONE text node
     ///
-    /// **`[` is not symmetric with it, and that asymmetry is the trap.** A link description
-    /// PERMITS `statistics-cookie`, so `[` keeps throwing there even though `footnote-reference`
-    /// and `citation` are refused and org keeps both as plain text. Measured, both halves:
+    /// **`[` is not symmetric with it, and the asymmetry MOVED when cookies landed.** While
+    /// cookies were unimplemented, a link description had to keep throwing on `[` on their
+    /// account, even though `footnote-reference` and `citation` are refused there and org keeps
+    /// both as plain text. Now that the cookie grammar is exact, a description permits no `[`
+    /// construct this parser cannot rule out, so `[` there falls through to text as well:
     ///
-    ///     [[http://x][a [1/2] b]]           text, STATISTICS-COOKIE, text   -- so `[` can open
-    ///     [[http://x][a [fn:1] b]]          description is ONE text node    -- but this is text
+    ///     [[http://x][a [1/2] b]]           text, STATISTICS-COOKIE, text
+    ///     [[http://x][a [fn:1] b]]          description is ONE text node
+    ///     [[http://x][a [cite:@k] b]]       description is ONE text node
+    ///     a [fn:1] b                        paragraph: still THROWS, and must
     ///
-    /// Over-throwing on the cookie's account is correct until cookies are implemented. Guessing
-    /// which `[` construct is present in order to text-ify the other two is not, and it is exactly
-    /// the shape that produced ORG-19.
+    /// The last row is the boundary. A paragraph permits `footnote-reference` and `citation`,
+    /// neither implemented, so nothing there can be ruled out and the throw stands. Guessing
+    /// which `[` construct is present in order to text-ify a paragraph's is the shape that
+    /// produced ORG-19.
     static let angleOpenableObjects: Set<ObjectKind> = [.link, .radioTarget, .target, .timestamp]
     static let bracketOpenableObjects: Set<ObjectKind> =
-        [.link, .timestamp, .footnoteReference, .citation, .statisticsCookie]
+        [.link, .timestamp, .footnoteReference, .citation]
 
     /// True when a PLAIN link could begin at `i` -- the guard that stops a plain link this parser
     /// cannot DELIMIT from silently flattening into plain text.
@@ -439,10 +451,29 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                // Still throwing wherever ANY `[` construct is legal, which is every container
-                // this parser builds today -- a link description refuses three of the five but
-                // permits `statistics-cookie`, so it throws with the rest. See
-                // `bracketOpenableObjects` for why that is not symmetric with `<`.
+                if container.permits(.statisticsCookie),
+                   let end = statisticsCookieEnd(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    // A LEAF whose `value` is the literal source text, brackets included --
+                    // `[1/2]`, not `1/2` and not a parsed numerator/denominator pair.
+                    nodes.append(.object([
+                        "type": .string("statistics-cookie"),
+                        "value": .string(String(scalars: chars[i..<end])),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
+                }
+                // Still throwing wherever a `[` construct this parser cannot rule out is legal.
+                // A link description is now the one container where none is, so its `[` reaches
+                // the text run below. See `bracketOpenableObjects`.
                 if container.permitsAny(of: Self.bracketOpenableObjects) {
                     throw OrgError.notImplemented
                 }
@@ -537,6 +568,47 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// Index just past a statistics cookie starting at `i`, or nil.
+    ///
+    /// org's parser regexp in full, and it is small enough to implement EXACTLY rather than
+    /// approximate: `\[[0-9]*\(?:%\|/[0-9]*\)\]`. Being exact is what lets a decline here count
+    /// as proof, which is what narrows the `[` throw in a link description -- see
+    /// `bracketOpenableObjects`.
+    ///
+    /// Both digit runs may be EMPTY, which is the half nobody expects and the plan's first draft
+    /// omitted. All nine positives, measured:
+    ///
+    ///     [1/2] [50%] [0/0] [100%] [12/34] [999/1000]     the obvious ones
+    ///     [/] [%] [1/] [/2]                               empty runs, all real cookies
+    ///
+    /// The negative tail is where the rest of the rule lives. Every one of these is plain text:
+    ///
+    ///     [1/2/3] [//] [1//2]      more than one separator
+    ///     [ 1/2] [1 /2] [1/2 ]     any space at all
+    ///     [-1/2] [1.5/2]           a sign or a dot
+    ///     [abc%] [x1/2] [1%x]      any non-digit in a run
+    ///     [%%] [/%] [%/] [1%2]     `%` is a terminator, never an interior character
+    ///     []                       empty, needs a separator
+    ///
+    /// **The digit class is the LITERAL `[0-9]`, so this uses an explicit ASCII range rather than
+    /// `isNumberScalar`.** That is not a shortcut, it is the fix for a bug this parser has hit
+    /// twice: Swift's number predicate is Unicode-aware and true for `١`, `１`, `²` and `Ⅷ`,
+    /// so using it would build cookies out of `[١/٢]` and `[１/２]`, which org leaves as text.
+    /// `plainLinkCouldStart` records 16 silent wrong trees from the same class of gap.
+    private func statisticsCookieEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+        func isASCIIDigit(_ s: Unicode.Scalar) -> Bool { s >= "0" && s <= "9" }
+        var j = i + 1
+        while j < chars.count, isASCIIDigit(chars[j]) { j += 1 }
+        guard j < chars.count else { return nil }
+        if chars[j] == "%" {
+            return j + 1 < chars.count && chars[j + 1] == "]" ? j + 2 : nil
+        }
+        guard chars[j] == "/" else { return nil }
+        j += 1
+        while j < chars.count, isASCIIDigit(chars[j]) { j += 1 }
+        return j < chars.count && chars[j] == "]" ? j + 1 : nil
     }
 
     private struct EmphasisMatch {
