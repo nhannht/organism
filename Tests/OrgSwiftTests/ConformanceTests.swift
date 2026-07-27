@@ -85,6 +85,11 @@ struct ConformanceTests {
         // corpus can see: a table cell refuses one, and a bold inside that same cell permits it.
         "statistics-cookie-fraction",
         "statistics-cookie-percent",
+        // Sub/superscript. Both fixtures use the BRACE body, so neither of them can see the
+        // rule that actually needed measuring: braces are stripped from the contents and set
+        // `useBrackets`, while parentheses are kept and do not.
+        "subscript-simple",
+        "superscript-simple",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",

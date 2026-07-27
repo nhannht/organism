@@ -507,13 +507,53 @@ extension OrgParser {
             case "$":
                 // Latex fragments. Unimplemented.
                 throw OrgError.notImplemented
-            case "^":
-                // A `^` after a non-whitespace character could be a superscript.
-                if let before = charBefore(i), !isBorderWhitespace(before) { throw OrgError.notImplemented }
-            case "_":
-                // After non-whitespace: potential subscript. As a matched emphasis: underline.
-                if let before = charBefore(i), !isBorderWhitespace(before) { throw OrgError.notImplemented }
-                if emphasisMatch(in: chars, at: i) != nil {
+            case "^", "_":
+                // The PRE rule here is org's `\S-` -- a single NEGATION of whitespace -- and it is
+                // NOT the emphasis PRE rule. `isPreChar` accepts whitespace OR punctuation, which
+                // is the opposite half: `a *b*` is bold and `a _b` is not a subscript. The two are
+                // not complements either, since `-` satisfies both, so `-*b*` and `a-_b` both work.
+                //
+                // `!isBorderWhitespace` is EXACTLY org's answer for every scalar that can reach
+                // here, not merely close to it. Emacs's `\s-` in an org buffer is 21 scalars;
+                // `isBorderWhitespace` is the same set minus U+000D, and a document containing
+                // U+000D throws at ParserDocument.swift's CR guard before any object is lexed. If
+                // that guard is ever lifted, TWO rules break at once and in opposite directions:
+                // measured, `a\r*bold*` IS bold (CR is a valid emphasis PRE char) while `a\r_x` is
+                // NOT a subscript (CR is whitespace, so `\S-` fails).
+                if let before = charBefore(i), !isBorderWhitespace(before) {
+                    let kind: ObjectKind = c == "_" ? .subscript : .superscript
+                    if container.permits(kind), let match = try scriptMatch(in: chars, at: i) {
+                        flushText(upTo: i)
+                        var postBlank = 0
+                        var k = match.end
+                        while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                            postBlank += 1
+                            k += 1
+                        }
+                        // Children are parsed OBJECTS under this script's own row, which is the
+                        // full standard set -- the same nesting reset every other container gets.
+                        nodes.append(.object([
+                            "type": .string(c == "_" ? "subscript" : "superscript"),
+                            "useBrackets": .bool(match.useBrackets),
+                            "children": .array(try parseObjects(
+                                String(scalars: chars[match.body]),
+                                in: c == "_" ? .subscript : .superscript
+                            )),
+                            "postBlank": .int(postBlank),
+                        ]))
+                        i = k
+                        textStart = k
+                        continue
+                    }
+                    // No body matched. org leaves this as text, but only for the forms this
+                    // matcher can rule out; a body it declined for an undecidable reason has
+                    // already thrown above. Throwing here keeps every unrecognised `_`/`^` form
+                    // visible, which is what the plan's own withdrawn `a__b` claim cost.
+                    throw OrgError.notImplemented
+                }
+                // A `_` preceded by whitespace cannot open a script, but it can still open an
+                // UNDERLINE, which is unimplemented.
+                if c == "_", emphasisMatch(in: chars, at: i) != nil {
                     throw OrgError.notImplemented
                 }
             case "+":
@@ -568,6 +608,106 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// A matched `_` or `^` script: where it ends, the region to re-parse as its children, and
+    /// whether that region came from BRACES.
+    struct ScriptMatch {
+        let end: Int
+        let body: Range<Int>
+        let useBrackets: Bool
+    }
+
+    /// Index just past the delimiter matching the one at `open`, honouring nesting up to
+    /// `maxDepth` levels, or nil when it is unbalanced or nests too deeply.
+    ///
+    /// The depth cap is org's, not a safety limit: `org-match-substring-regexp` spells its
+    /// nesting out as three literal alternatives, so FOUR levels matches nothing at all.
+    /// Measured on both sides of the boundary, for both delimiter families:
+    ///
+    ///     a_{b{c{d}}}         3 levels   subscript      a_(b (c (d)))       3 levels   subscript
+    ///     a_{b{c{d{e}}}}      4 levels   plain TEXT     a_(b (c (d (e))))   4 levels   plain TEXT
+    private func balancedEnd(
+        in chars: [Unicode.Scalar], openAt open: Int,
+        opener: Unicode.Scalar, closer: Unicode.Scalar, maxDepth: Int
+    ) -> Int? {
+        var depth = 0
+        var j = open
+        while j < chars.count {
+            if chars[j] == opener {
+                depth += 1
+                if depth > maxDepth { return nil }
+            } else if chars[j] == closer {
+                depth -= 1
+                if depth == 0 { return j + 1 }
+            }
+            j += 1
+        }
+        return nil
+    }
+
+    /// Matches a subscript or superscript body at `i`, which is the marker position.
+    ///
+    /// org's `org-match-substring-regexp` body is a FOUR-way alternation, and the plan carried
+    /// only the last of them. All four, with the measured contents each yields:
+    ///
+    ///     a_{b}          braces        contents `b`      useBrackets TRUE   braces STRIPPED
+    ///     a_(b)          PARENS        contents `(b)`    useBrackets false  parens KEPT
+    ///     a_*            bare `*`      contents `*`      useBrackets false
+    ///     a_b            alnum run     contents `b`      useBrackets false
+    ///
+    /// **The brace / paren asymmetry is the trap.** The paren form is not the brace form with
+    /// different delimiters: it keeps its delimiters in the contents and it does NOT set
+    /// `useBrackets`. Both conformance fixtures use braces, so an implementation that stripped
+    /// both and flagged both would pass every gate this repo has.
+    ///
+    /// The alnum alternative is `[+-]?[[:alnum:].,\]*[[:alnum:]]` -- an optional sign, then a run
+    /// that may contain dots, commas and backslashes, but which must END on an alphanumeric.
+    /// That last requirement is what stops `a_b.` swallowing the sentence's full stop, and it is
+    /// why `a^-` alone is plain text.
+    ///
+    /// **The alnum class is ASCII-only here and a non-ASCII scalar THROWS.** `[[:alnum:]]` is
+    /// Unicode-aware in Emacs -- `a_éx` and `a_漢x` really are subscripts -- and this is the same
+    /// undecidable shape as the dynamic-block name: too narrow a class truncates the body, too
+    /// wide a class over-runs it, and NEITHER direction is a safe over-throw. Declining is the
+    /// only honest answer until the class is enumerated the way `upcaseDeclined` was.
+    private func scriptMatch(in chars: [Unicode.Scalar], at i: Int) throws -> ScriptMatch? {
+        func isASCIIAlnum(_ s: Unicode.Scalar) -> Bool {
+            (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+        }
+        guard i + 1 < chars.count else { return nil }
+
+        if chars[i + 1] == "{" {
+            guard let end = balancedEnd(
+                in: chars, openAt: i + 1, opener: "{", closer: "}", maxDepth: 3
+            ) else { return nil }
+            // Braces are stripped: the contents are what sits BETWEEN them.
+            return ScriptMatch(end: end, body: (i + 2)..<(end - 1), useBrackets: true)
+        }
+        if chars[i + 1] == "(" {
+            guard let end = balancedEnd(
+                in: chars, openAt: i + 1, opener: "(", closer: ")", maxDepth: 3
+            ) else { return nil }
+            // Parentheses are KEPT: the contents include them.
+            return ScriptMatch(end: end, body: (i + 1)..<end, useBrackets: false)
+        }
+        if chars[i + 1] == "*" {
+            return ScriptMatch(end: i + 2, body: (i + 1)..<(i + 2), useBrackets: false)
+        }
+
+        var j = i + 1
+        if chars[j] == "+" || chars[j] == "-" { j += 1 }
+        var lastAlnum: Int?
+        while j < chars.count,
+              isASCIIAlnum(chars[j]) || chars[j] == "." || chars[j] == "," || chars[j] == "\\" {
+            if isASCIIAlnum(chars[j]) { lastAlnum = j }
+            j += 1
+        }
+        // The scalar that ENDED the run decides whether this answer can be trusted. An ASCII one
+        // is a real boundary; a non-ASCII one might be an `[[:alnum:]]` org would have consumed.
+        if j < chars.count, !chars[j].isASCII { throw OrgError.notImplemented }
+        guard let last = lastAlnum else { return nil }
+        return ScriptMatch(end: last + 1, body: (i + 1)..<(last + 1), useBrackets: false)
     }
 
     /// Index just past a statistics cookie starting at `i`, or nil.
