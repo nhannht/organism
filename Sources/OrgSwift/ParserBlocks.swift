@@ -157,6 +157,110 @@ extension OrgParser {
         )
     }
 
+    // MARK: - Dynamic blocks
+
+    /// A `#+BEGIN: NAME ARGS` opener: the NAME and the raw ARGS, or nil when this is not one.
+    ///
+    /// The grammar is `org-element-dynamic-block-open-re`, dumped from the live parser rather
+    /// than read off `org-dblock-start-re`. Those two DISAGREE and org-element wins, which is why
+    /// the source matters:
+    ///
+    ///     org-dblock-start-re          `#+BEGIN:[ \t]+\(\S-+\)`      org.el's, NOT used here
+    ///     org-element-dynamic-block-open-re
+    ///                                  `#+BEGIN:[\t ]*\([[:word:]]+\)\(?:[\t ]+\(.+\)\)?`
+    ///
+    /// Three measured consequences, each of which the org.el pattern gets wrong:
+    ///
+    ///     #+BEGIN:n           name `n`      the separator is `*`, so NO space is required
+    ///     #+BEGIN: my-block   name `my`     `\S-+` would take the whole of `my-block`
+    ///     #+BEGIN: -lead      NO BLOCK      a name must OPEN on a word character
+    ///
+    /// `[[:word:]]` is the trap. It is not `\S-`, and it is not `[-_[:alnum:]]` either: `-`,
+    /// `_`, `.` and `:` all END the name, measured. It IS Unicode-aware, and measured WIDE --
+    /// `café`, `漢字`, `한글`, `αβ`, `ß` are names, and so are `Ⅷ`, `٣`, `²` and `ʰ`, which are
+    /// exactly the scalars where Swift's `isLetterScalar` / `isNumberScalar` and Emacs's word
+    /// syntax have diverged twice before in this parser (see `plainLinkCouldStart`, 16 silent
+    /// wrong trees, and `emacsUpcased`).
+    ///
+    /// So the name run here is ASCII-only and the function THROWS rather than guessing the
+    /// moment a non-ASCII scalar sits where the name could continue. Both directions of a wrong
+    /// class produce a wrong `blockName`, and neither is a safe over-throw -- a narrower class
+    /// truncates the name, a wider one over-runs it. Declining is the only safe answer until the
+    /// class is enumerated the way `upcaseDeclined` was.
+    ///
+    /// ARGS is `\(?:[\t ]+\(.+\)\)?` and is NOT trimmed. The `.+` matches a space too, which is
+    /// the whole reason the boundary is odd and had to be measured rather than assumed:
+    ///
+    ///     #+BEGIN: n           args nil      no separator at all
+    ///     #+BEGIN: n<sp>       args nil      `[\t ]+` takes it, `.+` has nothing left
+    ///     #+BEGIN: n<sp><sp>   args `" "`    `[\t ]+` backtracks to one, `.+` takes the other
+    ///     #+BEGIN: n   :a   b  args `":a   b"`   leading run stripped, INNER runs kept
+    ///     #+BEGIN: n a<tab>    args `"a\t"`      trailing whitespace KEPT
+    static func dynamicBlockBeginLine(_ line: Line) throws -> (name: String, arguments: String?)? {
+        let text = line.text
+        let prefix = Array("#+begin:".unicodeScalars)
+        var i = line.contentStart
+        guard text.count >= i + prefix.count else { return nil }
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
+        for (offset, expected) in prefix.enumerated()
+        where asciiLowered(text[i + offset]) != expected {
+            return nil
+        }
+        i += prefix.count
+        while i < text.count, text[i] == " " || text[i] == "\t" { i += 1 }
+
+        let nameStart = i
+        while i < text.count, text[i].isASCII,
+              isLetterScalar(text[i]) || isNumberScalar(text[i]) { i += 1 }
+        // A non-ASCII scalar sitting where the name could continue -- including at its very
+        // first position -- is the undecidable case above, never a name boundary.
+        if i < text.count, !text[i].isASCII { throw OrgError.notImplemented }
+        // No name at all. `#+BEGIN:` and `#+BEGIN: ` are ordinary `keyword` elements in org
+        // (key `BEGIN`, value ""), measured, so declining here is what lets them reach the
+        // keyword branch rather than being claimed as a malformed block.
+        guard i > nameStart else { return nil }
+
+        let rest = Array(text[i...])
+        var arguments: String?
+        if rest.count >= 2, rest[0] == " " || rest[0] == "\t" {
+            var leading = 0
+            while leading < rest.count, rest[leading] == " " || rest[leading] == "\t" {
+                leading += 1
+            }
+            // `[\t ]+` is greedy but must leave `.+` at least one character, so it gives one
+            // back when the tail is nothing but whitespace. That is the `n<sp><sp>` row above.
+            arguments = String(scalars: rest[min(leading, rest.count - 1)...])
+        }
+        return (String(scalars: text[nameStart..<i]), arguments)
+    }
+
+    /// A `#+END:` line closing a dynamic block, per the parser's own `^[ \t]*#\+END:?[ \t]*$`.
+    ///
+    /// Wider and narrower than it looks, both measured. The colon is OPTIONAL, so a bare `#+END`
+    /// closes one. But the `$` is real: anything after the optional colon other than spaces and
+    /// tabs disqualifies the line entirely.
+    ///
+    ///     #+END:   closes      #+END     closes      #+END:<tab>   closes
+    ///     #+END x  NO          #+END::   NO          #+ENDS        NO      #+END_  NO
+    ///
+    /// A disqualified closer does not merely fail to close: the whole construct stops being a
+    /// dynamic block, the opener falls through as ordinary text, and the `#+END: junk` line
+    /// becomes an ordinary `keyword` with key `END` and value `junk`.
+    static func isDynamicBlockEndLine(_ line: Line) -> Bool {
+        let text = line.text
+        let prefix = Array("#+end".unicodeScalars)
+        var i = line.contentStart
+        guard text.count >= i + prefix.count else { return false }
+        for (offset, expected) in prefix.enumerated()
+        where asciiLowered(text[i + offset]) != expected {
+            return false
+        }
+        i += prefix.count
+        if i < text.count, text[i] == ":" { i += 1 }
+        return text[i...].allSatisfy { $0 == " " || $0 == "\t" }
+    }
+
     /// Index of the line closing a block of `type` opened at `begin`. A thin naming of
     /// `pairedCloseIndex` for the block case.
     func blockEndIndex(openedAt begin: Int, type: String, in range: Range<Int>) -> Int? {

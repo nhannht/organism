@@ -78,6 +78,9 @@ struct ConformanceTests {
         "block-example-switches",
         "block-export-html",
         "block-comment-literal",
+        // Dynamic blocks. `#+BEGIN:` pairs with `#+END:` through the same `pairedCloseIndex`
+        // primitive the four literal blocks and the drawers use; only the node build was missing.
+        "dynamic-block-simple",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",

@@ -206,6 +206,32 @@ extension OrgParser {
             }
         }
 
+        // Dynamic blocks, dispatched here for the same reason `#+begin_X` is: the opener is
+        // claimed by `isUnimplementedHashPlusElement` and would otherwise throw.
+        //
+        // That claim is deliberately NOT narrowed. An opener reaching this branch and failing to
+        // pair keeps throwing, which is the same over-throw an unterminated `#+begin_example`
+        // already takes -- org makes both ordinary paragraph text, measured, and emitting that
+        // paragraph is a separate decision from implementing the block. Narrowing the claim
+        // WITHOUT emitting the paragraph would be worse than either: `keywordParts` reads
+        // `#+BEGIN: myblock` as key `BEGIN`, value `myblock`, so an unpaired opener would become
+        // a `keyword` node org never builds. The claim is what stands between here and that.
+        if let (name, arguments) = try OrgParser.dynamicBlockBeginLine(line),
+           let end = pairedCloseIndex(openedAt: i, upperBound: range.upperBound,
+                                      isCloser: OrgParser.isDynamicBlockEndLine) {
+            // Children are ELEMENTS, like quote and center: a `#+TODO:` line inside a dynamic
+            // block really is a `keyword` element, which is why pass 1 must SEE it. That is also
+            // why `dynamic` is absent from `nonElementBlockTypes` -- measured, a file setting
+            // inside one is honored exactly as at top level.
+            return (.object([
+                "type": .string("dynamic-block"),
+                "blockName": .string(name),
+                "arguments": arguments.map(OrgJSON.string) ?? .null,
+                "children": .array(try parseElementRun(in: (i + 1)..<end)),
+                "postBlank": .int(0),
+            ]), end + 1)
+        }
+
         if !OrgParser.isUnimplementedHashPlusElement(line),
            let (key, value) = OrgParser.keywordParts(of: line) {
             // An affiliated keyword reaching HERE is one that attached to nothing, so it stands
