@@ -8,19 +8,26 @@ A language-agnostic conformance suite for Emacs org-mode, graded against `org-el
 This suite is real and usable today. The Swift parser is real and PARTIAL.
 
 - `parseOrg` parses a growing subset and refuses the rest honestly. On the 80 conformance
-  cases it produces a tree matching `org-element`'s own, node for node, on **69 of 80**. The
-  other 11 `throw OrgError.notImplemented` rather than guessing. On the 13 vendored real-world
-  files it is **4 of 13** - those files are dense, and one unimplemented construct anywhere in
-  a file fails the whole file, so this number moves in jumps rather than one file at a time.
+  cases it produces a tree matching `org-element`'s own, node for node, on **80 of 80**. On the
+  13 vendored real-world files it is **5 of 13** - those files are dense, and one unimplemented
+  construct anywhere in a file fails the whole file, so this number moves in jumps rather than
+  one file at a time. The conformance figure reaching 80 does NOT mean the parser is complete;
+  it means the corpus no longer contains a case it cannot handle. See the real-world row.
 - `renderOrg` is still a stub. **0 of 13.** Round-trip is not usable at all yet, and no amount
   of further parser work changes that.
 - **Implemented:** headlines with the two-pass `#+TODO:` keyword set, priority cookies, tag
   groups and COMMENT; sections, paragraphs, keywords and the affiliated-keyword grammar; the
   four literal block types, quote/center/verse, src and example switch grammars; pipe tables,
-  fixed-width, lists; drawers and property drawers; links (regular, angle, plain); timestamps
-  (all five kinds); planning lines; and emphasis with org's border rules.
-  **Still refused:** entities, footnotes, latex fragments, statistics cookies, sub/superscript,
-  radio links, dynamic blocks, and `table.el` grids.
+  `table.el` grids, fixed-width, lists; drawers and property drawers; dynamic blocks; links
+  (regular, angle, plain, and radio with its document-wide target pass); timestamps (all five
+  kinds); planning lines; footnote references and definitions; statistics cookies;
+  subscript and superscript; latex fragments in their two bracket forms; and emphasis with
+  org's border rules.
+  **Still refused:** entities, `$...$` latex fragments, underline and strike-through, citations,
+  macros, export snippets, targets, inline src blocks and babel calls, clock lines, diary sexps
+  and latex environments. Underline and strike-through are a documented decision rather than an
+  oversight, and they are the largest single reason the real-world figure is 5 rather than
+  higher.
 - `swift test` reports green, and the reason matters. Every case the parser cannot yet handle
   is wrapped in Swift Testing's `withKnownIssue`, so those are expected failures, not passes.
   See "What is verified" below for the exact split, and SCHEMA.md section 8 for how a wrapper
@@ -40,11 +47,11 @@ the whole verification story - run them yourself rather than taking this table's
 | What | Result |
 |---|---|
 | `harness/verify-corpus.sh` | 80 of 80 cases pass, 0 fail |
-| `swift test` | 12 tests, 6 suites, 0 failures, 64 known issues |
+| `swift test` | 12 tests, 6 suites, 0 failures, 52 known issues |
 | Layer 1 conformance cases | 80 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
-| `parseOrg` matches the oracle tree, conformance | 69 of 80 |
-| `parseOrg` matches the oracle tree, real-world | 4 of 13 |
+| `parseOrg` matches the oracle tree, conformance | 80 of 80 |
+| `parseOrg` matches the oracle tree, real-world | 5 of 13 |
 | `renderOrg` round-trip | 0 of 13 - still a stub |
 | `org-element` types mapped by the oracle | 40 of 54 |
 | Mapped types that also have a fixture | 38 of 40 |
@@ -53,14 +60,21 @@ the whole verification story - run them yourself rather than taking this table's
 
 Two of those numbers are easy to misread, so they are stated plainly here.
 
-**64 known issues are not 64 passes, and they are not one thing either.** A case the parser
+**52 known issues are not 52 passes, and they are not one thing either.** A case the parser
 cannot yet handle is wrapped in `withKnownIssue`, so the run is green because those failures are
-expected, not because they do not happen. But only **33 of the 64 are parser-shaped** - 11
-conformance, 9 oracle diff, 13 round-trip - and those go to zero as the parser gets written.
+expected, not because they do not happen. But only **21 of the 52 are parser-shaped** - 0
+conformance, 8 oracle diff, 13 round-trip - and those go to zero as the parser gets written.
 The other **31 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
 round-trip losses on its own parser. Writing a perfect Swift parser does not move that 31 at
-all. The parser-shaped 33 goes DOWN as the parser grows and UP whenever a new fixture is added
+all. The parser-shaped 21 goes DOWN as the parser grows and UP whenever a new fixture is added
 ahead of it; both directions are correct.
+
+**The conformance suite now carries zero known issues, and that is a statement about the
+corpus as much as about the parser.** Every one of the 80 cases asserts normally. It does not
+mean the parser handles org; it means no case in this corpus is beyond it, which is exactly
+why the real-world row and the refused-constructs list above are the honest counterweight.
+`withKnownIssue` records a THROW and a WRONG TREE identically, so a green suite has never been
+evidence of correctness here - see SCHEMA.md section 8.
 
 **The 9 round-trip losses are two different things.** 7 are irreducible - the byte is not
 recoverable from any tree built on `org-element`, so no parser on this foundation can fix them.
@@ -154,10 +168,10 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 12 tests, 6 suites, 0 real failures, 64 known issues, of which
-  33 are parser-shaped and 31 are org-mode's own `interpret-data` losses.
-- `parseOrg` on this commit: 69 of 80 conformance cases produce a tree matching the oracle's,
-  4 of 13 real-world files. `renderOrg` is still a stub, so round-trip is 0 of 13. Measured by
+- `swift test` on this commit: 12 tests, 6 suites, 0 real failures, 52 known issues, of which
+  21 are parser-shaped and 31 are org-mode's own `interpret-data` losses.
+- `parseOrg` on this commit: 80 of 80 conformance cases produce a tree matching the oracle's,
+  5 of 13 real-world files. `renderOrg` is still a stub, so round-trip is 0 of 13. Measured by
   reading the per-suite known-issue counts off the run, not inferred from the total.
 - `harness/verify-corpus.sh` on this commit: 80/80 conformance cases pass (a runnable reference
   adapter that uses the Emacs oracle itself as the stand-in parser).
