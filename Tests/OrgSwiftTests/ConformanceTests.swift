@@ -96,6 +96,10 @@ struct ConformanceTests {
         "footnote-definition-simple",
         "footnote-definition-preblank",
         "footnote-reference-simple",
+        // Latex fragments, `\(...\)` and `\[...\]` ONLY. `\name{}` and `$...$` still throw:
+        // an entity and a `\name` fragment are told apart by a lookup in org's 414-name table,
+        // not by shape, so narrowing further needs the whole table.
+        "latex-fragment-inline",
         // Tables and fixed-width areas. `table-el-flavour` is deliberately NOT here: a `table.el`
         // grid carries `value` instead of `children` and is still unimplemented, so it throws.
         "easy-table-simple",

@@ -427,6 +427,29 @@ extension OrgParser {
                     textStart = past
                     continue
                 }
+                // `latex-fragment` appears in ALL 19 restriction rows, so unlike `link`,
+                // `timestamp` and `footnote-reference` it needs no container gate. Checked
+                // end to end rather than read off the table: a fragment forms in a headline
+                // title, a table cell, a link description, a bold span, a radio target and an
+                // item. `* a \(x\) b\\` is the one that pins both rules at once -- the fragment
+                // forms AND the trailing `\\` stays literal, because a headline refuses breaks.
+                if let end = latexFragmentEnd(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("latex-fragment"),
+                        "value": .string(String(scalars: chars[i..<end])),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
+                }
                 throw OrgError.notImplemented
             case "[":
                 // `[[...]]` is a bracket link. Every OTHER `[` construct still throws: footnote
@@ -797,6 +820,45 @@ extension OrgParser {
         if j < chars.count, !chars[j].isASCII { throw OrgError.notImplemented }
         guard let last = lastAlnum else { return nil }
         return ScriptMatch(end: last + 1, body: (i + 1)..<(last + 1), useBrackets: false)
+    }
+
+    /// Index just past a `\(...\)` or `\[...\]` latex fragment at `i`, or nil.
+    ///
+    /// **These two forms ONLY**, and the narrowing is safe by ENUMERATION rather than by shape.
+    /// The tempting argument -- that an entity name is alphabetic so it can never begin with a
+    /// bracket -- is FALSE: of the 414 names in `org-entities` plus `org-entities-user`, 27 are
+    /// not alphabetic, and `a \_ b` is an entity whose name is literally `"_ "`. Dumped and
+    /// counted rather than reasoned about. What IS true, and is the actual receipt: ZERO of the
+    /// 414 begin with `(` or `[`, so nothing this matcher claims can be an entity.
+    ///
+    /// Everything else a backslash opens keeps throwing. `\command{arg}` really is a fragment and
+    /// `\alpha` really is an entity, but they are told apart by a LOOKUP in that 414-name table,
+    /// not by shape, so implementing either needs the whole table. `$` keeps throwing too: it is
+    /// a fragment in org, but it appears in ordinary prose as currency and its delimitation is
+    /// fiddly, so the blast radius of guessing is real and it costs no case.
+    ///
+    /// Measured, with the delimiters INCLUDED in `value` and the closer being the matching one:
+    ///
+    ///     a \(x\) b          fragment `\(x\)`        a \( unclosed b   plain TEXT
+    ///     a \[x\] b          fragment `\[x\]`        a \) b            plain TEXT
+    ///     a \(\) b           fragment `\(\)`         a \] b            plain TEXT
+    ///     a \(x<nl>y\) b     spans a newline
+    ///     a \(f(x)\) b       a bare `(` inside is ordinary content
+    ///     a \[x \(y\) z\] b  ONE fragment: `\(` does not close a `\[`
+    private func latexFragmentEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+        guard i + 1 < chars.count else { return nil }
+        let closer: Unicode.Scalar
+        switch chars[i + 1] {
+        case "(": closer = ")"
+        case "[": closer = "]"
+        default: return nil
+        }
+        var j = i + 2
+        while j + 1 < chars.count {
+            if chars[j] == "\\", chars[j + 1] == closer { return j + 2 }
+            j += 1
+        }
+        return nil
     }
 
     /// Index just past a statistics cookie starting at `i`, or nil.
