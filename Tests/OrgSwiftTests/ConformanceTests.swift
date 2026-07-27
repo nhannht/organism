@@ -163,8 +163,15 @@ struct ConformanceTests {
     ///     block type                          #+TODO: FOO BAR      #+STARTUP: odd
     ///     src, example, export, comment       todo null            level 3
     ///     verse                               todo null            level 3
-    ///     quote, center                       todo "FOO"           level 2
+    ///     quote, center, dynamic-block        todo "FOO"           level 2
     ///     (no block, top level -- control)    todo "FOO"           level 2
+    ///
+    /// `dynamic-block` joined with the dynamic-block increment, and it is the row that forced the
+    /// table to carry whole opener/closer LINES instead of type fragments. Until it parsed, every
+    /// document containing one threw, so the classifier's answer for it was unobservable -- the
+    /// same unfalsifiable shape this whole test exists to close, and no fixture reaches it.
+    /// `nonElementBlockTypes` needed no new entry, because it is keyed on "does the content yield
+    /// elements", which answers a dynamic block correctly without being told about it.
     ///
     /// `verse` is the row's whole point and the reason `nonElementBlockTypes` is not simply
     /// `literalBlockTypes`. A verse body IS parsed, but as OBJECTS, so a `#+TODO:` line inside
@@ -177,10 +184,21 @@ struct ConformanceTests {
     /// protecting rows and look correct.
     @Test("row 3: pass-1 hides a file setting for exactly the non-element block types")
     func passOneClassifierIsPerBlockType() throws {
-        // `begin` carries the head (some types need an argument); `end` is the bare type.
-        let protecting = [("src emacs-lisp", "src"), ("example", "example"),
-                          ("export html", "export"), ("comment", "comment"), ("verse", "verse")]
-        let exposing = [("quote", "quote"), ("center", "center")]
+        // Each row carries its opener and closer as WHOLE LINES, plus a label for the messages.
+        // They were `#+begin_\(type)` / `#+end_\(type)` fragments until a dynamic block needed a
+        // row: its opener is `#+BEGIN:` -- a colon where the template had an underscore -- and its
+        // closer is `#+END:`, carrying no type word at all, so no fragment value can produce
+        // either. The alternative was a second `parseOrg` call beside the loop with its own
+        // assertions, which is two paths kept in sync by hand, inside the very test that exists to
+        // close an unfalsifiable claim. Whole lines keep ONE assertion path for every type.
+        let protecting = [("#+begin_src emacs-lisp", "#+end_src", "src"),
+                          ("#+begin_example", "#+end_example", "example"),
+                          ("#+begin_export html", "#+end_export", "export"),
+                          ("#+begin_comment", "#+end_comment", "comment"),
+                          ("#+begin_verse", "#+end_verse", "verse")]
+        let exposing = [("#+begin_quote", "#+end_quote", "quote"),
+                        ("#+begin_center", "#+end_center", "center"),
+                        ("#+BEGIN: myblock", "#+END:", "dynamic-block")]
 
         func lastHeadline(_ doc: OrgJSON) throws -> [String: OrgJSON] {
             var found: [String: OrgJSON]?
@@ -197,29 +215,29 @@ struct ConformanceTests {
                 .joined()
         }
 
-        for (begin, end) in protecting {
+        for (opener, closer, label) in protecting {
             // A throw here is a FAILURE, not a skip: the whole point of this test is that these
             // documents parse. It is deliberately not wrapped in `withKnownIssue`, which goes
             // red on a match and silently green on a mismatch.
-            let todoDoc = try parseOrg("#+begin_\(begin)\n#+TODO: FOO BAR\n#+end_\(end)\n\n* FOO task\n")
+            let todoDoc = try parseOrg("\(opener)\n#+TODO: FOO BAR\n\(closer)\n\n* FOO task\n")
             let h = try lastHeadline(todoDoc)
-            #expect(h["todo"] == OrgJSON.null, "\(end) must PROTECT #+TODO: from pass 1")
-            #expect(titleText(h) == "FOO task", "\(end): FOO must stay in the title")
+            #expect(h["todo"] == OrgJSON.null, "\(label) must PROTECT #+TODO: from pass 1")
+            #expect(titleText(h) == "FOO task", "\(label): FOO must stay in the title")
 
-            let startupDoc = try parseOrg("#+begin_\(begin)\n#+STARTUP: odd\n#+end_\(end)\n\n* a\n*** b\n")
+            let startupDoc = try parseOrg("\(opener)\n#+STARTUP: odd\n\(closer)\n\n* a\n*** b\n")
             #expect(try lastHeadline(startupDoc)["level"] == OrgJSON.int(3),
-                    "\(end) must PROTECT #+STARTUP: odd from pass 1")
+                    "\(label) must PROTECT #+STARTUP: odd from pass 1")
         }
 
-        for (begin, end) in exposing {
-            let todoDoc = try parseOrg("#+begin_\(begin)\n#+TODO: FOO BAR\n#+end_\(end)\n\n* FOO task\n")
+        for (opener, closer, label) in exposing {
+            let todoDoc = try parseOrg("\(opener)\n#+TODO: FOO BAR\n\(closer)\n\n* FOO task\n")
             let h = try lastHeadline(todoDoc)
-            #expect(h["todo"] == OrgJSON.string("FOO"), "\(end) must EXPOSE #+TODO: to pass 1")
-            #expect(titleText(h) == "task", "\(end): FOO must be consumed as the keyword")
+            #expect(h["todo"] == OrgJSON.string("FOO"), "\(label) must EXPOSE #+TODO: to pass 1")
+            #expect(titleText(h) == "task", "\(label): FOO must be consumed as the keyword")
 
-            let startupDoc = try parseOrg("#+begin_\(begin)\n#+STARTUP: odd\n#+end_\(end)\n\n* a\n*** b\n")
+            let startupDoc = try parseOrg("\(opener)\n#+STARTUP: odd\n\(closer)\n\n* a\n*** b\n")
             #expect(try lastHeadline(startupDoc)["level"] == OrgJSON.int(2),
-                    "\(end) must EXPOSE #+STARTUP: odd to pass 1")
+                    "\(label) must EXPOSE #+STARTUP: odd to pass 1")
         }
 
         // Controls, BOTH poles. These are what make the protecting rows above mean anything, and
