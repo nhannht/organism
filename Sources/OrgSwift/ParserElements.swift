@@ -363,6 +363,7 @@ extension OrgParser {
 
             let children = bodyLines.isEmpty ? [] : try OrgParser(
                 lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,
+                radioTargets: radioTargets, radioCollector: radioCollector,
                 firstLineIsSliced: !firstRest.isEmpty
             ).parseElementRun(in: 0..<bodyLines.count)
 

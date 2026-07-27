@@ -52,8 +52,58 @@
 /// `latex-fragment` IS mapped and `latex-environment` is NOT; `radio-target` IS mapped and
 /// `target` is NOT. Emitting a node type the schema does not define would produce a tree no
 /// conformant consumer can read, which is worse than an honest `notImplemented`.
+///
+/// ## Two passes, because radio links cannot be resolved in one
+///
+/// A `<<<target>>>` matches plain text ANYWHERE in the document, including text ABOVE its own
+/// definition (measured), so no single left-to-right pass can know whether a run of text is a
+/// radio link. Org has the same problem and solves it the same way: `org-mode` runs
+/// `org-update-radio-target-regexp` (`ol.el:2216`) once at mode setup, which scans the buffer for
+/// `<<<...>>>` and keeps a hit only when `org-element-context` says it really is a `radio-target`
+/// OBJECT, and only then does `org-element-parse-buffer` run with the resulting regexp live.
+///
+/// So this parses the document TWICE: pass 1 with no targets, purely to find out which
+/// `radio-target` nodes the document actually builds, and pass 2 with those targets. Pass 1's tree
+/// is discarded.
+///
+/// That is not a workaround for a one-pass design, it is what makes the "where do radio links
+/// form" question disappear. Org's answer is a 34-container table -- collect where a
+/// `radio-target` object may be lexed, match where a `link` may be. Running the real parser twice
+/// consults that table BY CONSTRUCTION: pass 1 builds a `radio-target` node exactly where
+/// `parseObjects` runs with a container permitting `.radioTarget`, and pass 2 forms a radio link
+/// exactly where it runs with a container permitting `.link`. There is no second copy of the
+/// descent rule to keep in sync, and no textual pre-scan that has to re-derive which regions are
+/// object-parsed. Measured against 27 sites, including the ones that must NOT collect: a src,
+/// example, comment or export block, a comment line, a fixed-width area, a plain keyword value, a
+/// node property, a table.el cell, a `code` or `verbatim` span, and a link description.
+///
+/// The two passes cannot disagree about the target set. A radio link's matched text is the target
+/// text modulo case and whitespace runs, and `org-radio-target-regexp` forbids `<` and `>` in a
+/// target, so a radio link can never overlap a `<<<`, and pass 2 sees exactly the targets pass 1
+/// did.
+///
+/// The cost, stated rather than hidden: pass 1 parses the whole document, so a construct this
+/// parser refuses ANYWHERE still fails the document even where org would have swallowed it into a
+/// radio link's description. `<<<[cite:@k]>>>` with `x [cite:@k] y` is the measured example -- org
+/// emits a radio link whose description is plain text, this throws on the citation. That is an
+/// over-throw, which is the safe direction and is suite-visible.
 public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
-    try OrgParser(source: source, todoKeywords: todoKeywords).parseDocument()
+    // Pass 1. The tree is discarded; the collector is the output.
+    let collected = RadioTargetCollector()
+    _ = try OrgParser(
+        source: source, todoKeywords: todoKeywords,
+        radioTargets: [], radioCollector: collected
+    ).parseDocument()
+
+    // Pass 2. A FRESH collector, not the pass-1 one: every parse reports the radio targets it
+    // built, and this parse's report is simply not the thing being asked for. Reusing pass 1's
+    // would work only because the two agree, which is the invariant above -- relying on it here
+    // would make a proof do the job of a variable.
+    return try OrgParser(
+        source: source, todoKeywords: todoKeywords,
+        radioTargets: RadioTarget.compile(collected.values),
+        radioCollector: RadioTargetCollector()
+    ).parseDocument()
 }
 
 extension String {
@@ -62,6 +112,90 @@ extension String {
     /// than spelled `String(String.UnicodeScalarView(...))` at thirty call sites.
     init(scalars: some Sequence<Unicode.Scalar>) {
         self.init(String.UnicodeScalarView(scalars))
+    }
+}
+
+/// One `<<<target>>>` collected in pass 1, compiled into the pattern pass 2 matches against.
+///
+/// The compilation is org's own, from `org-update-radio-target-regexp` (`ol.el:2242`): the raw
+/// target text is `regexp-quote`d and then every run of ASCII SPACE is replaced by `\s-+`. So a
+/// target is a sequence of literal scalars with variable-width whitespace holes, which is what
+/// `Item` says.
+///
+/// Two details of that line decide the whole type, and both are measured rather than read off it:
+///
+/// - The substitution is on `" +"`, ASCII SPACE only. A TAB inside a target stays a LITERAL tab:
+///   `<<<a-TAB-b>>>` matches `a-TAB-b` and does NOT match `a b`. So the holes and the literals
+///   are two different classes and cannot be collapsed into "whitespace".
+/// - `\s-` is Emacs's whitespace SYNTAX class, which is `isBorderWhitespace` -- NOT ASCII space
+///   and tab. Measured: `<<<a b>>>` matches `a` U+00A0 `b`, `a` U+3000 `b` and `a` U+200B `b`,
+///   and does not match `a` U+1680 `b` or `a` U+2028 `b`.
+///
+/// A hole can therefore be followed by a whitespace LITERAL (target `a SPACE TAB b`), which is why
+/// matching needs real backtracking and not a greedy scan.
+struct RadioTarget {
+    enum Item: Equatable {
+        /// One scalar of the target, already folded through `OrgParser.radioCanon`.
+        case literal(Unicode.Scalar)
+        /// `\s-+`: one or more `isBorderWhitespace` scalars.
+        case whitespaceRun
+    }
+
+    let items: [Item]
+
+    /// Compiles the collected raw target texts into match order.
+    ///
+    /// Order is org's: duplicates removed by exact text (`cl-pushnew` with `equal`, so the
+    /// de-duplication is case-SENSITIVE), then sorted by DESCENDING LENGTH of the raw text, which
+    /// is what makes the alternation prefer the longest target. Measured in both definition
+    /// orders: `<<<a>>> <<<a b>>>` and `<<<a b>>> <<<a>>>` both give ONE link over `a b`.
+    ///
+    /// Emacs's `sort` is stable, so equal-length targets keep their own order. That order cannot
+    /// change the tree: two same-length targets can only both match at one position when they are
+    /// equal under folding and whitespace-run equivalence, and then the matched text -- which is
+    /// what `path` and `description` are built from -- is identical either way.
+    static func compile(_ rawTargets: [String]) -> [RadioTarget] {
+        rawTargets
+            .sorted { $0.unicodeScalars.count > $1.unicodeScalars.count }
+            .map(RadioTarget.init(raw:))
+    }
+
+    private init(raw: String) {
+        var items: [Item] = []
+        for scalar in raw.unicodeScalars {
+            if scalar == " " {
+                if items.last != .whitespaceRun { items.append(.whitespaceRun) }
+            } else {
+                items.append(.literal(OrgParser.radioCanon(scalar)))
+            }
+        }
+        self.items = items
+    }
+}
+
+/// The radio targets a parse FOUND, which is an output of parsing rather than an input to it.
+///
+/// This exists because org's radio matching is genuinely two-pass and cannot be otherwise: a
+/// target defined at the end of a file matches text at the start of it, so nothing can be matched
+/// until the whole document has been read. `org-mode` runs `org-update-radio-target-regexp` once
+/// at mode setup and `org-element-parse-buffer` then runs with the result, and `parseOrg` below
+/// is that same shape.
+///
+/// A class rather than an `inout` or a return value because the recording happens inside
+/// `parseObjects`, several recursion levels and two sub-parsers below `parseDocument`, and
+/// threading a value back up would touch every signature in between.
+///
+/// `@unchecked Sendable` because `OrgParser` is otherwise a struct of immutable Sendable fields.
+/// A parse is single-threaded by construction -- one collector is created per `parseOrg` call and
+/// never escapes it -- so the mutation is unshared, but the compiler cannot see that.
+final class RadioTargetCollector: @unchecked Sendable {
+    private(set) var values: [String] = []
+    private var seen: Set<String> = []
+
+    /// Records one `<<<target>>>`'s raw text. De-duplicates by exact text, matching org's
+    /// `cl-pushnew ... :test #'equal`, and keeps first-seen order.
+    func record(_ value: String) {
+        if seen.insert(value).inserted { values.append(value) }
     }
 }
 
@@ -151,8 +285,23 @@ struct OrgParser {
     /// built.
     let firstLineIsSliced: Bool
 
-    init(source: String, todoKeywords: [String]?) {
+    /// Every `<<<target>>>` the document defines, compiled and in match order. Empty in pass 1.
+    ///
+    /// A document-wide setting inherited by every sub-parser, exactly like `todoSet` and
+    /// `oddLevels` and for the same reason: re-deriving it from a fragment would let an item body
+    /// or a footnote definition have its own private idea of what the document's targets are.
+    let radioTargets: [RadioTarget]
+
+    /// Where this parse REPORTS the `<<<target>>>` nodes it builds. See `parseOrg`.
+    let radioCollector: RadioTargetCollector
+
+    init(
+        source: String, todoKeywords: [String]?,
+        radioTargets: [RadioTarget], radioCollector: RadioTargetCollector
+    ) {
         self.firstLineIsSliced = false
+        self.radioTargets = radioTargets
+        self.radioCollector = radioCollector
         self.source = source
 
         var built: [Line] = []
@@ -192,11 +341,22 @@ struct OrgParser {
     /// keyword set for that fragment alone, which is a second source of truth for a document-wide
     /// setting. `source` is empty because it feeds exactly one thing, `parseDocument`'s CRLF
     /// guard, and a sub-parser never runs it: the document was already validated as a whole.
-    init(lines: [Line], todoSet: Set<String>, oddLevels: Bool, firstLineIsSliced: Bool = false) {
+    ///
+    /// `radioTargets` and `radioCollector` are inherited for the same reason `todoSet` is, and the
+    /// collector in particular is the SAME object rather than a fresh one -- a `<<<target>>>`
+    /// inside an item body or a footnote definition is a document-level target, and a sub-parser
+    /// given its own collector would drop it on the floor with nothing going red.
+    init(
+        lines: [Line], todoSet: Set<String>, oddLevels: Bool,
+        radioTargets: [RadioTarget], radioCollector: RadioTargetCollector,
+        firstLineIsSliced: Bool = false
+    ) {
         self.source = ""
         self.lines = lines
         self.todoSet = todoSet
         self.oddLevels = oddLevels
+        self.radioTargets = radioTargets
+        self.radioCollector = radioCollector
         self.firstLineIsSliced = firstLineIsSliced
     }
 }

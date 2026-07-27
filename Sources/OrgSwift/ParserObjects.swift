@@ -376,6 +376,76 @@ extension OrgParser {
         while i < chars.count {
             let c = chars[i]
 
+            // `$` is checked FIRST, ahead of the radio-link scan below, and its position is the
+            // whole of org's precedence rule rather than a preference.
+            //
+            // `org-element--get-next-object-candidate` bounds its ordinary object search at
+            // `radioStart + 1` (org-element.el:5289-5300), so a candidate can only beat a radio
+            // match at the SAME position when it is ONE character long -- and `\$` is the only
+            // one-character alternative in the whole of `org-element--object-regexp`. Everything
+            // else there is two or more, which is why the radio link wins over all of it.
+            // Measured, 18 constructs, every one of them a radio link and NOT the construct:
+            //
+            //     *a*  /a/  ~a~  =a=  +a+  _a_  [[http://q]]  [fn:1]  [1/2]
+            //     [2024-01-01 Mon]  {{{a}}}  @@h:v@@  \(a\)  \alpha
+            //     https://q.com  id:q  src_a{b}  call_a()
+            //
+            // and the one exception, also measured: `<<<$a$>>>` against `x $a$ y` gives a
+            // latex-fragment and NO radio link. This branch throws either way, so keeping it here
+            // is an over-throw that covers both of org's answers; letting the radio scan run first
+            // would emit a link where org emits a fragment.
+            if c == "$" { throw OrgError.notImplemented }
+
+            // RADIO links: plain text matching a `<<<target>>>` collected in pass 1. Empty in
+            // pass 1 itself, so this costs nothing there. See `parseOrg` for the two-pass shape
+            // and `radioMatchEnd` for the match rule.
+            //
+            // Gated on `link`, which is org's own gate (`(memq 'link restriction)` at
+            // org-element.el:5280) and the same one `plainLinkEnd` sits behind. Measured on both
+            // sides: a link description and a radio target's own contents refuse `link`, and no
+            // radio link forms in either, while a table cell, an item tag, a headline title, a
+            // subscript body and a bold span all permit it and all form one.
+            if container.permits(.link), let end = radioMatchEnd(in: chars, at: i) {
+                flushText(upTo: i)
+                var postBlank = 0
+                var k = end
+                while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                    postBlank += 1
+                    k += 1
+                }
+                // `path` is the MATCHED SOURCE TEXT, not the target's own text -- org sets it
+                // from `(match-string-no-properties 1)` (org-element.el:3861). So `<<<a b>>>`
+                // matched against `a` newline indent `b` gives a path carrying that literal
+                // newline and those spaces, measured. Two consequences worth naming: a
+                // line-by-line pass 2 would never find the match at all, and a path built from
+                // the TARGET would be silently wrong on every input where the two differ.
+                //
+                // The description is the same text re-lexed under the `link` row, which is what
+                // makes `<<<*a*>>>` matched against `*a*` come back as a link whose description
+                // holds a BOLD node while `[[http://q]]` in the same position stays flat text.
+                // Not built through `linkNode`: that derives `pathType` from the target text and
+                // would report `fuzzy` here.
+                //
+                // Naming `link` here is also what makes this TERMINATE, which is stronger than
+                // reference-faithfulness and was found by mutating it. The description IS the
+                // matched text, so a container permitting `link` re-matches the same target
+                // inside its own description, forever -- swapping `.link` for `.paragraph`
+                // crashes the parser rather than producing a wrong tree. `linkSet` refuses
+                // `link`, so org's own restriction row is the recursion's base case.
+                let matched = String(scalars: chars[i..<end])
+                nodes.append(.object([
+                    "type": .string("link"),
+                    "linkType": .string("plain"),
+                    "pathType": .string("radio"),
+                    "path": .string(matched),
+                    "description": .array(try parseObjects(matched, in: .link)),
+                    "postBlank": .int(postBlank),
+                ]))
+                i = k
+                textStart = k
+                continue
+            }
+
             // PLAIN links, checked before the switch because they have no distinguishing opener
             // -- they begin with a bare type name, so every one of them would otherwise fall to
             // `default` and be swallowed into a text run.
@@ -555,12 +625,48 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
+                // `<<<x>>>`, the anchor a radio link matches against. Order against the two
+                // branches above is immaterial and was checked rather than assumed: an angle link
+                // needs a REGISTERED TYPE at `i + 1` and a timestamp needs a digit or `%%` there,
+                // and `<` is neither, so neither can match a `<<`.
+                //
+                // Its contents are lexed under the `radio-target` ROW, not the enclosing
+                // container's -- the second of the two places this increment threads a container,
+                // and the one that is easy to miss. That row permits only ten object types, so a
+                // radio target holds bold, code, entity, italic, latex-fragment, strike-through,
+                // sub/superscript, underline and verbatim, and NOTHING else: no nested link, no
+                // timestamp, no footnote reference, and no radio link. Measured: with `<<<a>>>`
+                // defined, the `a` inside `<<<x a y>>>` does NOT become a radio link.
+                //
+                // The node carries `children` and never `value`, although org-element gives a
+                // radio-target both at once -- SCHEMA.md section 4 spells out why `children` is
+                // the lossless choice.
+                if container.permits(.radioTarget), let match = radioTargetMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    // Pass 1's whole purpose: the RAW text, before folding and before the
+                    // whitespace-run compilation, exactly as org's `cl-pushnew` records
+                    // `:value`.
+                    radioCollector.record(String(scalars: chars[match.body]))
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("radio-target"),
+                        "children": .array(try parseObjects(
+                            String(scalars: chars[match.body]), in: .radioTarget
+                        )),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
+                }
                 if container.permitsAny(of: Self.angleOpenableObjects) {
                     throw OrgError.notImplemented
                 }
-            case "$":
-                // Latex fragments. Unimplemented.
-                throw OrgError.notImplemented
             case "^", "_":
                 // The PRE rule here is org's `\S-` -- a single NEGATION of whitespace -- and it is
                 // NOT the emphasis PRE rule. `isPreChar` accepts whitespace OR punctuation, which
@@ -623,8 +729,8 @@ extension OrgParser {
                 //
                 // Container-gated, and the gate is load-bearing rather than decorative: a table
                 // cell and a radio target both REFUSE these two, and org builds an ordinary
-                // subscript there. Measured: `| src_a{b} |` is a cell holding text, a subscript
-                // and more text, and so are the contents of `<<<src_a{b}>>>`.
+                // subscript there. Measured: the contents of `<<<src_a{b}>>>` are text `src`, a
+                // subscript, and text `{b}`.
                 let inlineKind: ObjectKind = c == "s" ? .inlineSrcBlock : .inlineBabelCall
                 if container.permits(inlineKind), inlineSrcOrCallCouldStart(in: chars, at: i) {
                     throw OrgError.notImplemented
@@ -676,6 +782,110 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// Index just past a `<<<target>>>` at `i`, and the range of its contents, or nil.
+    ///
+    /// `org-radio-target-regexp` in full, and it is small enough to implement EXACTLY:
+    ///
+    ///     <<<\([^<>\n \t]\|[^<>\n \t][^<>\n]*[^<>\n \t]\)>>>
+    ///
+    /// So the contents are at least one scalar, may not contain `<`, `>` or a newline, and may not
+    /// BEGIN or END with a space or a tab.
+    ///
+    /// **The edge class is the literal `[ \t]`, NOT `isBorderWhitespace`, and that is the trap
+    /// here.** Reaching for the whitespace predicate this file uses everywhere else would decline
+    /// a target org accepts. Measured, both sides:
+    ///
+    ///     <<<-NBSP-a>>>    a REAL radio target whose text begins with U+00A0
+    ///     <<<-FF-a>>>      a REAL radio target whose text begins with U+000C
+    ///     <<< a>>>         plain TEXT     leading ASCII space
+    ///     <<<a >>>         plain TEXT     trailing ASCII space
+    ///     <<<-TAB-a>>>     plain TEXT     leading tab
+    ///     <<<a-TAB-b>>>    a real target, an INTERIOR tab is fine
+    ///
+    /// The `>` exclusion makes the contents unambiguous rather than greedy, and it decides two
+    /// shapes a hand-written scanner gets wrong. Measured:
+    ///
+    ///     <<<a>>>>     radio-target `a`, then a literal `>`
+    ///     <<<<a>>>     a literal `<`, then radio-target `a`
+    ///     <<<a>b>>>    plain TEXT
+    ///     <<<a<b>>>    plain TEXT
+    ///     <<<>>>       plain TEXT     empty
+    ///     <<<a\nb>>>   plain TEXT     no newline inside
+    func radioTargetMatch(
+        in chars: [Unicode.Scalar], at i: Int
+    ) -> (end: Int, body: Range<Int>)? {
+        func isEdgeScalar(_ s: Unicode.Scalar) -> Bool {
+            s != "<" && s != ">" && s != "\n" && s != " " && s != "\t"
+        }
+        func isInteriorScalar(_ s: Unicode.Scalar) -> Bool {
+            s != "<" && s != ">" && s != "\n"
+        }
+        guard i + 3 < chars.count,
+              chars[i] == "<", chars[i + 1] == "<", chars[i + 2] == "<" else { return nil }
+        let bodyStart = i + 3
+        guard isEdgeScalar(chars[bodyStart]) else { return nil }
+        var j = bodyStart + 1
+        while j < chars.count, isInteriorScalar(chars[j]) { j += 1 }
+        // The contents END on the last interior scalar, which must itself be an edge scalar. A
+        // one-scalar body has already passed that test as its own opener.
+        guard j > bodyStart, isEdgeScalar(chars[j - 1]) else { return nil }
+        guard j + 2 < chars.count,
+              chars[j] == ">", chars[j + 1] == ">", chars[j + 2] == ">" else { return nil }
+        return (end: j + 3, body: bodyStart..<j)
+    }
+
+    /// Index just past a RADIO LINK match starting at `i`, or nil when no target matches there.
+    ///
+    /// Three conditions, all from `org-target-link-regexp` (`ol.el:2224`) and all measured:
+    ///
+    /// - A BOUNDARY before. `^` or `[^[:alnum:]]` or category `|`, so position 0 of the lexed
+    ///   region qualifies -- `org-element--parse-objects` narrows to the region, which makes its
+    ///   start a line start. Measured: `<<<ab>>>` matches an `ab` that opens the paragraph, and
+    ///   does not match the `ab` in `xabx` or `1ab1`, while `-CJK-ab-CJK-` DOES match.
+    /// - A target matching at `i`, tried LONGEST FIRST. `RadioTarget.compile` does the ordering.
+    /// - A BOUNDARY after, or the end of the region (`$`).
+    ///
+    /// A failed trailing boundary does NOT end the scan: Emacs backtracks into the alternation and
+    /// into `\s-+`, so a shorter target, or a shorter whitespace run, can still match at the same
+    /// position. That is why the boundary test lives at the bottom of `matchItems` rather than
+    /// after it.
+    func radioMatchEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+        guard !radioTargets.isEmpty else { return nil }
+        guard i == 0 || OrgParser.isRadioBoundary(chars[i - 1]) else { return nil }
+
+        /// Whether a match ENDING at `end` is closed by a boundary. End of region counts, since
+        /// the narrowed region's end is a line end.
+        func closes(_ end: Int) -> Bool {
+            end == chars.count || OrgParser.isRadioBoundary(chars[end])
+        }
+
+        /// Matches `items[k...]` at `j`, backtracking, and returns the first end that `closes`.
+        func matchItems(_ items: [RadioTarget.Item], _ k: Int, _ j: Int) -> Int? {
+            guard k < items.count else { return closes(j) ? j : nil }
+            switch items[k] {
+            case .literal(let expected):
+                guard j < chars.count, OrgParser.radioCanon(chars[j]) == expected else {
+                    return nil
+                }
+                return matchItems(items, k + 1, j + 1)
+            case .whitespaceRun:
+                var run = 0
+                while j + run < chars.count, isBorderWhitespace(chars[j + run]) { run += 1 }
+                // `\s-+` is greedy with backtracking: longest first, then shorter, never zero.
+                while run >= 1 {
+                    if let end = matchItems(items, k + 1, j + run) { return end }
+                    run -= 1
+                }
+                return nil
+            }
+        }
+
+        for target in radioTargets {
+            if let end = matchItems(target.items, 0, i) { return end }
+        }
+        return nil
     }
 
     /// True when org's own inline-src-block / inline-babel-call CANDIDATE test matches at `i` --

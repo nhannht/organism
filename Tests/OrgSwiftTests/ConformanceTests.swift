@@ -131,8 +131,11 @@ struct ConformanceTests {
         "link-plain",
         "link-regular-no-description",
         "link-regular-with-description",
-        // Timestamps. `link-radio` is still absent because a radio link needs a document-wide
-        // pass collecting `<<<target>>>` anchors, which is pass-1 work rather than object work.
+        // The document-wide one. A `<<<target>>>` matches text ABOVE its own definition, so
+        // `parseOrg` parses twice -- pass 1 to find which `radio-target` nodes the document
+        // actually builds, pass 2 with those targets live -- which is org's own shape.
+        "link-radio",
+        // Timestamps.
         "timestamp-active-simple",
         "timestamp-inactive-simple",
         "timestamp-active-range",
