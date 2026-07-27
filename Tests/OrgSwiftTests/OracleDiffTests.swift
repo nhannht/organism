@@ -45,6 +45,13 @@ struct OracleDiffTests {
     /// they were one, the tag group, which every Doom and org-mode-samples file uses in its
     /// headings. Nothing else in them was outside the subset. That is also why the count here
     /// moves in jumps rather than one file at a time.
+    ///
+    /// `examples.org` joined with ORG-23, and it arrived by a route worth distinguishing from the
+    /// other four. They entered because the parser learned a construct it had been THROWING on.
+    /// This one entered because the parser stopped emitting a construct org does not build: a
+    /// link description forbids `link` and `timestamp`, and the parser had been forming both
+    /// there. So a file can cross into this set by a defect being FIXED as well as by a feature
+    /// landing, and the two are not distinguishable from the count alone.
     static let implementedFiles: Set<String> = [
         "real/org-mode-samples/pathological.org",
         "real/org-mode-samples/tags.org",
