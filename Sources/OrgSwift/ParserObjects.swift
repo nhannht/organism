@@ -57,6 +57,11 @@ enum ObjectKind: String, CaseIterable, Sendable {
 /// inside a table cell permits a break the cell itself refuses, and the old inherited boolean
 /// -- which passed the OUTER permission down at the recursion -- declined all four. It declined
 /// by THROWING, so no wrong tree was ever emitted; the cost was coverage, not correctness.
+///
+/// THREE of those four now parse; the link-description row is measured but unexercised. Its
+/// input never reaches this code, because `bracketLinkMatch` refuses any `\` in a description
+/// first (ParserLinks.swift). The row is right for the day that guard is lifted, and until then
+/// nothing here can be read as evidence about it either way.
 enum ObjectContainer: String, CaseIterable, Sendable {
     case bold = "bold"
     case citation = "citation"
