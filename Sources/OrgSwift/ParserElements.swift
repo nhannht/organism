@@ -196,7 +196,7 @@ extension OrgParser {
                 return (.object([
                     "type": .string("verse-block"),
                     "children": .array(try parseObjects(
-                        blockValue(bodyFrom: i + 1, to: end), permitsLineBreak: true
+                        blockValue(bodyFrom: i + 1, to: end), in: .verseBlock
                     )),
                     "postBlank": .int(0),
                 ]), end + 1)
@@ -283,7 +283,7 @@ extension OrgParser {
         }
         return (.object([
             "type": .string("paragraph"),
-            "children": .array(try parseObjects(text, permitsLineBreak: true)),
+            "children": .array(try parseObjects(text, in: .paragraph)),
             "postBlank": .int(0),
         ]), i)
     }

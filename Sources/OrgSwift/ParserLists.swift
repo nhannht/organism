@@ -228,7 +228,9 @@ extension OrgParser {
             checkbox = .string(cb.state); idx = cb.end; skipSpace()
         }
         if let sep = OrgParser.tagSeparator(in: t, from: idx, upTo: t.count) {
-            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound])))
+            // `item` is org's row for a descriptive-list TAG, and it refuses `line-break`. The
+            // item's BODY is a paragraph and permits one; the two are different containers.
+            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound]), in: .item))
             idx = sep.upperBound
             descriptive = true
         }

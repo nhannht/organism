@@ -321,7 +321,7 @@ extension OrgParser {
                 ? []
                 : [OrgJSON.object(["type": .string("text"), "value": .string("")])]
         } else {
-            title = try parseObjects(titleText)
+            title = try parseObjects(titleText, in: .headline)
         }
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title,

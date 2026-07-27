@@ -330,12 +330,21 @@ extension OrgParser {
             //     x [[https://e.com][one\\<newline>two]] y   ->  0 line-break nodes anywhere,
             //                                                    description is ONE flat text node
             //
-            // So it inherits the whitelist default and passes nothing. Writing `true` here was
-            // the first thing this increment got wrong, which is precisely the failure ORG-21
-            // predicted: a NEW object container silently taking permission it was never measured
-            // to have. The whitelist caught it by making the wrong value something you have to
-            // type on purpose.
-            descriptionValue = .array(try parseObjects(String(scalars: description)))
+            // So it names `link`, org's own row for a link description, which refuses breaks.
+            // Writing the permissive value here was the first thing this increment got wrong,
+            // which is precisely the failure ORG-21 predicted: a NEW object container silently
+            // taking permission it was never measured to have. Naming the container is what
+            // makes the wrong answer something you have to type on purpose.
+            //
+            // The refusal is the DESCRIPTION's own, and it does not reach inside an emphasis in
+            // it -- measured, same line with the description wrapped in bold:
+            //
+            //     x [[https://e.com][*one\\<newline>two*]] y  ->  bold containing a LINE-BREAK
+            //
+            // No input reaches that today: `bracketLinkMatch` throws on any `\` in a description
+            // before this runs, so the row is correct but unexercised. Lifting that guard makes
+            // it live, which is the point of it already being right.
+            descriptionValue = .array(try parseObjects(String(scalars: description), in: .link))
         } else {
             descriptionValue = .null
         }

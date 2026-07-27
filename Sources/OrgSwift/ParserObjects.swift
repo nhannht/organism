@@ -3,7 +3,169 @@
 //
 // Objects nest into other objects, never into elements. The character classes the border rule is
 // written against live in ParserPrimitives.swift, because they are measured Emacs behavior rather
-// than parsing logic and are easy to get subtly wrong.
+// than parsing logic and are easy to get subtly wrong. `ObjectContainer` below is the same kind
+// of thing -- a transcription of an Emacs table, not a rule this parser invented -- and is kept
+// here instead only because `parseObjects` is its sole consumer.
+
+/// One object TYPE, as `org-element-all-objects` names them. Raw values are the org symbol names
+/// so the whole table below can be dumped and compared against the live Emacs one mechanically
+/// rather than read by eye.
+enum ObjectKind: String, CaseIterable, Sendable {
+    case bold = "bold"
+    case citation = "citation"
+    case citationReference = "citation-reference"
+    case code = "code"
+    case entity = "entity"
+    case exportSnippet = "export-snippet"
+    case footnoteReference = "footnote-reference"
+    case inlineBabelCall = "inline-babel-call"
+    case inlineSrcBlock = "inline-src-block"
+    case italic = "italic"
+    case latexFragment = "latex-fragment"
+    case lineBreak = "line-break"
+    case link = "link"
+    case macro = "macro"
+    case radioTarget = "radio-target"
+    case statisticsCookie = "statistics-cookie"
+    case strikeThrough = "strike-through"
+    case `subscript` = "subscript"
+    case superscript = "superscript"
+    case tableCell = "table-cell"
+    case target = "target"
+    case timestamp = "timestamp"
+    case underline = "underline"
+    case verbatim = "verbatim"
+}
+
+/// One CONTAINER row of `org-element-object-restrictions`: the thing whose contents are being
+/// lexed, which is what decides the legal object set. This replaced a `permitsLineBreak: Bool`,
+/// on the instruction that parameter's own doc comment left behind -- a second restricted object
+/// lands in this work, and a second boolean beside the first is the banned patch.
+///
+/// **The container is the LEXING container, not the enclosing element.** That distinction is the
+/// one thing here that is easy to get wrong and was wrong before this type existed. `org-element`
+/// lexes an emphasis span's contents with the restriction of the EMPHASIS, not of whatever holds
+/// it, so permission RESETS at every nesting step rather than being inherited. Measured on
+/// Emacs 30.2 / org 9.7.11, all four containers that refuse `line-break`:
+///
+///     * *a\\*                          headline title  ->  bold, text `a`, LINE-BREAK
+///     | *a\\* | b |                    table cell      ->  bold, text `a`, LINE-BREAK
+///     - *a\\* :: d                     item tag        ->  bold, text `a`, LINE-BREAK
+///     [[url][*one\\<nl>two*]]          link desc       ->  bold, text, LINE-BREAK, text
+///
+/// while the same containers with no emphasis around the backslashes produce none. So a bold
+/// inside a table cell permits a break the cell itself refuses, and the old inherited boolean
+/// -- which passed the OUTER permission down at the recursion -- declined all four. It declined
+/// by THROWING, so no wrong tree was ever emitted; the cost was coverage, not correctness.
+enum ObjectContainer: String, CaseIterable, Sendable {
+    case bold = "bold"
+    case citation = "citation"
+    case citationReference = "citation-reference"
+    case footnoteReference = "footnote-reference"
+    case headline = "headline"
+    case inlinetask = "inlinetask"
+    case italic = "italic"
+    case item = "item"
+    case keyword = "keyword"
+    case link = "link"
+    case paragraph = "paragraph"
+    case radioTarget = "radio-target"
+    case strikeThrough = "strike-through"
+    case `subscript` = "subscript"
+    case superscript = "superscript"
+    case tableCell = "table-cell"
+    case tableRow = "table-row"
+    case underline = "underline"
+    case verseBlock = "verse-block"
+}
+
+extension ObjectContainer {
+
+    /// `standard-set` in org-element.el's own words: every object type except the two that only
+    /// ever appear in one specific parent (`table-cell` inside a `table-row`, `citation-reference`
+    /// inside a `citation`).
+    private static let standardSet: Set<ObjectKind> =
+        Set(ObjectKind.allCases).subtracting([.tableCell, .citationReference])
+    /// `standard-set-no-line-break`, org's own second name for the same list minus one entry.
+    private static let standardSetNoLineBreak: Set<ObjectKind> =
+        standardSet.subtracting([.lineBreak])
+    private static let keywordSet: Set<ObjectKind> = standardSet.subtracting([.footnoteReference])
+    private static let linkSet: Set<ObjectKind> = [
+        .bold, .code, .entity, .exportSnippet, .inlineBabelCall, .inlineSrcBlock, .italic,
+        .latexFragment, .macro, .statisticsCookie, .strikeThrough, .subscript, .superscript,
+        .underline, .verbatim,
+    ]
+    private static let tableCellSet: Set<ObjectKind> = [
+        .bold, .citation, .code, .entity, .exportSnippet, .footnoteReference, .italic,
+        .latexFragment, .link, .macro, .radioTarget, .strikeThrough, .subscript, .superscript,
+        .target, .timestamp, .underline, .verbatim,
+    ]
+    private static let radioTargetSet: Set<ObjectKind> = [
+        .bold, .code, .entity, .italic, .latexFragment, .strikeThrough, .subscript, .superscript,
+        .underline, .verbatim,
+    ]
+    private static let citationReferenceSet: Set<ObjectKind> = [
+        .bold, .code, .entity, .exportSnippet, .inlineBabelCall, .inlineSrcBlock, .italic,
+        .latexFragment, .macro, .radioTarget, .statisticsCookie, .strikeThrough, .subscript,
+        .superscript, .target, .timestamp, .underline, .verbatim,
+    ]
+
+    /// `org-element-object-restrictions`, all 19 rows, transcribed from a dump of the LIVE table
+    /// rather than from the spec or from reasoning about which objects "should" nest.
+    ///
+    /// It is a permitted-set table because that is the shape org stores it in. An "excludes"
+    /// table would be shorter, and would also be a second representation of the standard set that
+    /// somebody has to keep subtracting correctly -- and two rows cannot be expressed that way at
+    /// all (`radio-target` and `citation` are not the standard set minus anything).
+    ///
+    /// The shared rows are named rather than copied for the same reason org names them: nine
+    /// containers hold the identical 22-type set, and nine literal copies of one list is nine
+    /// places for it to drift.
+    ///
+    /// Four rows are here for completeness rather than use -- `citation`, `citation-reference`,
+    /// `inlinetask` and `table-row` are containers this parser cannot yet build. They are
+    /// transcribed anyway because the transcription was checked as a WHOLE: all 19 rows dumped
+    /// from here and from the live `org-element-object-restrictions`, sorted, and diffed, giving
+    /// 0 differing rows -- a check that was itself proven able to fail by planting `line-break`
+    /// in the `radio-target` row and watching it report the extra entry. Transcribing only the
+    /// rows in use would have made that whole-table diff impossible, which is a worse trade than
+    /// four unread rows.
+    ///
+    /// **Nothing in `swift test` re-runs that diff.** It is a one-time measurement, so this table
+    /// drifts silently if org's own ever changes. A permanent test comparing this table against a
+    /// live Emacs belongs in the suite; that gap is tracked under ORG-17.
+    var permittedObjects: Set<ObjectKind> {
+        switch self {
+        case .bold, .italic, .underline, .strikeThrough, .subscript, .superscript,
+             .footnoteReference, .paragraph, .verseBlock:
+            return Self.standardSet
+        case .headline, .inlinetask, .item:
+            return Self.standardSetNoLineBreak
+        case .keyword:
+            return Self.keywordSet
+        case .link:
+            return Self.linkSet
+        case .tableCell:
+            return Self.tableCellSet
+        case .radioTarget:
+            return Self.radioTargetSet
+        case .citation:
+            return [.citationReference]
+        case .citationReference:
+            return Self.citationReferenceSet
+        case .tableRow:
+            return [.tableCell]
+        }
+    }
+
+    /// Whether an object of `kind` may form directly inside this container.
+    ///
+    /// Only `.lineBreak` is asked today. Every other row is data that no code path reads yet, and
+    /// that is deliberate: this type landed as a behaviour-preserving refactor, and a restriction
+    /// starts being consulted in the increment that implements the object it restricts, with its
+    /// own differential sweep behind it.
+    func permits(_ kind: ObjectKind) -> Bool { permittedObjects.contains(kind) }
+}
 
 extension OrgParser {
 
@@ -101,21 +263,22 @@ extension OrgParser {
     /// not a PRE char). Both behaviors, and the `a **bold**` case that discriminates this model
     /// from a "char before the contents" model, were verified against real Emacs. The practical
     /// consequence: recursion needs no context beyond the substring itself.
-    /// - Parameter permitsLineBreak: whether a `line-break` object may form here. This is ONE ROW
-    ///   of `org-element-object-restrictions`, not a mode switch: org itself decides the legal
-    ///   object set from the CONTAINER, and `line-break` is the first object this parser
-    ///   implements whose legality actually varies. SCHEMA.md section 4 lists the containers that
-    ///   permit it (`bold`, `italic`, `keyword`, `paragraph`, `verse-block`, ... ) and the two
-    ///   that refuse it, and both refusals are measured here, not inferred:
+    /// - Parameter container: what is being lexed, which is what decides the legal object set.
+    ///   This is org's own `org-element-object-restrictions` keyed the way org keys it; see
+    ///   `ObjectContainer`. Today exactly one row is consulted -- `line-break` -- because it is
+    ///   the only restricted object this parser implements, and its two element-level refusals
+    ///   are measured, not inferred:
     ///
     ///       * a\\           headline title   text `a\\` literal, NO line-break
     ///       | a\\ | b |     table cell       text `a\\` literal, NO line-break
     ///       a\\<newline>b   paragraph        text `a`, line-break, text `b\n`
     ///
-    ///   Defaulting to `true` matches the shape of org's own table, where permission is the rule
-    ///   and the refusals are enumerated. When a second restricted object lands this parameter
-    ///   becomes the container type instead of growing a second boolean beside it.
-    func parseObjects(_ s: String, permitsLineBreak: Bool = false) throws -> [OrgJSON] {
+    ///   There is deliberately NO default. The value that reads as harmless -- "the permissive
+    ///   one" -- is the one that manufactures objects org would not build, and ORG-21 is the
+    ///   record of that happening: a new container silently took a permission nobody measured it
+    ///   to have. Naming the container at every call site is what makes the wrong answer
+    ///   something a person has to type on purpose.
+    func parseObjects(_ s: String, in container: ObjectContainer) throws -> [OrgJSON] {
         let chars = Array(s.unicodeScalars)
 
         // The up-front plain-link rejection scan that used to stand here is GONE, and its removal
@@ -194,7 +357,7 @@ extension OrgParser {
                 // A FORCED line break, the one `\` construct implemented. Everything else a
                 // backslash can start -- entities (`\alpha`), latex fragments (`\\b`, measured as
                 // a latex-fragment rather than a break) -- is still unimplemented.
-                if permitsLineBreak, let past = lineBreakEnd(at: i) {
+                if container.permits(.lineBreak), let past = lineBreakEnd(at: i) {
                     flushText(upTo: i)
                     // A leaf with NO `value` and NO `children`, exactly like horizontal-rule:
                     // org-element builds it with only :begin, :end and :post-blank, so the type
@@ -285,10 +448,13 @@ extension OrgParser {
                     switch c {
                     case "*", "/":
                         // Containers: contents re-scanned for nested objects as their own
-                        // narrowed region (see this function's doc comment).
+                        // narrowed region (see this function's doc comment), and as their OWN
+                        // container -- a bold's contents are lexed under `bold`'s restrictions,
+                        // never under those of whatever holds the bold. See `ObjectContainer`
+                        // for the four measured inputs that discriminate the two models.
                         objectNode = .object([
                             "type": .string(c == "*" ? "bold" : "italic"),
-                            "children": .array(try parseObjects(contents, permitsLineBreak: permitsLineBreak)),
+                            "children": .array(try parseObjects(contents, in: c == "*" ? .bold : .italic)),
                             "postBlank": .int(match.postBlank),
                         ])
                     default:
@@ -366,3 +532,4 @@ extension OrgParser {
         return nil
     }
 }
+
