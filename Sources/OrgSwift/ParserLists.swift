@@ -129,18 +129,56 @@ extension OrgParser {
         }
     }
 
-    /// The ` :: ` separating a descriptive item's TAG from its body, or nil.
+    /// The separator between a descriptive item's TAG and its body: the whole span to drop, or
+    /// nil when this item carries no tag.
     ///
-    /// The spaces are required on BOTH sides: `- term :: def` is descriptive with tag `term`,
-    /// while `- term::def` stays an ordinary unordered item whose text is `term::def`. Measured,
-    /// and it is the whole difference between two list kinds.
+    /// This is one group of `org-list-full-item-re`, transcribed rather than paraphrased:
+    ///
+    ///     \(?:\(.*\)[ \t]+::\(?:[ \t]+\|$\)\)?
+    ///
+    /// ORG-25. The paraphrase it replaces was "a space, then `::`, then a space", and that was
+    /// wrong in FIVE separate ways, each a silent wrong tree in which the item stopped being
+    /// descriptive and its tag text reappeared as body content:
+    ///
+    ///     - t ::<nl>  a       `$` -- the separator may END THE LINE, with the body below it
+    ///     - t ::<tab>d        the whitespace is `[ \t]`, on BOTH sides, not a space
+    ///     - t ::  d           `[ \t]+` consumes the whole RUN, so the body is `d` not ` d`
+    ///     - t :: d :: e       `\(.*\)` is GREEDY, so the tag is `t :: d`, not `t`
+    ///     1. t :: d           an ORDERED bullet takes no tag at all (gated at the call site)
+    ///
+    /// Only the first of those was reported. Extending the old rule by that one case would have
+    /// left the other four, which is why this is a transcription and not a patch.
+    ///
+    /// The scan runs BACKWARDS because `\(.*\)` is greedy: the last qualifying `::` wins.
+    ///
+    /// Negatives, all measured, all ordinary unordered items: `- t::d` and `- t:: d` (no
+    /// whitespace before), `- t ::d` (none after and not end of line), and `- ::` in any form,
+    /// where the bullet's own trailing whitespace has already been consumed so nothing separates
+    /// the marker from the colons.
     static func tagSeparator(in t: [Unicode.Scalar], from start: Int, upTo end: Int) -> Range<Int>? {
-        var i = start
-        while i + 3 < end {
-            if t[i] == " ", t[i + 1] == ":", t[i + 2] == ":", t[i + 3] == " " {
-                return i..<(i + 4)
+        guard end >= start + 2 else { return nil }
+        var i = end - 2
+        while i >= start {
+            if t[i] == ":", t[i + 1] == ":" {
+                // `[ \t]+` before the colons, at least one, and never reaching past the tag's
+                // own start -- that is what makes `- ::` an ordinary item.
+                var separatorStart = i
+                while separatorStart > start,
+                      t[separatorStart - 1] == " " || t[separatorStart - 1] == "\t" {
+                    separatorStart -= 1
+                }
+                if separatorStart < i {
+                    var after = i + 2
+                    if after >= end {
+                        return separatorStart..<after // `$`, the end-of-line alternative
+                    }
+                    if t[after] == " " || t[after] == "\t" {
+                        while after < end, t[after] == " " || t[after] == "\t" { after += 1 }
+                        return separatorStart..<after
+                    }
+                }
             }
-            i += 1
+            i -= 1
         }
         return nil
     }
@@ -227,7 +265,9 @@ extension OrgParser {
         if let cb = OrgParser.checkboxMatch(in: t, at: idx) {
             checkbox = .string(cb.state); idx = cb.end; skipSpace()
         }
-        if let sep = OrgParser.tagSeparator(in: t, from: idx, upTo: t.count) {
+        // An ORDERED bullet never takes a tag: `1. t :: d` is an ordinary ordered item whose body
+        // is the whole of `t :: d`, measured, while `- t :: d` is descriptive with tag `t`.
+        if !b.ordered, let sep = OrgParser.tagSeparator(in: t, from: idx, upTo: t.count) {
             // `item` is org's row for a descriptive-list TAG, and it refuses `line-break`. The
             // item's BODY is a paragraph and permits one; the two are different containers.
             tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound]), in: .item))
