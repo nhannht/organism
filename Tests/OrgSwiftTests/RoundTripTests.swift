@@ -89,6 +89,7 @@ struct RoundTripTests {
     /// a section 10 loss belongs in `lossAnnotatedFiles` instead.
     static let implementedFiles: Set<String> = [
         "real/doomemacs-docs/index.org",
+        "real/org-mode-samples/keywords.org",
         "real/org-mode-samples/pathological.org",
     ]
 
@@ -110,6 +111,11 @@ struct RoundTripTests {
         case tagColumnPadding
         /// Item 5: trailing whitespace on otherwise-blank lines.
         case blankLineTrailingWhitespace
+        /// Item 9: a malformed checkbox `[x]` (lowercase) is CONSUMED by org's item reader --
+        /// case-folded structure match, exact-case state mapping -- so the tree holds
+        /// `checkbox: null` with the box gone from the text, and no renderer can re-emit it.
+        /// Strips the box from the source side to mirror the loss.
+        case malformedCheckboxDropped
 
         func normalize(_ text: String) -> String {
             switch self {
@@ -122,6 +128,11 @@ struct RoundTripTests {
                 return Self.replacingMatches(in: text, pattern: #"^(\*+[^\n]*?)[ \t]*(:[A-Za-z0-9_@#%:]+:)[ \t]*$"#, template: "$1 $2")
             case .blankLineTrailingWhitespace:
                 return Self.replacingMatches(in: text, pattern: #"^[ \t]+$"#, template: "")
+            case .malformedCheckboxDropped:
+                return Self.replacingMatches(
+                    in: text,
+                    pattern: #"^([ \t]*(?:[-+*]|[0-9]+[.)])[ \t]+)\[x\](?:[ \t]+|$)"#,
+                    template: "$1")
             }
         }
 
@@ -164,6 +175,9 @@ struct RoundTripTests {
         // group glued to the title -- both item 3, at widths two and zero. Plus an indented
         // `  #+FILETAGS:` line, item 2's leading-whitespace half.
         "real/org-mode-samples/tags.org": [.tagColumnPadding, .keywordValuePadding],
+        // `- [x] not a checkbox?`: the box is consumed with a null state (item 9), exactly
+        // the Reason-B case the reviewer's raw-sexp audit predicted for this file.
+        "real/org-mode-samples/lists.org": [.malformedCheckboxDropped],
     ]
 
     /// Deliberately NOT wrapped in `withKnownIssue`: this checks that the corpus is wired up at

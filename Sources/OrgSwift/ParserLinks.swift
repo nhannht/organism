@@ -271,9 +271,14 @@ extension OrgParser {
         }
         guard chars[j + 1] == "[" else { return nil }
 
+        // The description runs to the first `]]`, NOT the first `]`: org's group is a
+        // non-greedy `(+? anychar)` closed by `]]` (org-link-bracket-re), so single `]` and
+        // `[` are ordinary description content. `[[u][a [fn:1] b]]` is ONE link whose
+        // description text carries the brackets -- masked while the leftover-`[` refusal
+        // covered it, exposed by sweep desc-fnref the day that refusal narrowed.
         var k = j + 2
-        while k < chars.count, chars[k] != "]" { k += 1 }
-        guard k + 1 < chars.count, chars[k] == "]", chars[k + 1] == "]" else { return nil }
+        while k + 1 < chars.count, !(chars[k] == "]" && chars[k + 1] == "]") { k += 1 }
+        guard k + 1 < chars.count else { return nil }
         let description = Array(chars[(j + 2)..<k])
         guard !description.isEmpty else { return nil }
         if description.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link description") }

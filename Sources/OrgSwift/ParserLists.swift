@@ -119,12 +119,20 @@ extension OrgParser {
     }
 
     /// `[ ]` / `[X]` / `[-]`, org's `:checkbox`, stripped from the content it precedes.
-    static func checkboxMatch(in t: [Unicode.Scalar], at i: Int) -> (state: String, end: Int)? {
+    ///
+    /// Two measured traps (conformance/list-checkbox-forms). The box is CONSUMED under
+    /// case-fold -- `[x]` disappears from the text -- but the STATE mapping is exact-case
+    /// `equal`, so `[x]` yields checkbox null, not "on". And org's group is
+    /// `\(\[[ X-]\]\)\(?:[ \t]+\|$\)`: without trailing whitespace or end of line the box is
+    /// no box at all, so `[X]tight` keeps its brackets as text.
+    static func checkboxMatch(in t: [Unicode.Scalar], at i: Int) -> (state: OrgJSON, end: Int)? {
         guard i + 2 < t.count, t[i] == "[", t[i + 2] == "]" else { return nil }
+        guard i + 3 == t.count || t[i + 3] == " " || t[i + 3] == "\t" else { return nil }
         switch t[i + 1] {
-        case " ": return ("off", i + 3)
-        case "X", "x": return ("on", i + 3)
-        case "-": return ("trans", i + 3)
+        case " ": return (.string("off"), i + 3)
+        case "X": return (.string("on"), i + 3)
+        case "x": return (.null, i + 3)
+        case "-": return (.string("trans"), i + 3)
         default: return nil
         }
     }
@@ -263,7 +271,7 @@ extension OrgParser {
             counter = .int(c.value); idx = c.end; skipSpace()
         }
         if let cb = OrgParser.checkboxMatch(in: t, at: idx) {
-            checkbox = .string(cb.state); idx = cb.end; skipSpace()
+            checkbox = cb.state; idx = cb.end; skipSpace()
         }
         // An ORDERED bullet never takes a tag: `1. t :: d` is an ordinary ordered item whose body
         // is the whole of `t :: d`, measured, while `- t :: d` is descriptive with tag `t`.

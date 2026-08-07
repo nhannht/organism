@@ -58,6 +58,12 @@ struct OracleDiffTests {
         "real/doomemacs-docs/index.org",
         "real/doomemacs-docs/contributing.org",
         "real/doomemacs-docs/examples.org",
+        // The three that joined when the object-layer refusals narrowed to citation and
+        // target shapes (blocks additionally needed unpaired openers and the strikethrough
+        // paragraph boundary; lists needed the exact-case checkbox mapping).
+        "real/org-mode-samples/blocks.org",
+        "real/org-mode-samples/keywords.org",
+        "real/org-mode-samples/lists.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

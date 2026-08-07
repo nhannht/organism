@@ -580,12 +580,12 @@ extension OrgParser {
                 }
                 throw OrgError.unimplemented("backslash construct that is not a bracket latex fragment")
             case "[":
-                // `[[...]]` is a bracket link. Every OTHER `[` construct still throws: footnote
-                // references (`[fn:1]`), citations (`[cite:...]`), statistics cookies (`[1/2]`,
-                // `[50%]`) and INACTIVE TIMESTAMPS (`[2024-01-01 Mon]`) all open with `[`, and
-                // none of them is implemented. So the fallthrough here is `throw`, not "treat as
-                // text" -- a bare `[` org keeps as literal text throws too, which over-throws by
-                // exactly the amount that keeps every unimplemented `[` construct visible.
+                // `[[...]]` is a bracket link. The other `[` objects -- footnote references
+                // (`[fn:1]`), statistics cookies (`[1/2]`, `[50%]`) and INACTIVE TIMESTAMPS
+                // (`[2024-01-01 Mon]`) -- all have EXACT matchers below, so their declines are
+                // proof. Citation is the one `[` object with no parser, and its opener is a
+                // SHAPE (`[cite` + optional `/style` + `:`), so a `[` that opens none of the
+                // five falls through to the text run -- org's own answer for a bare `[`.
                 if container.permits(.link), let match = try bracketLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
@@ -653,20 +653,18 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                // Still throwing wherever a `[` construct this parser cannot rule out is legal.
-                // A link description is now the one container where none is, so its `[` reaches
-                // the text run below. See `bracketOpenableObjects`.
-                if container.permitsAny(of: Self.bracketOpenableObjects) {
-                    throw OrgError.unimplemented("[ construct this parser cannot rule out")
+                // Only a citation-SHAPED opener still refuses; every other `[` is proven no
+                // object by the exact matchers above and becomes text.
+                if container.permits(.citation), try citationCouldStart(in: chars, at: i) {
+                    throw OrgError.unimplemented("citation")
                 }
             case "<":
                 // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
                 // from the other `<` constructs: targets (`<<x>>`), radio targets (`<<<x>>>`),
                 // active timestamps (`<2024-01-01 Mon>`) and diary sexps (`<%%(...)>`). Measured:
                 // `<fuzzy thing>` is plain text, so requiring the type is org's own rule, not a
-                // narrowing. Everything else throws WHERE ANY of them is legal -- and in a link
-                // description none of the four is, which is the one place this falls through to
-                // text instead. See `angleOpenableObjects`.
+                // narrowing. Link, timestamp and radio target decline EXACTLY below; only a
+                // target-shaped `<<...>>` still refuses, and every other `<` becomes text.
                 if container.permits(.link), let match = try angleLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
@@ -722,8 +720,10 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                if container.permitsAny(of: Self.angleOpenableObjects) {
-                    throw OrgError.unimplemented("< construct this parser cannot rule out")
+                // Only a target-SHAPED `<<...>>` still refuses -- `target` is the one `<`
+                // object with no parser. Everything else is proven no object and becomes text.
+                if container.permits(.target), targetMatch(in: chars, at: i) != nil {
+                    throw OrgError.unimplemented("target")
                 }
             case "^", "_":
                 // The PRE rule here is org's `\S-` -- a single NEGATION of whitespace -- and it is
@@ -857,6 +857,61 @@ extension OrgParser {
             "children": .array(try parseObjects(contents, in: container)),
             "postBlank": .int(match.postBlank),
         ])
+    }
+
+    /// Whether `[` at `i` opens a citation PREFIX -- `org-element-citation-prefix-re`:
+    /// `[cite`, an optional `/style` whose chars are ASCII alnum plus `/`, `_`, `-`, then `:`.
+    /// Shape only: the citation grammar past the prefix is unimplemented, so a matching prefix
+    /// REFUSES upstream rather than parses, and a non-matching `[` is PROVEN no citation --
+    /// after `[cite`, org accepts exactly `:` or `/`, so any other scalar is a real decline.
+    /// Emacs's `alnum` inside the style is Unicode-aware, so a non-ASCII scalar there is the
+    /// one undecidable spot and throws instead of answering.
+    private func citationCouldStart(in chars: [Unicode.Scalar], at i: Int) throws -> Bool {
+        var j = i + 1
+        for expected in "cite".unicodeScalars {
+            guard j < chars.count, OrgParser.asciiLowered(chars[j]) == expected else { return false }
+            j += 1
+        }
+        guard j < chars.count else { return false }
+        if chars[j] == ":" { return true }
+        guard chars[j] == "/" else { return false }
+        j += 1
+        while j < chars.count {
+            let s = chars[j]
+            if s == ":" { return true }
+            let styleScalar = (s >= "0" && s <= "9") || (s >= "a" && s <= "z")
+                || (s >= "A" && s <= "Z") || s == "/" || s == "_" || s == "-"
+            if styleScalar { j += 1; continue }
+            if !s.isASCII {
+                throw OrgError.unimplemented("non-ASCII scalar in a possible citation style")
+            }
+            return false
+        }
+        return false
+    }
+
+    /// Index just past a `<<target>>` at `i`, and the range of its contents, or nil. The
+    /// contents rule is `org-target-regexp`, which is `org-radio-target-regexp` minus one
+    /// bracket pair: same edge class (`[ \t]` literal, so U+00A0 is a REAL edge scalar), same
+    /// `<`/`>`/newline exclusion, at least one scalar. A `<<<` opening never matches, because
+    /// its contents would begin with `<`.
+    private func targetMatch(
+        in chars: [Unicode.Scalar], at i: Int
+    ) -> (end: Int, body: Range<Int>)? {
+        func isEdgeScalar(_ s: Unicode.Scalar) -> Bool {
+            s != "<" && s != ">" && s != "\n" && s != " " && s != "\t"
+        }
+        func isInteriorScalar(_ s: Unicode.Scalar) -> Bool {
+            s != "<" && s != ">" && s != "\n"
+        }
+        guard i + 2 < chars.count, chars[i] == "<", chars[i + 1] == "<" else { return nil }
+        let bodyStart = i + 2
+        guard isEdgeScalar(chars[bodyStart]) else { return nil }
+        var j = bodyStart
+        while j < chars.count, isInteriorScalar(chars[j]) { j += 1 }
+        guard isEdgeScalar(chars[j - 1]) else { return nil }
+        guard j + 1 < chars.count, chars[j] == ">", chars[j + 1] == ">" else { return nil }
+        return (end: j + 2, body: bodyStart..<j)
     }
 
     /// Index just past a `<<<target>>>` at `i`, and the range of its contents, or nil.

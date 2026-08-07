@@ -1,0 +1,7 @@
+- [ ] off
+- [X] on
+- [x] folded
+- [-] trans
+- [] none
+- [X]tight
+- [ ]

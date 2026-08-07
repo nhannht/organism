@@ -186,6 +186,10 @@ struct InterpretDataRoundTripTests {
         // parse. `renderOrg` must reproduce that blank from `postBlank` (SCHEMA.md section 10's
         // "byte-exact on everything else" includes it).
         "conformance/todo-hidden-by-unterminated-example",
+        // The `[x]` box is consumed by the item reader with a null state, so interpret-data
+        // re-emits `- folded` for `- [x] folded` -- the box is not in the tree at all
+        // (SCHEMA.md section 10 item 9, and `RendererConformanceTests.schemaLossCases`).
+        "conformance/list-checkbox-forms",
     ]
 
     @Test("org-element-interpret-data(org-element-parse-buffer(file)) == file's own bytes", arguments: files)

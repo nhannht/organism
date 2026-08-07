@@ -114,6 +114,13 @@ struct ConformanceTests {
         "latex-fragment-dollar-display",
         "latex-fragment-dollar-rejects",
         "latex-fragment-dollar-closer-class",
+        // The `[` and `<` that open NO object are plain text, org's own answer -- pinned the
+        // day the two blanket refusals narrowed to citation-shape and target-shape only.
+        "object-bracket-plain-text",
+        "object-angle-plain-text",
+        // Checkbox traps: `[x]` consumed under case-fold but mapped exact-case to null;
+        // `[X]tight` (no trailing whitespace) not a box at all; `[]` not a box.
+        "list-checkbox-forms",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

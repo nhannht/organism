@@ -140,6 +140,8 @@ struct RendererConformanceTests {
         "latex-fragment-dollar-display",
         "latex-fragment-dollar-rejects",
         "latex-fragment-dollar-simple",
+        "object-angle-plain-text",
+        "object-bracket-plain-text",
         "footnote-definition-simple",
         "footnote-reference-simple",
         "headline-odd-levels",
@@ -214,6 +216,12 @@ struct RendererConformanceTests {
         // third line, where the tree says `HEADER b` and the source says `NAME x`. SCHEMA.md
         // section 10 item 8.
         "affiliated-interleaved-repeat",
+        // Reason B, SCHEMA.md section 10 item 9: org's item reader CONSUMES a lowercase
+        // `[x]` box (case-folded structure match) but maps only exact-case `[X]` to a state,
+        // so the tree holds `checkbox: null` with the box gone from the text. org-element
+        // itself re-emits `- folded` for `- [x] folded`, measured -- no tree built on
+        // org-element can carry the byte, so the render is correct AND cannot equal the input.
+        "list-checkbox-forms",
     ]
 
     /// Deliberately NOT wrapped, same reasoning as `RoundTripTests.corpusIsWired()`: if the loader
