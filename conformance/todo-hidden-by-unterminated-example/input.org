@@ -1,0 +1,6 @@
+#+begin_example
+* x
+#+TODO: FOO BAR
+#+end_example
+
+* FOO task

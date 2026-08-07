@@ -7,12 +7,14 @@ A language-agnostic conformance suite for Emacs org-mode, graded against `org-el
 
 This suite is real and usable today. The Swift parser is real and PARTIAL.
 
-- `parseOrg` parses a growing subset and refuses the rest honestly. On the 80 conformance
-  cases it produces a tree matching `org-element`'s own, node for node, on **80 of 80**. On the
+- `parseOrg` parses a growing subset and refuses the rest honestly. On the 81 conformance
+  cases it produces a tree matching `org-element`'s own, node for node, on **80 of 81**. The one
+  case it refuses (`todo-hidden-by-unterminated-example`) was added deliberately AHEAD of the
+  parser: it pins the answer for a document whose block opener is broken by a headline, and it
+  starts asserting the moment unpaired block openers stop throwing. On the
   13 vendored real-world files it is **5 of 13** - those files are dense, and one unimplemented
   construct anywhere in a file fails the whole file, so this number moves in jumps rather than
-  one file at a time. The conformance figure reaching 80 does NOT mean the parser is complete;
-  it means the corpus no longer contains a case it cannot handle. See the real-world row.
+  one file at a time.
 - `renderOrg` is still a stub. **0 of 13.** Round-trip is not usable at all yet, and no amount
   of further parser work changes that.
 - **Implemented:** headlines with the two-pass `#+TODO:` keyword set, priority cookies, tag
@@ -46,34 +48,38 @@ the whole verification story - run them yourself rather than taking this table's
 
 | What | Result |
 |---|---|
-| `harness/verify-corpus.sh` | 80 of 80 cases pass, 0 fail |
-| `swift test` | 14 tests, 7 suites, 0 failures, 52 known issues |
-| Layer 1 conformance cases | 80 pairs of `input.org` + `expected.json` |
+| `harness/verify-corpus.sh` | 81 of 81 cases pass, 0 fail |
+| `swift test` | 14 tests, 7 suites, 0 failures, 54 known issues |
+| Layer 1 conformance cases | 81 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,208 inputs, 0 wrong trees - see `sweep/README.md` |
-| `parseOrg` matches the oracle tree, conformance | 80 of 80 |
+| `parseOrg` matches the oracle tree, conformance | 80 of 81 |
 | `parseOrg` matches the oracle tree, real-world | 5 of 13 |
 | `renderOrg` round-trip | 0 of 13 - still a stub |
 | `org-element` types mapped by the oracle | 40 of 54 |
 | Mapped types that also have a fixture | 38 of 40 |
-| Byte-exact round-trip through `org-element` | 62 of 93 files |
+| Byte-exact round-trip through `org-element` | 62 of 94 files |
 | Documented round-trip losses | 9 - see SCHEMA.md section 10 |
 
 Two of those numbers are easy to misread, so they are stated plainly here.
 
-**52 known issues are not 52 passes, and they are not one thing either.** A case the parser
+**54 known issues are not 54 passes, and they are not one thing either.** A case the parser
 cannot yet handle is wrapped in `withKnownIssue`, so the run is green because those failures are
-expected, not because they do not happen. But only **21 of the 52 are parser-shaped** - 0
+expected, not because they do not happen. But only **22 of the 54 are parser-shaped** - 1
 conformance, 8 oracle diff, 13 round-trip - and those go to zero as the parser gets written.
-The other **31 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
-round-trip losses on its own parser. Writing a perfect Swift parser does not move that 31 at
-all. The parser-shaped 21 goes DOWN as the parser grows and UP whenever a new fixture is added
-ahead of it; both directions are correct.
+The other **32 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
+round-trip losses on its own parser. Writing a perfect Swift parser does not move that 32 at
+all. The parser-shaped 22 goes DOWN as the parser grows and UP whenever a new fixture is added
+ahead of it; both directions are correct - the 1 conformance entry is exactly such a fixture,
+added ahead of the parser on purpose (see below).
 
-**The conformance suite now carries zero known issues, and that is a statement about the
-corpus as much as about the parser.** Every one of the 80 cases asserts normally. It does not
-mean the parser handles org; it means no case in this corpus is beyond it, which is exactly
-why the real-world row and the refused-constructs list above are the honest counterweight.
+**The conformance suite carries exactly one known issue, and it is deliberate.** 80 of the 81
+cases assert normally. The wrapped one, `todo-hidden-by-unterminated-example`, is the fixture
+the parser-run open-claims register specifies for its rows 2 and 6: a `#+begin_example` broken
+by a headline, so the opener must NOT hide the `#+TODO:` line after it. `parseOrg` still
+refuses unpaired block openers today, so the case cannot assert yet; the moment that refusal is
+lifted, `withKnownIssue` itself goes red and forces the case into `implementedCases`, which is
+the discriminating assertion the register was waiting for.
 `withKnownIssue` records a THROW and a WRONG TREE identically, so a green suite has never been
 evidence of correctness here - see SCHEMA.md section 8.
 
@@ -106,7 +112,7 @@ Two things live in the same repository, and the split matters:
 
 ```
 organism/
-├── conformance/            Layer 1: 80 cases, each a pair of input.org + expected.json
+├── conformance/            Layer 1: 81 cases, each a pair of input.org + expected.json
 ├── real/                   Layer 2/3: 13 vendored MIT real-world .org files, 2 sources
 ├── harness/                Layer 3: oracle-dump.el (the Emacs oracle), fetch-corpus.sh
 ├── schema/                 formal JSON Schema for the tree shape (companion to SCHEMA.md)
@@ -145,7 +151,7 @@ conformance/*/                    real/**/*.org                     harness/orac
   == expected.json (structural)
 ```
 
-- **Layer 1, spec conformance** (`conformance/`): 80 small, hand-written `.org` fixtures, each
+- **Layer 1, spec conformance** (`conformance/`): 81 small, hand-written `.org` fixtures, each
   isolating one rule from the spec - emphasis border rules, runtime `#+TODO:` keywords, list
   item boundaries, planning-line position, timestamps, and the rest of the cases where org-mode
   is genuinely hard. Each fixture's `expected.json` is the normalized tree a parser must
@@ -173,24 +179,24 @@ parser code against this suite - it is the contract all three layers check again
 
 Every number below was checked directly in this repository, on this commit, not assumed:
 
-- 80 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
+- 81 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 14 tests, 7 suites, 0 real failures, 52 known issues, of which
-  21 are parser-shaped and 31 are org-mode's own `interpret-data` losses.
+- `swift test` on this commit: 14 tests, 7 suites, 0 real failures, 54 known issues, of which
+  22 are parser-shaped and 32 are org-mode's own `interpret-data` losses.
 - 1,208 `sweep/` inputs on this commit: 0 wrong trees. The 30 cases that DO produce one are
   named individually in `SweepTests.knownWrongTrees` and are all ORG-28; a thirty-first fails
   the build. Read `sweep/README.md` before quoting that zero anywhere.
-- `parseOrg` on this commit: 80 of 80 conformance cases produce a tree matching the oracle's,
+- `parseOrg` on this commit: 80 of 81 conformance cases produce a tree matching the oracle's,
   5 of 13 real-world files. `renderOrg` is still a stub, so round-trip is 0 of 13. Measured by
   reading the per-suite known-issue counts off the run, not inferred from the total.
-- `harness/verify-corpus.sh` on this commit: 80/80 conformance cases pass (a runnable reference
+- `harness/verify-corpus.sh` on this commit: 81/81 conformance cases pass (a runnable reference
   adapter that uses the Emacs oracle itself as the stand-in parser).
 - Every `conformance/*/expected.json` fixture validates against `schema/org-node.schema.json`:
-  80/80 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
+  81/81 valid, 0 invalid (see `schema/README.md` for how to run this check yourself).
 - Emacs 30.2, org-mode 9.7.11, confirmed installed. `harness/oracle-dump.el` runs clean against
-  it on all 80 conformance inputs: valid JSON, zero unmapped `org-element` node types, and
+  it on all 81 conformance inputs: valid JSON, zero unmapped `org-element` node types, and
   exactly one case emitting anything on stderr - `table-el-flavour`, which warns by design.
   Measured by re-running the sweep with stderr captured per case. This was checked by running the script directly against each input file, not inferred
   from a passing test run - see the next section for why that distinction matters here.
@@ -224,7 +230,7 @@ Genuinely rare:
   extension).
 - `diary-sexp` - `%%(diary-...)`.
 
-None of these 14 types, and no `table.el`-style table (see below), occurs anywhere in the 80
+None of these 14 types, and no `table.el`-style table (see below), occurs anywhere in the 81
 conformance inputs or the 13 vendored real-world files. This disclosure is about what happens
 when you point the oracle at your own files - the shipped corpus is unaffected either way.
 
@@ -284,7 +290,7 @@ Even so, do not read a passing `swift test` as proof the oracle is correct. Ever
 `conformance/*/expected.json` fixtures is generated BY running `oracle-dump.el` itself, so
 `OracleConformanceCrossCheckTests` compares the oracle against a snapshot of its own prior
 output, not against anything independent. A green run there proves only that
-`oracle-dump.el`'s output for these 80 cases has not drifted since the fixtures were minted -
+`oracle-dump.el`'s output for these 81 cases has not drifted since the fixtures were minted -
 across an Emacs or org-mode version bump, or a future edit to the script. It says nothing, on
 its own, about whether that output is actually correct org-mode behavior. This circularity is
 real, and it still stands today.
@@ -325,12 +331,13 @@ possible, and this section keeps saying so until a second, independent audit say
 
 One further independent, non-circular signal exists: `harness/interpret-data-check.el` runs
 `org-element-interpret-data(org-element-parse-buffer(file))` - Emacs's own unparser, which never
-touches `oracle-dump.el` or `expected.json` at all - against all 93 files in this corpus (the 80
-conformance inputs plus the 13 real-world files). 62 of 93 matched the original bytes exactly.
-The other 31 were inspected by hand, one at a time, and every first divergence traces to a
+touches `oracle-dump.el` or `expected.json` at all - against all 94 files in this corpus (the 81
+conformance inputs plus the 13 real-world files). 62 of 94 matched the original bytes exactly.
+The other 32 were inspected by hand, one at a time, and every first divergence traces to a
 known, harmless `org-element-interpret-data` re-emit convention (keyword-name case-folding,
 block and property-drawer reindentation, headline-tag column alignment, planning-line keyword
-reordering, list-counter renumbering), not an information loss. `compare-strings` only reports
+reordering, list-counter renumbering, and dropping the blank line between a section's last
+element and the next headline), not an information loss. `compare-strings` only reports
 the first divergence per file, so this check is scoped to what was actually inspected: for the
 largest real-world files, a second, independent divergence later in the same file would not have
 been caught by this pass.
@@ -342,7 +349,7 @@ be accurate for that one property even though the file as a whole has been run l
 ## What protects each claim
 
 Two different kinds of evidence back this suite's claims, and they protect against different
-failure modes. A regression fixture (one of the 80 `conformance/*/expected.json` files) pins a
+failure modes. A regression fixture (one of the 81 `conformance/*/expected.json` files) pins a
 shape against DRIFT: if `oracle-dump.el`, or a future Emacs or org-mode version, ever changes
 what it produces for that case, `harness/verify-corpus.sh` and `swift test` go red on the next
 run. A one-time audit finding proves a mapping was correct AT THE TIME it was checked, against

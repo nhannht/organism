@@ -169,6 +169,16 @@ struct InterpretDataRoundTripTests {
         // Filing this under the lists.org comment would assert the counter's effect is dropped,
         // which this measurement disproves.
         "conformance/list-counter-override",
+        // Keyword-name case-folding (`#+TODO:` -> `#+todo:`) PLUS a convention not seen elsewhere
+        // in this set: the blank line between a section's last element and the next headline is
+        // dropped on re-emit. Measured on the full before/after bytes (62 -> 61, exactly two
+        // divergences): the tree DOES carry the blank -- the `#+end_example` paragraph parses
+        // with `:post-blank` 1 (the checked-in expected.json pins `"postBlank": 1`) and the
+        // following headline's `:pre-blank` is 0 -- so this is interpret-data declining to
+        // re-emit an element's post-blank ahead of a headline, not information missing from the
+        // parse. `renderOrg` must reproduce that blank from `postBlank` (SCHEMA.md section 10's
+        // "byte-exact on everything else" includes it).
+        "conformance/todo-hidden-by-unterminated-example",
     ]
 
     @Test("org-element-interpret-data(org-element-parse-buffer(file)) == file's own bytes", arguments: files)
