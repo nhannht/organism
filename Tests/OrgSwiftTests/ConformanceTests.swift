@@ -104,9 +104,8 @@ struct ConformanceTests {
         "footnote-definition-simple",
         "footnote-definition-preblank",
         "footnote-reference-simple",
-        // Latex fragments, `\(...\)` and `\[...\]` ONLY. `\name{}` and `$...$` still throw:
-        // an entity and a `\name` fragment are told apart by a lookup in org's 414-name table,
-        // not by shape, so narrowing further needs the whole table.
+        // Latex fragments, all four delimiter families: `\(...\)`/`\[...\]` here, the `$`
+        // forms and the `\command` macro form in their own fixtures below.
         "latex-fragment-inline",
         // `$` forms, including the two measured traps: the currency shape stays text, and the
         // closer's follower is tested by SYNTAX CLASS (`-` rejects where `.` accepts).
@@ -133,6 +132,8 @@ struct ConformanceTests {
         // what the lookup rejects (\foo{x}[y], \bar*, Windows paths) while \5 stays text.
         "entity-forms",
         "latex-fragment-command",
+        // Dedicated targets: <<anchor>> is a value leaf; an unclosed << stays text.
+        "target-simple",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

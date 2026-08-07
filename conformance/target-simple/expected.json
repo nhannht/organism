@@ -1,0 +1,40 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "a "
+            },
+            {
+              "type": "target",
+              "value": "anchor",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "b, "
+            },
+            {
+              "type": "target",
+              "value": "x",
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "tight, not <<a b\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

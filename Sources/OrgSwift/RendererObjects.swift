@@ -44,6 +44,8 @@ extension OrgRenderer {
             body = try renderLink(node)
         case "radio-target":
             body = "<<<" + (try renderObjects(try array(node, "children", type))) + ">>>"
+        case "target":
+            body = "<<" + (try string(node, "value", type)) + ">>"
         case "timestamp":
             body = try renderTimestamp(node)
         case "footnote-reference":

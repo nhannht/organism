@@ -182,6 +182,7 @@ struct RendererConformanceTests {
         "superscript-simple",
         "table-el-flavour",
         "table-tblfm-multiple",
+        "target-simple",
         "timestamp-active-range",
         "timestamp-active-simple",
         "timestamp-diary-sexp",

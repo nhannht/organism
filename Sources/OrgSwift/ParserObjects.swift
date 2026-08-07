@@ -688,8 +688,8 @@ extension OrgParser {
                 // from the other `<` constructs: targets (`<<x>>`), radio targets (`<<<x>>>`),
                 // active timestamps (`<2024-01-01 Mon>`) and diary sexps (`<%%(...)>`). Measured:
                 // `<fuzzy thing>` is plain text, so requiring the type is org's own rule, not a
-                // narrowing. Link, timestamp and radio target decline EXACTLY below; only a
-                // target-shaped `<<...>>` still refuses, and every other `<` becomes text.
+                // narrowing. All four `<` objects have exact matchers below, so a `<` that
+                // opens none of them is proven plain text.
                 if container.permits(.link), let match = try angleLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = try linkNode(match, in: chars)
@@ -745,10 +745,24 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                // Only a target-SHAPED `<<...>>` still refuses -- `target` is the one `<`
-                // object with no parser. Everything else is proven no object and becomes text.
-                if container.permits(.target), targetMatch(in: chars, at: i) != nil {
-                    throw OrgError.unimplemented("target")
+                // TARGET, after radio target exactly as in org's `?<` dispatch. A leaf whose
+                // `value` is the text between the pairs; the interpreter re-emits <<value>>.
+                if container.permits(.target), let match = targetMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("target"),
+                        "value": .string(String(scalars: chars[match.body])),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
                 }
             case "^", "_":
                 // The PRE rule here is org's `\S-` -- a single NEGATION of whitespace -- and it is

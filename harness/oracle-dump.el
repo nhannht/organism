@@ -711,6 +711,11 @@ form; each shape's own measurement lives in the inline comments below and in
            ((or 'code 'verbatim)
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('target
+            ;; A leaf: `:value' is the text between the `<<' `>>' pair, and the
+            ;; interpreter re-emits exactly `<<value>>'.
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
            ('entity
             ;; `:name' + `:use-brackets-p' fully determine the source bytes:
             ;; `org-element-entity-interpreter' emits "\\", the name, and "{}"

@@ -260,6 +260,9 @@ Rules:
   node terminates.
 - `fixed-width` -- `value`: string (a `: ...` line).
 - `statistics-cookie` -- leaf. `value`: string, e.g. `"[1/3]"` or `"[50%]"`.
+- `target` -- leaf. `value`: string, the text between `<<` and `>>`; Emacs's own interpreter
+  re-emits exactly `<<value>>`. The dedicated-target anchor a radio target generalizes; its
+  contents are NOT lexed (unlike `radio-target`, whose contents are objects).
 - `entity` -- leaf. `name`: string (`org-element`'s `:name`, the exact `org-entities` table
   key -- the 20 whitespace entities' names contain their literal spaces, e.g. `"_ "`);
   `useBrackets`: bool (`:use-brackets-p`, true when the source wrote `\name{}` and the braces
