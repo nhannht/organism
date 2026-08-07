@@ -54,7 +54,8 @@ out. Conformance comparison is purely structural.
 an `indirect enum` over `.object([String: OrgJSON])`, `.array([OrgJSON])`, `.string`, `.int`,
 `.double`, `.bool`, `.null`, `Codable` via a single-value container that tries each case in turn.
 Object key order is not part of the contract; comparisons are structural (`Equatable`), not
-textual.
+textual. When an order IS part of the contract, it rides an array -- section 5's `affiliated`
+is the example: it was an object until its cross-key source order proved to be real data.
 
 ## 2. The seam
 
@@ -205,7 +206,7 @@ Rules:
   `counter` (int or `null`, `org-element`'s `:counter` - the explicit `[@N]` override, e.g. the
   `5` in `1. [@5] five`. Always present. Set on unordered items too, so `- [@5]` reports `5`.
   Note it is an INTEGER, not the source text: `1. [@c]` reports `3`, because `org-element`
-  converts a letter to its alphabet index - see section 10, item 9),
+  converts a letter to its alphabet index - see section 10, item 10),
   `tag` ([object-nodes] or `null`, only meaningful for `descriptive` lists, the text before
   `" :: "`), `children`: element nodes (an item's body -- typically a `paragraph`, and may
   contain a nested `list`).
@@ -322,10 +323,27 @@ Per spec, an affiliated keyword (`#+NAME:`, `#+CAPTION:`, `#+DATA:`, `#+HEADER:`
 **attaches** to that element instead of becoming its own standalone `keyword` node. Any element
 node MAY carry an extra top-level key:
 
-- `"affiliated"`: an object mapping the keyword name (string, uppercase, e.g. `"NAME"`) to its
-  value. The value is a plain **string** for keywords outside `org-element-parsed-keywords`
-  (e.g. `NAME`), or an **array of object-nodes** for keywords inside it (e.g. `CAPTION`). Absent
-  entirely (no `"affiliated"` key at all) when the element has none.
+- `"affiliated"`: an **ordered array** of `{"key", "value"}` entries -- one entry per distinct
+  keyword name (`"key"`, a string, uppercase, e.g. `"NAME"`), in **source first-occurrence
+  order**. Absent entirely (no `"affiliated"` key at all) when the element has none.
+
+The order is schema data, and it is measured, not assumed (Emacs 30.2, org 9.7.11):
+`org-element` retains the cross-key source order as plist key order -- the same five keys
+written forward and reversed produce plists whose affiliated-key order tracks the source
+exactly, both directions, and `org-element-interpret-data` re-emits both orders. A REPEATED
+keyword name groups at its FIRST occurrence position with its values in source order
+(`#+HEADER: a` / `#+NAME: x` / `#+HEADER: b` gives entry order `HEADER`, `NAME` with `HEADER`
+value `["a", "b"]`) -- `org-element` itself cannot represent the interleaving, so that grouping
+is an upstream normalization, recorded as a Reason A loss in section 10 (item 8). A last-wins
+keyword (`#+NAME: a` ... `#+NAME: b`) likewise sits at its first occurrence position, carrying
+the last value.
+
+Each entry's `"value"` shape depends on the key, exactly as before the array container:
+`NAME`/`PLOT` a plain **string** (last occurrence wins); `HEADER` and the open-ended `ATTR_*`
+family an **array of strings**, one per line, in source order; `RESULTS` an object
+`{"value", "hash"}` (`hash` null unless the `#+RESULTS[hash]:` dual form was used); `CAPTION`
+an **array of `{"long", "short"}` entries**, one per line, `long` an array of parsed
+object-nodes, `short` a string or null.
 
 A keyword whose name is **not** one of the recognized affiliated-keyword names (e.g. `TITLE`,
 `TODO`, `STARTUP`, `AUTHOR`, ...) never attaches, even when immediately followed by an element --
@@ -549,7 +567,7 @@ matches.
   position-keyed, not worth the schema surface". The first half of that is a bad argument and has
   been withdrawn: capturing this needs ONE slot of the item's own tuple and one string field, and
   emits no buffer positions at all. The decline stands on the second half alone -- value, not
-  difficulty -- and section 10 item 8 now carries the measured version of that argument, together
+  difficulty -- and section 10 item 9 now carries the measured version of that argument, together
   with the evidence that `[y]`, `[XX]` and `[]` are not losses at all. Read section 10 for the
   decision; this entry exists to record the org-element behavior that causes it.
 
@@ -562,7 +580,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 9 known instances,
+read (per-type properties outside this schema's curated field set). 10 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -572,11 +590,12 @@ substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:
 `:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
 read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
 `rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
-each pinned by a conformance fixture. What remains below is 7 items that no tree built on
+each pinned by a conformance fixture. What remains below is 8 items that no tree built on
 `org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
 recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
-and 9 below -- which is the ordinary result of actually checking, and they are listed here rather
-than quietly omitted.
+and 10 below -- which is the ordinary result of actually checking, and they are listed here
+rather than quietly omitted. (Item 8 is newer still: it surfaced when `affiliated` became an
+ordered array, the change that CLOSED what used to be an unlisted cross-key ordering loss.)
 
 **Reason A -- unrecoverable from ANY string property (a pure buffer-position loss, or an
 upstream normalization that happens before this schema ever sees the buffer; nothing else in the
@@ -607,11 +626,21 @@ tree carries the byte):**
    `:end` and `:post-blank` (hardcoded `0`), setting `:end` to the start of the NEXT line. So the
    spaces sit inside `[begin, end)` with no property carrying them, and `[begin, end)` is exactly
    what section 1 strips. Measured: `one\\   ` + newline gives `begin 4, end 10, post-blank 0`.
+8. Interleaved repeats of one affiliated keyword -- `#+HEADER: a`, `#+NAME: x`, `#+HEADER: b`
+   re-emits with both `HEADER` lines grouped at the first occurrence position (`HEADER a`,
+   `HEADER b`, `NAME x`). `org-element` stores each affiliated key ONCE in the element's plist,
+   at its first-occurrence position, with all its values accumulated in source order -- no
+   property anywhere records which other keys interrupted the run. Confirmed (Emacs 30.2):
+   `org-element-interpret-data` itself re-emits the grouped form, so Emacs's own serializer
+   loses the same bytes. Surfaced by `affiliated` becoming an ordered array (section 5): the
+   array carries every ordering byte org-element carries -- cross-key first-occurrence order and
+   per-key value order -- and the interleaving is the one ordering fact org-element itself never
+   had.
 
 **Reason B -- a CHOSEN non-capture (the byte IS present in the tree, just not in a property this
 schema reads). Both remaining entries are the same family: the plain-list `:structure` vector.**
 
-8. Malformed lowercase checkbox `- [x]`. `org-element` does not accept lowercase `x` as a
+9. Malformed lowercase checkbox `- [x]`. `org-element` does not accept lowercase `x` as a
    checkbox state -- its item parser compares the bracket text with a case-sensitive `equal`
    against `"[X]"`, `"[ ]"` and `"[-]"` -- so `:checkbox` comes back `nil`, exactly as for a
    plain non-checkbox item. But `org-list`'s own structure scan DOES capture it, case-insensitively,
@@ -641,11 +670,11 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    them would therefore make this schema stricter than Emacs on a MALFORMED input, unlike the
    two deliberate interpret-data beats named earlier in this section (block reindentation,
    counter renumbering), both of which are well-formed, common cases.
-9. Alphabetic list counters -- `1. [@c]`. NEW, surfaced by closing the old item 10 (`:counter` is
+10. Alphabetic list counters -- `1. [@c]`. NEW, surfaced by closing the old item 10 (`:counter` is
    now carried by the `counter` field, see section 4). `:counter` is an INTEGER, and
    `org-element`'s item parser converts a letter to its alphabet index, so `1. [@c]` and
    `1. [@C]` both report `3`, indistinguishable from `1. [@3]`. The raw `"c"`/`"C"` survives only
-   in the same `:structure` tuple as item 8, in its COUNTER slot, and is declined for the same
+   in the same `:structure` tuple as item 9, in its COUNTER slot, and is declined for the same
    reason: a second permanently-redundant field for a second single input form. (Note the example
    deliberately uses a NUMERIC bullet. `a. [@c]` produces no `item` node at all, because
    alphabetical bullets require `org-list-allow-alphabetical`, which is `nil` by default.)

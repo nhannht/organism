@@ -342,18 +342,24 @@ extension OrgRenderer {
 
     // MARK: - Affiliated keywords
 
-    /// Emits an element's affiliated lines (SCHEMA.md section 5) above it. Cross-key emission
-    /// order is ALPHABETICAL, deterministic by construction: the tree's `affiliated` object is
-    /// unordered, so source order is unrecoverable -- the one corpus case with multiple keys
-    /// sits permanently in `RendererConformanceTests.schemaLossCases` documenting exactly this.
+    /// Emits an element's affiliated lines (SCHEMA.md section 5) above it, in the ARRAY'S OWN
+    /// ORDER -- since the schema made `affiliated` an ordered array of `{key, value}` entries,
+    /// cross-key source order (first-occurrence order) is in the tree, and emitting the entries
+    /// in sequence reconstructs it byte-for-byte. What is NOT reconstructible is a repeated
+    /// key's interleaving with other keys (`#+HEADER: a` / `#+NAME: x` / `#+HEADER: b` emits
+    /// grouped); that is org-element's own normalization, SCHEMA.md section 10 item 8.
     static func renderAffiliated(_ node: OrgJSON, _ elementType: String) throws -> String {
         guard let affiliated = try fields(node, elementType)["affiliated"] else { return "" }
-        guard let entries = affiliated.objectValue else {
-            throw OrgError.malformedTree("\(elementType): 'affiliated' is not an object")
+        guard let orderedEntries = affiliated.arrayValue else {
+            throw OrgError.malformedTree("\(elementType): 'affiliated' is not an array")
         }
         var out = ""
-        for key in entries.keys.sorted() {
-            let value = entries[key]!
+        for pair in orderedEntries {
+            guard let pairFields = pair.objectValue,
+                  let key = pairFields["key"]?.stringValue,
+                  let value = pairFields["value"] else {
+                throw OrgError.malformedTree("\(elementType): affiliated entry is not a {key, value} object")
+            }
             if let s = value.stringValue {
                 out += "#+\(key): \(s)\n"
             } else if let keyed = value.objectValue, keyed["long"] == nil {

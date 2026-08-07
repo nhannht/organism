@@ -37,42 +37,45 @@
             }
           ],
           "postBlank": 0,
-          "affiliated": {
-            "CAPTION": [
-              {
-                "long": [
-                  {
-                    "type": "text",
-                    "value": "The "
-                  },
-                  {
-                    "type": "bold",
-                    "children": [
-                      {
-                        "type": "text",
-                        "value": "long"
-                      }
-                    ],
-                    "postBlank": 1
-                  },
-                  {
-                    "type": "text",
-                    "value": "caption"
-                  }
-                ],
-                "short": "short one"
-              },
-              {
-                "long": [
-                  {
-                    "type": "text",
-                    "value": "A second caption"
-                  }
-                ],
-                "short": null
-              }
-            ]
-          }
+          "affiliated": [
+            {
+              "key": "CAPTION",
+              "value": [
+                {
+                  "long": [
+                    {
+                      "type": "text",
+                      "value": "The "
+                    },
+                    {
+                      "type": "bold",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "long"
+                        }
+                      ],
+                      "postBlank": 1
+                    },
+                    {
+                      "type": "text",
+                      "value": "caption"
+                    }
+                  ],
+                  "short": "short one"
+                },
+                {
+                  "long": [
+                    {
+                      "type": "text",
+                      "value": "A second caption"
+                    }
+                  ],
+                  "short": null
+                }
+              ]
+            }
+          ]
         }
       ],
       "postBlank": 0

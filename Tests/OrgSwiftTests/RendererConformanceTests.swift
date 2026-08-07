@@ -15,10 +15,11 @@ import OrgSwift
 ///
 /// `ConformanceTests` splits the corpus in two (implemented / pending). That is right for the
 /// parser, where every un-implemented case is temporary and the pending bucket eventually
-/// empties. It is wrong here, because one case can NEVER pass: it is blocked by a schema shape,
-/// not by missing work. Parking it in a bucket named "not yet implemented" would leave that
-/// bucket permanently non-empty and its name a lie -- exactly the drift
-/// `InterpretDataRoundTripTests`'s docstring complains about. So:
+/// empties. It is wrong here, because a case can exist that will NEVER pass -- blocked because
+/// the tree provably cannot carry its bytes, not by missing work. Parking such a case in a
+/// bucket named "not yet implemented" would leave that bucket permanently non-empty and its
+/// name a lie -- exactly the drift `InterpretDataRoundTripTests`'s docstring complains about.
+/// So:
 ///
 ///   - `implementedCases` -- asserts raw byte equality, no wrapper, no normalizer.
 ///   - `schemaLossCases` -- PERMANENT. The tree provably cannot carry the bytes. Each entry
@@ -40,7 +41,7 @@ import OrgSwift
 ///     item 4        the corpus's one multi-keyword planning line is SCHEDULED-then-DEADLINE,
 ///                   which is the order emitted, so it reproduces without normalization
 ///     item 6        no affiliated alias spelling (`#+TBLNAME:`, `#+RESULT:`, `#+HEADERS:`)
-///     item 8, 9     no lowercase `[x]` checkbox, no alphabetic `[@c]` counter
+///     item 9, 10    no lowercase `[x]` checkbox, no alphabetic `[@c]` counter
 ///
 /// So this suite asserts RAW byte equality. No normalizer is built, on purpose: an unexercised
 /// normalizer is a catch-all waiting for its first customer, and a catch-all is the one thing
@@ -95,6 +96,7 @@ struct RendererConformanceTests {
     /// bytes for it.
     static let implementedCases: Set<String> = [
         "affiliated-caption-forms",
+        "affiliated-header-results-attr-plot",
         "block-center-parsed",
         "block-comment-literal",
         "block-example-literal",
@@ -182,23 +184,13 @@ struct RendererConformanceTests {
     /// `InterpretDataRoundTripTests.knownReformattingDivergences`: an entry leaving this set
     /// (starting to pass) is a signal to re-inspect the schema, not to silently update the set.
     static let schemaLossCases: Set<String> = [
-        // Cross-key affiliated ordering. This fixture writes 6 affiliated lines across 5 distinct
-        // keys, in source order HEADER, HEADER, ATTR_HTML, ATTR_LATEX, PLOT, NAME. The tree stores
-        // them in `"affiliated"`, a JSON OBJECT, and SCHEMA.md section 1 states object key order
-        // is not part of the contract -- `OrgJSON.object` is a Swift `[String: OrgJSON]`, so the
-        // order is gone the moment `expected.json` is decoded. No deterministic emission order
-        // reproduces those bytes, and choosing one that happens to fit this one fixture would be
-        // special-casing to a fixture.
-        //
-        // What makes this a SCHEMA loss rather than a Reason-A loss: org-element itself keeps the
-        // order. Measured on Emacs 30.2, the same five keys in forward and reversed source order
-        // produce plists whose key order tracks the source exactly, and
-        // `org-element-interpret-data` re-emits both correctly. So the byte is present in
-        // org-element's tree and this schema's chosen container drops it -- a Reason-B chosen
-        // non-capture, which section 10 currently claims covers only the two `:structure` entries.
-        // Closing it means either a new section 10 item or `affiliated` becoming an ordered array
-        // of key/value pairs. Both are schema decisions, taken by main, not worked around here.
-        "affiliated-header-results-attr-plot",
+        // Emptied 2026-08-07, and the exit is exactly the documented signal working as designed:
+        // this set's one resident, `affiliated-header-results-attr-plot`, started passing when
+        // `affiliated` became an ordered array of {key, value} entries (SCHEMA.md section 5) --
+        // the schema DID change under it, the wrapper failed loudly, and the case moved to
+        // `implementedCases`. Its old comment argued the order was recoverable (org-element
+        // retains it as plist order, measured on Emacs 30.2) and only this schema's unordered
+        // object container dropped it; the array container is that argument, resolved.
     ]
 
     /// Deliberately NOT wrapped, same reasoning as `RoundTripTests.corpusIsWired()`: if the loader

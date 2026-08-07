@@ -298,7 +298,7 @@ extension OrgParser {
     ///
     /// This reversal is written out here, inline, rather than shared with any other
     /// accumulate-into-an-array code in this parser. The affiliated `HEADER` and `ATTR_*` families
-    /// accumulate in SOURCE order (`affiliatedObject`), and `affiliated-header-results-attr-plot`
+    /// accumulate in SOURCE order (`affiliatedValue`), and `affiliated-header-results-attr-plot`
     /// pins both directions in one fixture. A shared "collect into array" helper would have to
     /// carry a direction flag, and that flag is exactly the kind of switch that gets passed wrong.
     func parseTable(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {

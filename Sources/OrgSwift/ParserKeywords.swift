@@ -279,7 +279,17 @@ extension OrgParser {
     ]
 
 
-    /// Builds the `affiliated` object (SCHEMA.md section 5) for a run of affiliated keyword lines.
+    /// Builds the `affiliated` value (SCHEMA.md section 5) for a run of affiliated keyword lines:
+    /// an ORDERED array of `{key, value}` entries, one per distinct key, in source
+    /// FIRST-OCCURRENCE order.
+    ///
+    /// The order is schema data and matches the oracle's measured plist semantics (Emacs 30.2,
+    /// probed 2026-08-07, receipts in `org-swift--affiliated-key-order`'s docstring): a repeated
+    /// key sits at its first occurrence position -- last-wins keys keep the LAST value there,
+    /// accumulating keys keep their values in source order there. The interleaving of a repeated
+    /// key with other keys is not representable (org-element groups it the same way; SCHEMA.md
+    /// section 10 item 8), and the first-occurrence dictionary build below reproduces exactly
+    /// that grouping.
     ///
     /// SIX value shapes behind ONE uniform-looking key, every one derived from the live oracle
     /// rather than from a fixture, because five differently-shaped values under one name is the
@@ -296,11 +306,13 @@ extension OrgParser {
     /// The scalar-versus-accumulate split has NO syntactic tell: nothing about how `#+NAME:` and
     /// `#+HEADER:` are written says one overwrites and the other appends. It has to be measured
     /// per keyword, which is why each row above is a measurement rather than a generalization.
-    func affiliatedObject(
+    func affiliatedValue(
         from run: [(base: String, dual: String?, value: String)]
     ) throws -> OrgJSON {
+        var order: [String] = []
         var fields: [String: OrgJSON] = [:]
         for entry in run {
+            if fields[entry.base] == nil { order.append(entry.base) }
             switch entry.base {
             case "NAME", "PLOT":
                 fields[entry.base] = .string(entry.value) // last wins
@@ -334,7 +346,9 @@ extension OrgParser {
                 fields[entry.base] = .array(entries)
             }
         }
-        return .object(fields)
+        return .array(order.map { key in
+            .object(["key": .string(key), "value": fields[key]!])
+        })
     }
 
     /// CAPTION's `short`, which does NOT follow the same empty/null rule as RESULTS' `hash`.

@@ -197,7 +197,7 @@ extension OrgParser {
                !isCommentLine(lines[runEnd]) {
                 let (node, next) = try parseOneElement(at: runEnd, in: range)
                 guard var fields = node.objectValue else { throw OrgError.notImplemented }
-                fields["affiliated"] = try affiliatedObject(from: affiliated)
+                fields["affiliated"] = try affiliatedValue(from: affiliated)
                 elements.append(.object(fields))
                 i = next
                 continue
@@ -640,7 +640,7 @@ extension OrgParser {
     /// lands** -- measured, recorded here so the narrowing is not forgotten: `a.` / `a)`
     /// alphabetical bullets are NOT a list. `a. alpha` + `b. beta` is ONE `paragraph` in org,
     /// because alphabetical bullets need `org-list-allow-alphabetical`, which is nil by default
-    /// (SCHEMA.md section 10 item 9 says the same). Carrying that branch into the list
+    /// (SCHEMA.md section 10 item 10 says the same). Carrying that branch into the list
     /// implementation as "this is a list" would emit a `list` where org emits a `paragraph`. It
     /// is safe today only because it throws.
     private func isUnimplementedElementStart(_ line: Line) -> Bool {

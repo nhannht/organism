@@ -41,73 +41,126 @@
       ]
     },
     "affiliated": {
-      "type": "object",
-      "description": "SCHEMA.md section 5, fully implemented (finding 5): NAME and PLOT are plain strings. HEADER is an array of strings, one per #+HEADER: line in source order (a multiple keyword, not dual). CAPTION is an array of {long, short} entries, one per #+CAPTION: line in source order (both a multiple AND a dual keyword) -- long is always an array of object-nodes, short is a string or null depending on whether the #+CAPTION[short]: long dual form was used. RESULTS is always {value, hash} -- hash is a string only when the #+RESULTS[hash]: name dual form was used, null otherwise. ATTR_<BACKEND> (any backend name, e.g. ATTR_HTML, ATTR_LATEX) is an array of strings, one per repeated #+ATTR_<BACKEND>: line, matched by patternProperties since the backend name is open-ended. additionalProperties is false: an unrecognized key here is a bug in the generator, not a schema gap.",
-      "minProperties": 1,
-      "properties": {
-        "NAME": {
-          "type": "string"
-        },
-        "PLOT": {
-          "type": "string"
-        },
-        "HEADER": {
-          "type": "array",
-          "items": {
+      "type": "array",
+      "description": "SCHEMA.md section 5. An ORDERED array of {key, value} entries, one per distinct affiliated key, in source first-occurrence order -- the order is schema data (org-element retains it as plist key order; measured on Emacs 30.2, forward and reversed probes). A repeated key GROUPS at its first occurrence position with its values in source order; org-element itself cannot represent interleaved repeats (SCHEMA.md section 10's interleaved-grouping loss). Per-key value shapes: NAME and PLOT are plain strings (last occurrence wins). HEADER is an array of strings, one per #+HEADER: line in source order (a multiple keyword, not dual). CAPTION is an array of {long, short} entries, one per #+CAPTION: line in source order (both a multiple AND a dual keyword) -- long is always an array of object-nodes, short is a string or null depending on whether the #+CAPTION[short]: long dual form was used. RESULTS is always {value, hash} -- hash is a string only when the #+RESULTS[hash]: name dual form was used, null otherwise. ATTR_<BACKEND> (any backend name, e.g. ATTR_HTML, ATTR_LATEX) is an array of strings, one per repeated #+ATTR_<BACKEND>: line, matched by a key pattern since the backend name is open-ended. The oneOf ties each key to its value shape; an unrecognized key here is a bug in the generator, not a schema gap.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
             "type": "string"
-          }
+          },
+          "value": true
         },
-        "CAPTION": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "long",
-              "short"
-            ],
+        "oneOf": [
+          {
             "properties": {
-              "long": {
-                "$ref": "#/$defs/nodeArray"
+              "key": {
+                "const": "NAME"
               },
-              "short": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "properties": {
+              "key": {
+                "const": "PLOT"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "properties": {
+              "key": {
+                "const": "HEADER"
+              },
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "key": {
+                "const": "CAPTION"
+              },
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "long",
+                    "short"
+                  ],
+                  "properties": {
+                    "long": {
+                      "$ref": "#/$defs/nodeArray"
+                    },
+                    "short": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "key": {
+                "const": "RESULTS"
+              },
+              "value": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value",
+                  "hash"
+                ],
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  },
+                  "hash": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "key": {
+                "pattern": "^ATTR_[A-Z0-9_]+$"
+              },
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }
-        },
-        "RESULTS": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "value",
-            "hash"
-          ],
-          "properties": {
-            "value": {
-              "type": "string"
-            },
-            "hash": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        }
-      },
-      "patternProperties": {
-        "^ATTR_[A-Z0-9_]+$": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": false
+        ]
+      }
     },
     "date": {
       "type": "object",

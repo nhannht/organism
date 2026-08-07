@@ -37,9 +37,12 @@
             }
           ],
           "postBlank": 0,
-          "affiliated": {
-            "NAME": "mytable"
-          }
+          "affiliated": [
+            {
+              "key": "NAME",
+              "value": "mytable"
+            }
+          ]
         }
       ],
       "postBlank": 0

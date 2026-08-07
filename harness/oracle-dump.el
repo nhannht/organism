@@ -468,26 +468,48 @@ not-accidentally-correct path."
 ;; docstring for what was actually observed.
 ;; ---------------------------------------------------------------------------
 
-(defun org-swift--attr-keyword-keys (node)
-  "Return the list of :attr_BACKEND property-key SYMBOLS present on NODE's own
-properties, e.g. (:attr_html :attr_latex) for a node carrying `#+ATTR_HTML:'
-and `#+ATTR_LATEX:' lines. `#+ATTR_BACKEND:' is open-ended - any backend name
-is legal syntax - so org-element does not expose these through named
-accessors the way :name/:caption/:header/:plot/:results are; the only way to
-discover which ones a given node actually carries is to walk its own
-properties plist. `(cadr node)' is that plist - the `(TYPE PROPERTIES-PLIST
+(defconst org-swift--affiliated-fixed-keys '(:name :caption :header :plot :results)
+  "The five named affiliated property keys org-element exposes through fixed
+accessors. The open-ended ATTR_BACKEND family is matched by prefix in
+`org-swift--affiliated-key-order' instead, since any backend name is legal
+syntax and there is no closed list to enumerate.")
+
+(defun org-swift--affiliated-key-order (node)
+  "Return the affiliated property-key SYMBOLS present on NODE's own
+properties, IN PLIST ORDER - e.g. (:header :attr_html :name) for a node whose
+source wrote `#+HEADER:' first and `#+NAME:' last. Plist order is source
+first-occurrence order, and that is a MEASUREMENT, not an assumption
+(Emacs 30.2, org 9.7.11, probed 2026-08-07):
+
+  - The same five keys written forward (HEADER, ATTR_HTML, ATTR_LATEX, PLOT,
+    NAME) and reversed produce plists whose affiliated-key order tracks the
+    source exactly, both directions, and `org-element-interpret-data'
+    re-emits both orders correctly.
+  - A REPEATED key sits at its FIRST occurrence position with its values in
+    source order: `#+HEADER: a' / `#+NAME: x' / `#+HEADER: b' gives key order
+    (:header :name) and :header value (\"a\" \"b\") - org-element itself
+    cannot represent the interleaving (SCHEMA.md section 10, the interleaved-
+    grouping loss).
+  - A last-wins key repeats the same way positionally: `#+NAME: a' ...
+    `#+NAME: b' gives :name at the FIRST occurrence position with value \"b\".
+
+`(cadr node)' is the raw properties plist - the `(TYPE PROPERTIES-PLIST
 . CONTENTS)' element/object shape org-element's own manual documents - and is
-used here ONLY to discover which keys exist; the actual value for each
-discovered key is still read back through `org-element-property' (via
-`org-swift--prop'), never through this raw plist directly. Confirmed live
-against Emacs 30.2: a table node with `#+ATTR_HTML:' and `#+ATTR_LATEX:'
-lines shows exactly `(:attr_html :attr_latex)' via this walk, matching
-`org-element-property' reads of the same two keys."
+used here ONLY to discover which keys exist and in what order; the actual
+value for each discovered key is still read back through
+`org-element-property' (via `org-swift--prop'), never through this raw plist
+directly. This walk generalizes the earlier `org-swift--attr-keyword-keys'
+(which discovered only the ATTR_* family, in the same way, confirmed live
+against `org-element-property' reads); the fixed five now ride the same walk
+because their ORDER became schema data when `affiliated' became an ordered
+array."
   (let ((plist (cadr node))
         (keys nil))
     (while plist
       (let ((key (car plist)))
-        (when (and (keywordp key) (string-prefix-p ":attr_" (symbol-name key)))
+        (when (and (keywordp key)
+                   (or (memq key org-swift--affiliated-fixed-keys)
+                       (string-prefix-p ":attr_" (symbol-name key))))
           (push key keys)))
       (setq plist (cddr plist)))
     (nreverse keys)))
@@ -546,48 +568,55 @@ confirmed live that reasoning was wrong: a bare `\\alpha' `entity' object (an
 OBJECT, not an element) has its OWN `:name' property (\"alpha\", the entity's
 own identifying name, set by `org-element-entity-parser' - nothing to do
 with any `#+NAME:' line), and the old, ungated code emitted
-`{\"affiliated\": {\"NAME\": \"alpha\"}}' for it, fabricating an affiliated
+an affiliated NAME entry for it, fabricating an affiliated
 keyword that was never in the source at all. Checking
 `(memq type org-element-all-elements)' first is exactly the invariant this
 function always claimed to rely on but never actually enforced; it also
 correctly restores `keyword' (an element) to eligibility after an even
 earlier, hand-picked allowlist wrongly excluded it - confirmed live via
 `#+NAME: t4' immediately before `#+SUBTITLE: value' producing a real
-`keyword' node with `affiliated: {\"NAME\": \"t4\"}'."
+`keyword' node with `affiliated: [{\"key\": \"NAME\", \"value\": \"t4\"}]'.
+
+The value is an ordered ARRAY of `{\"key\", \"value\"}' entries, one per
+distinct key, in source first-occurrence order - the order comes from
+`org-swift--affiliated-key-order's plist walk, whose docstring carries the
+measurements. Per-key value shapes are unchanged from the earlier object
+form; each shape's own measurement lives in the inline comments below and in
+`org-swift--dump-caption' / `org-swift--dump-results'."
   (if (not (memq type org-element-all-elements))
       org-swift--omit
-    (let ((h (make-hash-table :test 'equal))
-          (any nil))
-      (let ((name (org-swift--prop node :name)))
-        (when name (puthash "NAME" name h) (setq any t)))
-      (let ((caption (org-swift--prop node :caption)))
-        (when caption
-          (puthash "CAPTION" (org-swift--dump-caption caption) h)
-          (setq any t)))
-      (let ((header (org-swift--prop node :header)))
-        ;; :header is in `org-element-multiple-keywords' too (like CAPTION)
-        ;; but NOT in `org-element-dual-keywords': confirmed live, it comes
-        ;; back as a plain list of raw strings, one per `#+HEADER:' line, in
-        ;; source order, with no short/long split.
-        (when header (puthash "HEADER" (org-swift--json-array header) h) (setq any t)))
-      (let ((plot (org-swift--prop node :plot)))
-        ;; :plot is neither multiple nor dual: confirmed live, a single raw
-        ;; string.
-        (when plot (puthash "PLOT" plot h) (setq any t)))
-      (let ((results (org-swift--prop node :results)))
-        (when results (puthash "RESULTS" (org-swift--dump-results results) h) (setq any t)))
-      (dolist (attr-key (org-swift--attr-keyword-keys node))
-        ;; Confirmed live: repeating the SAME `#+ATTR_HTML:' line twice
-        ;; accumulates into a list of strings, exactly like HEADER, even
-        ;; though ATTR_* is not itself listed in
-        ;; `org-element-multiple-keywords' (that alist only names the
-        ;; canonical keywords; ATTR_* is handled by separate, backend-name-
-        ;; agnostic logic in org-element that always produces a list).
-        (let ((value (org-swift--prop node attr-key)))
+    (let ((entries nil))
+      (dolist (key (org-swift--affiliated-key-order node))
+        (let ((value (org-swift--prop node key)))
+          ;; The nil check mirrors the old per-key `when' guards: a key
+          ;; discovered on the plist with a nil value carries no keyword.
           (when value
-            (puthash (upcase (substring (symbol-name attr-key) 1)) (org-swift--json-array value) h)
-            (setq any t))))
-      (if any h org-swift--omit))))
+            (push
+             (org-swift--plain-object
+              `(("key" . ,(upcase (substring (symbol-name key) 1)))
+                ("value"
+                 . ,(pcase key
+                      ;; :name and :plot: single raw strings, last wins.
+                      ;; :plot is neither multiple nor dual - confirmed live.
+                      ((or :name :plot) value)
+                      (:caption (org-swift--dump-caption value))
+                      (:results (org-swift--dump-results value))
+                      ;; :header is in `org-element-multiple-keywords' too
+                      ;; (like CAPTION) but NOT in `org-element-dual-keywords':
+                      ;; confirmed live, it comes back as a plain list of raw
+                      ;; strings, one per `#+HEADER:' line, in source order,
+                      ;; with no short/long split.
+                      (:header (org-swift--json-array value))
+                      ;; The ATTR_* family. Confirmed live: repeating the SAME
+                      ;; `#+ATTR_HTML:' line twice accumulates into a list of
+                      ;; strings, exactly like HEADER, even though ATTR_* is
+                      ;; not itself listed in `org-element-multiple-keywords'
+                      ;; (that alist only names the canonical keywords; ATTR_*
+                      ;; is handled by separate, backend-name-agnostic logic
+                      ;; in org-element that always produces a list).
+                      (_ (org-swift--json-array value))))))
+             entries))))
+      (if entries (org-swift--json-array (nreverse entries)) org-swift--omit))))
 
 ;; ---------------------------------------------------------------------------
 ;; Per-type dispatch. TYPE is the raw org-element symbol (before renaming);
