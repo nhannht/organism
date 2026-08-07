@@ -715,6 +715,12 @@ form; each shape's own measurement lives in the inline comments below and in
 
            ('verse-block (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
 
+           ('latex-environment
+            ;; A LEAF: `:value' is the RAW byte run from the opener line through
+            ;; the closer line, indentation and trailing whitespace intact, and
+            ;; `org-element-latex-environment-interpreter' re-emits it verbatim.
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
            ('paragraph (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
 
            ((or 'bold 'italic 'underline 'strike-through)

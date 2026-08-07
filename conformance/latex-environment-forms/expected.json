@@ -1,0 +1,47 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "latex-environment",
+          "value": "\\begin{equation}\nx = 1\n\\end{equation}\n",
+          "postBlank": 1
+        },
+        {
+          "type": "latex-environment",
+          "value": "\\begin{align*}\na &= b \\\\\nc &= d\n\\end{align*}\n",
+          "postBlank": 1
+        },
+        {
+          "type": "latex-environment",
+          "value": "\\Begin{Matrix} intro \\END{MATRIX}\n",
+          "postBlank": 1
+        },
+        {
+          "type": "latex-environment",
+          "value": "\\begin{x}\nbody \\end{x}\n",
+          "postBlank": 1
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "latex-fragment",
+              "value": "\\begin{closerless}",
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\nno closer here\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

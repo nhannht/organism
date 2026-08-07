@@ -154,6 +154,15 @@ Rules:
   case-folded). `parameters` (string or `null`): the rest of the opener line trimmed of
   surrounding whitespace, `null` when nothing (or only whitespace) follows the name --
   `#+begin_note` gives `null`, `#+begin_aside extra  ` gives `"extra"`, both probed live.
+- `latex-environment` -- leaf. `value` (string): the RAW byte run from the `\begin{NAME}`
+  opener line through the closer line, indentation and trailing whitespace intact, re-emitted
+  verbatim by org's interpreter. NAME is `[A-Za-z0-9*]+`; the `begin`/`end` keywords AND the
+  name pair case-folded (`\Begin{x}`, `\END{X}`, both probed live); the closer is the first
+  line at or after the opener whose trailing-trimmed text ENDS with `\end{NAME}` (org searches
+  `\\end{NAME}[ \t]*$` character-forward, so `body \end{x}` closes and the opener line may
+  close itself). No closer means no element: the opener falls through to the paragraph path,
+  where `\begin{x}` lexes as a command-form latex fragment (all measured,
+  `latex-environment-forms`).
 - `verse-block` -- `children`: **object** nodes directly (not elements). Verse is unique among
   blocks: its contents are parsed as objects (text markup, links, timestamps, ...), matching the
   spec's "CONTENTS will contain Org objects" for verse blocks specifically. Note the two kinds of

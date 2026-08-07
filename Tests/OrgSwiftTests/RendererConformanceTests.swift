@@ -141,6 +141,7 @@ struct RendererConformanceTests {
         "emphasis-verbatim-simple",
         "fixed-width-simple",
         "footnote-definition-preblank",
+        "latex-environment-forms",
         "latex-fragment-command",
         "macro-forms",
         "latex-fragment-dollar-closer-class",

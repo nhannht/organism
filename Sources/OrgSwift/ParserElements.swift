@@ -332,6 +332,23 @@ extension OrgParser {
             }
         }
 
+        // LATEX ENVIRONMENTS. `\begin{NAME}` through the line whose trailing-trimmed text ends
+        // with `\end{NAME}`: a LEAF whose `value` is the raw byte run over those lines,
+        // indentation and trailing whitespace intact (org-element-latex-environment-parser).
+        // Probed live: the opener keyword AND the name pair case-folded (`\Begin{x}`,
+        // `\END{X}`), the closer may sit mid-line but must end its line, the opener line may
+        // close itself (`\begin{x} y \end{x}`), `*` in names is literal and must match. No
+        // closer in range means no environment: control falls through to the paragraph path,
+        // org's own fallback.
+        if let name = OrgParser.latexEnvironmentOpenName(line),
+           let end = latexEnvironmentEndIndex(openedAt: i, name: name, in: range) {
+            return (.object([
+                "type": .string("latex-environment"),
+                "value": .string(blockValue(bodyFrom: i, to: end + 1)),
+                "postBlank": .int(0),
+            ]), end + 1)
+        }
+
         // FOOTNOTE DEFINITIONS. Column 0 only, and the label line may carry the first content.
         if line.contentStart == 0, !(i == range.lowerBound && firstLineIsSliced && i == 0),
            let match = try footnoteDefinitionMatch(line) {
@@ -531,6 +548,10 @@ extension OrgParser {
                 // matches nothing in `org-element-paragraph-separate`, so it never separates
                 // and needs no clause of its own.
                 || blockOpenerSeparates(at: i, in: range)
+                // A `\begin{NAME}` opener separates under the same double-check: only when its
+                // `\end{NAME}` closes within this range (org-element-paragraph-parser's latex
+                // branch). An unpaired opener is swallowed as paragraph text, measured.
+                || latexEnvironmentSeparates(at: i, in: range)
                 || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
@@ -674,6 +695,64 @@ extension OrgParser {
         return blockEndIndex(openedAt: i, type: type, in: range) != nil
     }
 
+    /// The NAME of a latex-environment opener, `[ \t]*\begin{NAME}` with NAME from
+    /// `[A-Za-z0-9*]+` (org-element--latex-begin-environment, transcribed). The `begin`
+    /// keyword case-folds (`\Begin{x}` opens, measured); NAME is returned with source case
+    /// and pairs case-folded. Anything may follow the closing brace on the opener line --
+    /// the regexp carries no `$`.
+    static func latexEnvironmentOpenName(_ line: Line) -> String? {
+        let t = line.text
+        var j = line.contentStart
+        guard j < t.count, t[j] == "\\" else { return nil }
+        j += 1
+        for expected in "begin{".unicodeScalars {
+            guard j < t.count, OrgParser.asciiLowered(t[j]) == expected else { return nil }
+            j += 1
+        }
+        let nameStart = j
+        while j < t.count,
+              (t[j] >= "a" && t[j] <= "z") || (t[j] >= "A" && t[j] <= "Z")
+              || (t[j] >= "0" && t[j] <= "9") || t[j] == "*" {
+            j += 1
+        }
+        guard j > nameStart, j < t.count, t[j] == "}" else { return nil }
+        return String(scalars: t[nameStart..<j])
+    }
+
+    /// True when `line`, ignoring trailing whitespace, ENDS with `\end{name}`. Org's closer
+    /// regexp `\\end{NAME}[ \t]*$` is searched character-forward, not line-anchored, so text
+    /// may precede the closer on its line (`body \end{x}` closes, measured) and the opener
+    /// line itself may close the environment. Keyword and NAME both pair case-folded
+    /// (`\END{EQUATION}` closes `equation`, measured).
+    static func latexEnvironmentCloses(_ line: Line, name: String) -> Bool {
+        let suffix = Array("\\end{\(OrgParser.asciiLowered(name))}".unicodeScalars)
+        let t = line.text
+        var end = t.count
+        while end > 0, t[end - 1] == " " || t[end - 1] == "\t" { end -= 1 }
+        guard end >= suffix.count else { return false }
+        for (i, ch) in suffix.enumerated()
+        where OrgParser.asciiLowered(t[end - suffix.count + i]) != ch {
+            return false
+        }
+        return true
+    }
+
+    /// Index of the line closing a latex environment opened at `begin` -- INCLUDING `begin`
+    /// itself, since the opener line may end with its own closer (org searches forward from
+    /// the element's start, measured on `\begin{x} body \end{x}`).
+    func latexEnvironmentEndIndex(openedAt begin: Int, name: String, in range: Range<Int>) -> Int? {
+        for j in begin..<range.upperBound
+        where OrgParser.latexEnvironmentCloses(lines[j], name: name) {
+            return j
+        }
+        return nil
+    }
+
+    private func latexEnvironmentSeparates(at i: Int, in range: Range<Int>) -> Bool {
+        guard let name = OrgParser.latexEnvironmentOpenName(lines[i]) else { return false }
+        return latexEnvironmentEndIndex(openedAt: i, name: name, in: range) != nil
+    }
+
     private func isUnimplementedElementStart(_ line: Line) -> Bool {
         // Indentation is NOT a rejection of its own any more. org's element regexes are written
         // `^[ \t]*...`, so an indented element is simply an element, and every question below is
@@ -701,27 +780,11 @@ extension OrgParser {
         // openers became paragraphs. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }
-        // A latex-environment opener, `[ \t]*\\begin{[A-Za-z0-9*]+}` (the exact class from
-        // `org-element-paragraph-separate`). The TYPE is still oracle-unmapped, and without
-        // this refusal the entity/fragment machinery would lex `\begin{x}` as a command-form
-        // latex fragment inside a paragraph -- a wrong tree where org builds an element. The
-        // guard landed WITH the entity work, because entities are what un-refused `\`.
-        if first == "\\" {
-            let t = line.text
-            var j = line.contentStart + 1
-            for expected in "begin{".unicodeScalars {
-                guard j < t.count, t[j] == expected else { return false }
-                j += 1
-            }
-            let nameStart = j
-            while j < t.count,
-                  (t[j] >= "a" && t[j] <= "z") || (t[j] >= "A" && t[j] <= "Z")
-                  || (t[j] >= "0" && t[j] <= "9") || t[j] == "*" {
-                j += 1
-            }
-            if j > nameStart, j < t.count, t[j] == "}" { return true }
-            return false
-        }
+        // NOTE what is deliberately GONE: the `\begin{NAME}` branch. It stood here while
+        // latex-environment was oracle-unmapped (it landed WITH the entity work, because
+        // entities are what un-refused `\`); the element now parses, and an UNPAIRED opener
+        // falling through to the paragraph path -- where the entity/fragment machinery lexes
+        // `\begin{x}` as a command-form latex fragment -- is org's own answer, measured.
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
         if first == "#", isSpaceOrTab(s + 1), line.text[s + 1] == "\t" { return true }
         // NOTE there is no list-item branch here any more. While lists were unimplemented this

@@ -84,6 +84,10 @@ extension OrgRenderer {
             body = "#+begin_verse\n" + (try renderObjects(try array(node, "children", type))) + "#+end_verse\n"
         case "src-block", "example-block", "export-block", "comment-block":
             body = try renderLiteralBlock(node, type, linePrefix: "")
+        case "latex-environment":
+            // `org-element-latex-environment-interpreter` is the identity: `value` is the raw
+            // source run, opener line through closer line inclusive, re-emitted verbatim.
+            body = try string(node, "value", type)
         case "dynamic-block":
             var head = "#+BEGIN: \(try string(node, "blockName", type))"
             if let arguments = try stringOrNull(node, "arguments", type) { head += " \(arguments)" }

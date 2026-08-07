@@ -862,7 +862,7 @@
                                                                                               "if": {
                                                                                                 "properties": {
                                                                                                   "type": {
-                                                                                                    "const": "line-break"
+                                                                                                    "const": "latex-environment"
                                                                                                   }
                                                                                                 },
                                                                                                 "required": [
@@ -870,13 +870,13 @@
                                                                                                 ]
                                                                                               },
                                                                                               "then": {
-                                                                                                "$ref": "#/$defs/line-break"
+                                                                                                "$ref": "#/$defs/latex-environment"
                                                                                               },
                                                                                               "else": {
                                                                                                 "if": {
                                                                                                   "properties": {
                                                                                                     "type": {
-                                                                                                      "const": "radio-target"
+                                                                                                      "const": "line-break"
                                                                                                     }
                                                                                                   },
                                                                                                   "required": [
@@ -884,9 +884,24 @@
                                                                                                   ]
                                                                                                 },
                                                                                                 "then": {
-                                                                                                  "$ref": "#/$defs/radio-target"
+                                                                                                  "$ref": "#/$defs/line-break"
                                                                                                 },
-                                                                                                "else": false
+                                                                                                "else": {
+                                                                                                  "if": {
+                                                                                                    "properties": {
+                                                                                                      "type": {
+                                                                                                        "const": "radio-target"
+                                                                                                      }
+                                                                                                    },
+                                                                                                    "required": [
+                                                                                                      "type"
+                                                                                                    ]
+                                                                                                  },
+                                                                                                  "then": {
+                                                                                                    "$ref": "#/$defs/radio-target"
+                                                                                                  },
+                                                                                                  "else": false
+                                                                                                }
                                                                                               }
                                                                                             }
                                                                                           }
@@ -2325,6 +2340,30 @@
         },
         "postBlank": {
           "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "latex-environment": {
+      "type": "object",
+      "description": "SCHEMA.md section 4. \\begin{NAME}...\\end{NAME} LaTeX environment. A leaf: value is the raw byte run from the opener line through the closer line, indentation and trailing whitespace intact, re-emitted verbatim.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "latex-environment"
+        },
+        "value": {
+          "type": "string"
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        },
+        "affiliated": {
+          "$ref": "#/$defs/affiliated"
         }
       }
     },
