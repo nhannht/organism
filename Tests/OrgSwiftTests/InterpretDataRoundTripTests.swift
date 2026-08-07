@@ -221,6 +221,30 @@ struct InterpretDataRoundTripTests {
         "conformance/list-item-preblank",
         "conformance/list-item-empty",
         "conformance/list-item-greater-block",
+        // ORG-12, the dayname-INSERTION convention, classified here for the first time.
+        // Full before/after inspected on Emacs 30.2 (145 bytes in, 165 out, first difference at
+        // offset 18), both changed lines reproduced:
+        //
+        //     Active <2026-08-07> and inactive [2026-08-07] with no dayname.
+        //  -> Active <2026-08-07 Fri> and inactive [2026-08-07 Fri] with no dayname.
+        //
+        //     A daterange <2026-08-07>--<2026-08-09> and a timerange <2026-08-07 10:00-12:00>.
+        //  -> A daterange <2026-08-07 Fri>--<2026-08-09 Sun> and a timerange
+        //     <2026-08-07 Fri 10:00-12:00>.
+        //
+        // +20 bytes, all of it four inserted daynames. This is interpret-data ADDING information
+        // the source did not have, not losing any: `dayname` is null in the tree for every one of
+        // these four timestamps, and `renderOrg` reproduces the file byte-exact. So it belongs
+        // with block reindentation and counter renumbering in the suite docstring's second
+        // category -- a re-emit convention, NOT a section 10 loss -- and Layer 2's bar here is
+        // stricter than Emacs's own output.
+        //
+        // The fixture exists because SCHEMA.md section 9 could not have one until this
+        // convention was classified: the sharpest evidence that the rangeType loss is closed is
+        // that the two NO-DAYNAME range forms differ on exactly that key, and no fixture could
+        // carry a no-dayname timestamp while this suite would fail on it. That claim is now
+        // fixture-pinned rather than measured-once.
+        "conformance/timestamp-no-dayname",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

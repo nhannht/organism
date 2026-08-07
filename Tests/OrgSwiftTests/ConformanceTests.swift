@@ -271,6 +271,10 @@ struct ConformanceTests {
         // and it is reconstructible only because a cell's alignment padding rides its
         // postBlank. Two tables with different column widths, so a hardcoded run fails.
         "table-rule-widths",
+        // D / ORG-12: no-dayname timestamps in all three shapes. The fixture SCHEMA.md
+        // section 9 said it could not have until the dayname-insertion convention was
+        // classified -- see InterpretDataRoundTripTests for that classification.
+        "timestamp-no-dayname",
         "affiliated-caption-short-empty",
     ]
 

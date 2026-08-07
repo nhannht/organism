@@ -698,15 +698,17 @@ matches.
   source forms are explicitly distinguished in every case. `conformance/timestamp-timerange-contraction`
   pins the `"timerange"` value and `conformance/timestamp-active-range` pins `"daterange"`.
 
-  One piece of evidence here is MEASURED, not fixtured, and is labelled that way on purpose (see
-  README.md's "What protects each claim" for why the distinction is kept): strip `rangeType` from
-  the two NO-DAYNAME forms and their trees are byte-identical, keep it and they differ on exactly
-  that one key. That is the sharpest demonstration the loss is closed, but no fixture pins it,
-  because a no-dayname timestamp triggers a separate `org-element-interpret-data` re-emit
-  convention -- it INSERTS the canonical dayname -- which is not yet classified in
-  `InterpretDataRoundTripTests.knownReformattingDivergences`. Adding the fixture and classifying
-  that convention is tracked as ORG-12; until it lands, this claim carries a one-time measurement
-  behind it rather than a regression guard.
+  The sharpest evidence the loss is closed: strip `rangeType` from the two NO-DAYNAME forms and
+  their trees are byte-identical, keep it and they differ on exactly that one key. **That is now
+  FIXTURE-PINNED rather than measured-once** (ORG-12, closed 2026-08-07). It could not be while a
+  no-dayname timestamp had nowhere to live: such a timestamp triggers a separate
+  `org-element-interpret-data` convention -- it INSERTS the canonical dayname, `<2026-08-07>`
+  re-emitting as `<2026-08-07 Fri>` -- and any fixture carrying one failed that suite. The
+  convention is now classified in `InterpretDataRoundTripTests.knownReformattingDivergences`,
+  with its full before/after recorded, as a re-emit convention rather than a section 10 loss:
+  interpret-data is ADDING information the source did not have. `dayname` is null in the tree for
+  all four timestamps and `renderOrg` reproduces the file byte-exact, so Layer 2's bar here is
+  stricter than Emacs's own output. `conformance/timestamp-no-dayname` carries all three shapes.
 - **Diary timestamps** (`<%%(SEXP)>`) are documented in section 4 but not exercised by any
   Layer 1 corpus case -- no `start` date exists for a diary sexp, and the org-syntax spec
   itself gives this form minimal treatment. Deferred.
