@@ -64,6 +64,8 @@ struct OracleDiffTests {
         "real/org-mode-samples/blocks.org",
         "real/org-mode-samples/keywords.org",
         "real/org-mode-samples/lists.org",
+        // Joined when empty-title headlines landed (title [] vs [text ""], measured rule).
+        "real/org-mode-samples/headings.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

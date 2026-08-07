@@ -190,6 +190,9 @@ struct InterpretDataRoundTripTests {
         // re-emits `- folded` for `- [x] folded` -- the box is not in the tree at all
         // (SCHEMA.md section 10 item 9, and `RendererConformanceTests.schemaLossCases`).
         "conformance/list-checkbox-forms",
+        // `**  ` re-emits as `** `: headline-line trailing whitespace survives in no property
+        // (SCHEMA.md section 10 item 11, and `RendererConformanceTests.schemaLossCases`).
+        "conformance/headline-empty-title",
     ]
 
     @Test("org-element-interpret-data(org-element-parse-buffer(file)) == file's own bytes", arguments: files)

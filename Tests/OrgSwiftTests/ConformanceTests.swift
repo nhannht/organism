@@ -121,6 +121,9 @@ struct ConformanceTests {
         // Checkbox traps: `[x]` consumed under case-fold but mapped exact-case to null;
         // `[X]tight` (no trailing whitespace) not a box at all; `[]` not a box.
         "list-checkbox-forms",
+        // Empty titles: [] only when the line ends hard against the last consumed token;
+        // any trailing whitespace (the stars' separator included) gives [text ""].
+        "headline-empty-title",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

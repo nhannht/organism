@@ -116,6 +116,11 @@ struct RoundTripTests {
         /// `checkbox: null` with the box gone from the text, and no renderer can re-emit it.
         /// Strips the box from the source side to mirror the loss.
         case malformedCheckboxDropped
+        /// Item 11: trailing whitespace on a HEADLINE line (no tag group) -- the title region
+        /// is trimmed into the tree, so `**  ` and `* x  ` re-emit without the trailing run.
+        /// Strips it from both sides, the stars' own separator included when the title is
+        /// empty.
+        case headlineTrailingWhitespace
 
         func normalize(_ text: String) -> String {
             switch self {
@@ -133,6 +138,9 @@ struct RoundTripTests {
                     in: text,
                     pattern: #"^([ \t]*(?:[-+*]|[0-9]+[.)])[ \t]+)\[x\](?:[ \t]+|$)"#,
                     template: "$1")
+            case .headlineTrailingWhitespace:
+                return Self.replacingMatches(
+                    in: text, pattern: #"^(\*+[^\n]*?)[ \t]+$"#, template: "$1")
             }
         }
 
@@ -178,6 +186,11 @@ struct RoundTripTests {
         // `- [x] not a checkbox?`: the box is consumed with a null state (item 9), exactly
         // the Reason-B case the reviewer's raw-sexp audit predicted for this file.
         "real/org-mode-samples/lists.org": [.malformedCheckboxDropped],
+        // Separator lines carrying a single trailing space (item 5) and the `**  `
+        // empty-title headline with two (item 11).
+        "real/org-mode-samples/headings.org": [
+            .blankLineTrailingWhitespace, .headlineTrailingWhitespace,
+        ],
     ]
 
     /// Deliberately NOT wrapped in `withKnownIssue`: this checks that the corpus is wired up at

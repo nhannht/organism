@@ -580,7 +580,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 10 known instances,
+read (per-type properties outside this schema's curated field set). 11 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -679,6 +679,16 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    reason: a second permanently-redundant field for a second single input form. (Note the example
    deliberately uses a NUMERIC bullet. `a. [@c]` produces no `item` node at all, because
    alphabetical bullets require `org-list-allow-alphabetical`, which is `nil` by default.)
+
+11. Headline-line trailing whitespace, the NO-tags case -- `**  ` re-emits as `** `, and
+   `* x  ` as `* x`. Reason A, numbered after the Reason-B block only because it surfaced
+   later (2026-08-07, while `conformance/headline-empty-title` was being built): the title
+   region is trimmed into `:raw-value`/`:title` and the trailing run survives in NO property.
+   `org-element-interpret-data` itself emits the single-separator form -- measured on that
+   fixture, 12 bytes in, 11 out, the one divergence exactly at the empty-title line. The
+   WITH-tags sibling of this byte class is item 3 (tag-column padding); this is what is lost
+   when there is no tag group for item 3 to blame. Pinned by `conformance/headline-empty-title`
+   in `RendererConformanceTests.schemaLossCases`.
 
 `renderOrg` MUST be byte-exact on everything else -- including block content indent, headline
 body indent, list numbering, multi-blank lines, inline spacing (`postBlank`), all text, and NUL

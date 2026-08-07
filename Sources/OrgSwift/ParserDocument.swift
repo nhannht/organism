@@ -210,9 +210,10 @@ extension OrgParser {
         var end = line.text.count
         while end > start, line.text[end - 1] == " " || line.text[end - 1] == "\t" { end -= 1 }
         let titleChars = Array(line.text[start..<end])
-
-        // Empty titles are not exercised by any implemented case.
-        guard !titleChars.isEmpty else { throw OrgError.unimplemented("headline with an empty title") }
+        // Whether the SOURCE line carried whitespace past the trimmed title end -- one of the
+        // three signals the empty-title rule below reads, so it is captured before the trim
+        // destroys it.
+        let hadTrailingWhitespace = end < line.text.count
 
         // TAGS. Org's rule is `[ \t]*:[[:alnum:]_@#%:]+:[ \t]*$` matched at the EARLIEST position
         // that works, not "the last whitespace-delimited word". The difference is not academic --
@@ -304,21 +305,29 @@ extension OrgParser {
         // keeps the backslashes as literal text, measured. Without this the trailing `\\` of a
         // title would silently become a break, since a title has no trailing newline and end of
         // contents otherwise counts as end of line.
-        // An EMPTY title is two different values depending on whether tags are present, which is
-        // not guessable and was measured across all seven degenerate forms:
+        // An EMPTY title is two different values, and the discriminator is finer than the first
+        // measurement round suggested. Round one (seven degenerate forms) said "the TAG group
+        // decides". Round two (conformance/headline-empty-title plus a six-form probe,
+        // 2026-08-07) found the no-tags column splits AGAIN on trailing whitespace:
         //
-        //     * COMMENT        title []                    * COMMENT :t:   title [text ""]
-        //     * [#A]           title []                    * [#A] :t:      title [text ""]
-        //     * TODO           title []                    * TODO :t:      title [text ""]
-        //     * :onlytags:     title [text ""]
+        //     * COMMENT        title []      * COMMENT :t:   title [text ""]
+        //     * [#A]           title []      * [#A] -SPC-    title [text ""]
+        //     * TODO           title []      * TODO -SPC-    title [text ""]
+        //                                    * :onlytags:    title [text ""]
+        //                                    * -SPC-         title [text ""]
+        //                                    ** -SPC-SPC-    title [text ""]
         //
-        // So the discriminator is the TAG group, not which keyword emptied the title.
-        // `parseObjects("")` returns `[]`, which is the right answer for the no-tags column and
-        // the wrong one for the other.
+        // The unifying rule comes straight off `org-complex-heading-regexp`: the title group is
+        // `\(?: +\(.*?\)\)??`, so it MATCHES (empty capture) whenever any whitespace follows the
+        // last consumed token -- the stars' own separator counts -- and stays unmatched (nil,
+        // dumped as []) only when the line ends hard against that token. `parseObjects("")`
+        // returns `[]`, the right answer for exactly that hard-ended column.
         let titleText = String(scalars: titleChars[titleStart..<titleEnd])
         let title: [OrgJSON]
         if titleText.isEmpty {
-            title = tags.isEmpty
+            let lineEndsHardAfterConsumedToken =
+                tags.isEmpty && !hadTrailingWhitespace && titleStart > 0
+            title = lineEndsHardAfterConsumedToken
                 ? []
                 : [OrgJSON.object(["type": .string("text"), "value": .string("")])]
         } else {

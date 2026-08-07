@@ -45,7 +45,11 @@ import OrgSwift
 ///     item 8        exercised by exactly ONE case, on purpose -- and that case lives in
 ///                   `schemaLossCases`, not behind a normalizer: the divergence is the whole
 ///                   point of the fixture, so absorbing it would un-pin what it pins
-///     item 9, 10    no lowercase `[x]` checkbox, no alphabetic `[@c]` counter
+///     item 9        exercised by exactly ONE case (`list-checkbox-forms`), which lives in
+///                   `schemaLossCases` -- the loss is the point of the fixture
+///     item 10       no alphabetic `[@c]` counter in the corpus
+///     item 11       exercised by exactly ONE case (`headline-empty-title`), likewise in
+///                   `schemaLossCases`
 ///
 /// So this suite asserts RAW byte equality. No normalizer is built, on purpose: an unexercised
 /// normalizer is a catch-all waiting for its first customer, and a catch-all is the one thing
@@ -222,6 +226,11 @@ struct RendererConformanceTests {
         // itself re-emits `- folded` for `- [x] folded`, measured -- no tree built on
         // org-element can carry the byte, so the render is correct AND cannot equal the input.
         "list-checkbox-forms",
+        // Reason A, SCHEMA.md section 10 item 11: headline-line trailing whitespace with no
+        // tag group. `**  ` holds title [text ""] with the second separator space in no
+        // property; interpret-data itself re-emits `** ` (12 bytes in, 11 out, measured on
+        // this fixture). The render is correct AND cannot equal the input.
+        "headline-empty-title",
     ]
 
     /// Deliberately NOT wrapped, same reasoning as `RoundTripTests.corpusIsWired()`: if the loader
