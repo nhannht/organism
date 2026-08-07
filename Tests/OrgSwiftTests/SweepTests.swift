@@ -106,6 +106,51 @@ struct SweepTests {
                 "sweep corpus did not load: \(Self.cases.count) cases found under sweep/")
     }
 
+    /// The ORG-23 grid: object restrictions inside a link DESCRIPTION.
+    ///
+    /// These are listed separately because the main sweep accepts a refusal, and for this grid a
+    /// refusal is NOT an acceptable answer. That distinction is the whole point. ORG-23 shipped
+    /// five silent wrong trees to the public repo -- a description containing `http://y` or a
+    /// timestamp built a nested `link`/`timestamp` node where org emits plain text -- and it
+    /// specified its own closing gate: a call-site by nesting grid, a control that must come out
+    /// DIFFERENT, and a mutation receipt proving the diff can go non-empty. It also warned that
+    /// `footnote-reference` and `radio-target` would each become a NEW wrong tree of the same
+    /// class when they landed. They have since landed, so they are in the grid.
+    ///
+    /// The two halves are the discriminator, and neither half alone proves anything:
+    ///
+    ///     desc-*   the construct sits DIRECTLY in the description   -> org gives plain TEXT
+    ///     x23-*    the same construct sits inside bold/italic
+    ///              inside the description                           -> org BUILDS the node
+    ///
+    /// org applies the restriction row of the object being parsed, not the container's, so
+    /// wrapping in bold changes the answer. A parser that refused descriptions outright, or one
+    /// that inherited the container's row downward, would pass one half and fail the other.
+    /// `x23-wide-code` is the third control: `code` is permitted directly in a description, so it
+    /// must build even in the `desc` position.
+    static let linkDescriptionRestrictionGrid: Set<String> = [
+        // Plain text in org: the description's own restriction row refuses each of these.
+        "desc-plainlink", "desc-plainlink-only", "desc-anglelink",
+        "desc-ts-active", "desc-ts-only", "desc-fnref", "desc-radiotarget",
+        // The same constructs one level deeper, where the nested object's row permits them.
+        "x23-bold-link", "x23-bold-ts", "x23-bold-fnref", "x23-ital-link",
+        // Permitted directly in a description, so it builds without any nesting.
+        "x23-wide-code",
+    ]
+
+    @Test("link-description object restrictions match org exactly, with no refusal allowed",
+          arguments: linkDescriptionRestrictionGrid.sorted())
+    func linkDescriptionRestrictionsMatchOrg(_ name: String) throws {
+        guard let testCase = Self.cases.first(where: { $0.name == name }) else {
+            Issue.record("sweep case '\(name)' is missing -- the ORG-23 grid is not loaded")
+            return
+        }
+        let actual = try parseOrg(testCase.inputOrg)
+        #expect(actual == testCase.expected, """
+            \(name): does not match org. \(Self.firstDivergence(actual, testCase.expected, at: "root"))
+            """)
+    }
+
     @Test("parseOrg never emits a tree org does not produce", arguments: cases)
     func neverEmitsAWrongTree(_ testCase: SweepCase) throws {
         let actual: OrgJSON
