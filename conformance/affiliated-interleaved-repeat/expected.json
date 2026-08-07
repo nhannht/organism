@@ -1,0 +1,37 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "src-block",
+          "language": "sh",
+          "switches": null,
+          "params": null,
+          "value": "true\n",
+          "postBlank": 0,
+          "affiliated": [
+            {
+              "key": "HEADER",
+              "value": [
+                "a",
+                "b"
+              ]
+            },
+            {
+              "key": "NAME",
+              "value": "x"
+            },
+            {
+              "key": "PLOT",
+              "value": "p"
+            }
+          ]
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

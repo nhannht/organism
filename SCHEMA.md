@@ -635,7 +635,8 @@ tree carries the byte):**
    loses the same bytes. Surfaced by `affiliated` becoming an ordered array (section 5): the
    array carries every ordering byte org-element carries -- cross-key first-occurrence order and
    per-key value order -- and the interleaving is the one ordering fact org-element itself never
-   had.
+   had. Pinned by `conformance/affiliated-interleaved-repeat`, the permanent resident of
+   `RendererConformanceTests.schemaLossCases`.
 
 **Reason B -- a CHOSEN non-capture (the byte IS present in the tree, just not in a property this
 schema reads). Both remaining entries are the same family: the plain-list `:structure` vector.**
@@ -704,8 +705,9 @@ getting either wrong produces output that looks plausible and is wrong:
 
 **Byte-exactness is now asserted by two suites, read as a pair.**
 `Tests/OrgSwiftTests/RendererConformanceTests.swift` renders every checked-in `expected.json`
-and compares RAW bytes against `input.org` (no normalizer -- measured: no conformance case
-exercises a Reason-A loss), and `RoundTripTests.swift` asserts the full
+and compares RAW bytes against `input.org` (no normalizer -- measured: the one conformance case
+exercising a Reason-A loss, item 8's pin, sits in that suite's permanent `schemaLossCases`
+bucket rather than behind a normalizer), and `RoundTripTests.swift` asserts the full
 `renderOrg(parseOrg(text))` loop on the real-world files, byte-exact for files hitting no loss
 and normalized per-file for exactly the losses a file demonstrably hits (its
 `lossAnnotatedFiles` documents which, with a vacuity guard on every annotation). Items 1, 2, 3

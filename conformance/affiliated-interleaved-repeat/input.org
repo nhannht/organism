@@ -1,0 +1,7 @@
+#+HEADER: a
+#+NAME: x
+#+HEADER: b
+#+PLOT: p
+#+begin_src sh
+true
+#+end_src

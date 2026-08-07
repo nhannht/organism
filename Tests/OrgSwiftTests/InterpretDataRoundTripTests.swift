@@ -149,6 +149,13 @@ struct InterpretDataRoundTripTests {
         // affiliated keywords lowercase, and the `(+ 1 2)` body gains two leading spaces, which
         // is the whole of this file's 200 -> 202 byte growth. No third divergence is present.
         "conformance/affiliated-header-results-attr-plot",
+        // Three conventions already listed separately above, combined in one file. Measured on
+        // the full re-emit (Emacs 30.2): (1) interleaved-repeat GROUPING -- `#+HEADER: a` /
+        // `#+NAME: x` / `#+HEADER: b` re-emits with both HEADER lines together, NAME third
+        // (org-element stores the interleaving nowhere; SCHEMA.md section 10 item 8, which this
+        // fixture exists to pin); (2) keyword-name case-folding on all four affiliated lines;
+        // (3) src-block body reindentation (`true` gains two leading spaces).
+        "conformance/affiliated-interleaved-repeat",
         // Keyword-name case-folding PLUS extra keyword-value whitespace collapse (multi-space
         // `#+title:    X` -> single-space `#+title: X`).
         "real/doomemacs-docs/appendix.org", "real/doomemacs-docs/examples.org",

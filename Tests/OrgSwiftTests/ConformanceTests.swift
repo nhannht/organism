@@ -116,6 +116,11 @@ struct ConformanceTests {
         "keyword-name-attaches-to-table",
         "affiliated-caption-forms",
         "affiliated-header-results-attr-plot",
+        // Pins the ordered-array grouping semantics (SCHEMA.md section 5): a key repeated with
+        // another key between its occurrences groups at its FIRST occurrence position, values in
+        // source order -- `HEADER a` / `NAME x` / `HEADER b` gives entries HEADER ["a","b"],
+        // NAME, PLOT. org-element itself stores it that way (section 10 item 8).
+        "affiliated-interleaved-repeat",
         "block-quote-parsed",
         "block-center-parsed",
         "block-verse-parsed-objects",

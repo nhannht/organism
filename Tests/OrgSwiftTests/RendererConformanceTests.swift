@@ -33,7 +33,8 @@ import OrgSwift
 ///
 /// The intended design here was a map of case name -> SCHEMA.md section 10 item, each asserting
 /// equality after a minimal per-loss normalizer applied to both sides. It has no entries, because
-/// no conformance case exercises a Reason-A loss. Measured across all 81 `input.org` files:
+/// no case in `implementedCases` exercises a Reason-A loss. Measured across all 82 `input.org`
+/// files:
 ///
 ///     item 2, 5, 7  no line in the corpus carries trailing whitespace at all
 ///     item 2        no `#+KEY:` line has a padded value (`#+TITLE:    x`)
@@ -41,6 +42,9 @@ import OrgSwift
 ///     item 4        the corpus's one multi-keyword planning line is SCHEDULED-then-DEADLINE,
 ///                   which is the order emitted, so it reproduces without normalization
 ///     item 6        no affiliated alias spelling (`#+TBLNAME:`, `#+RESULT:`, `#+HEADERS:`)
+///     item 8        exercised by exactly ONE case, on purpose -- and that case lives in
+///                   `schemaLossCases`, not behind a normalizer: the divergence is the whole
+///                   point of the fixture, so absorbing it would un-pin what it pins
 ///     item 9, 10    no lowercase `[x]` checkbox, no alphabetic `[@c]` counter
 ///
 /// So this suite asserts RAW byte equality. No normalizer is built, on purpose: an unexercised
@@ -184,13 +188,25 @@ struct RendererConformanceTests {
     /// `InterpretDataRoundTripTests.knownReformattingDivergences`: an entry leaving this set
     /// (starting to pass) is a signal to re-inspect the schema, not to silently update the set.
     static let schemaLossCases: Set<String> = [
-        // Emptied 2026-08-07, and the exit is exactly the documented signal working as designed:
-        // this set's one resident, `affiliated-header-results-attr-plot`, started passing when
+        // The founding resident, `affiliated-header-results-attr-plot`, exited 2026-08-07, and
+        // the exit is exactly the documented signal working as designed: it started passing when
         // `affiliated` became an ordered array of {key, value} entries (SCHEMA.md section 5) --
         // the schema DID change under it, the wrapper failed loudly, and the case moved to
         // `implementedCases`. Its old comment argued the order was recoverable (org-element
         // retains it as plist order, measured on Emacs 30.2) and only this schema's unordered
         // object container dropped it; the array container is that argument, resolved.
+        //
+        // The current resident is the loss the SAME measurement surfaced, one layer deeper, and
+        // unlike its predecessor it is Reason A -- no schema change can ever move it: the input
+        // interleaves a repeated key with another key (`#+HEADER: a` / `#+NAME: x` /
+        // `#+HEADER: b`), and org-element stores each affiliated key ONCE, at its first
+        // occurrence position, values accumulated in source order. The interleaving is in no
+        // property of any tree built on org-element -- `org-element-interpret-data` itself
+        // re-emits the grouped form (`HEADER a` / `HEADER b` / `NAME x`, measured on Emacs
+        // 30.2). The render is therefore correct AND cannot equal the input: it diverges at the
+        // third line, where the tree says `HEADER b` and the source says `NAME x`. SCHEMA.md
+        // section 10 item 8.
+        "affiliated-interleaved-repeat",
     ]
 
     /// Deliberately NOT wrapped, same reasoning as `RoundTripTests.corpusIsWired()`: if the loader
