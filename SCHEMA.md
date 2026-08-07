@@ -70,10 +70,14 @@ public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> 
 public func renderOrg(_ tree: OrgJSON) throws -> String
 ```
 
-Both functions currently `throw OrgError.notImplemented` (see `Sources/OrgSwift/Parser.swift`,
-`Renderer.swift`). This package is built test-first: the corpus and schema are locked in before
-the parser exists. `Tests/OrgSwiftTests/ConformanceTests.swift` wraps each comparison in
-`withKnownIssue` for exactly this reason -- see section 8.
+Both functions are real implementations today, grown case-by-case against the corpus (this
+paragraph originally said both threw `OrgError.notImplemented`; the package was built
+test-first, with the corpus and schema locked in before either existed). A construct outside
+the implemented subset still throws -- `OrgError.notImplemented` from the parser,
+`OrgError.malformedTree` from the renderer -- rather than producing bytes or trees it is not
+confident about. `Tests/OrgSwiftTests/ConformanceTests.swift` and
+`RendererConformanceTests.swift` wrap exactly the not-yet-implemented cases in
+`withKnownIssue` -- see section 8.
 
 ## 3. The outer skeleton (pin this down first -- it repeats in every fixture)
 
@@ -669,13 +673,16 @@ getting either wrong produces output that looks plausible and is wrong:
   doubled. Again this is `org-element`'s own convention, not an invention here: its line-break
   interpreter returns the literal three-character string `\\` followed by a newline.
 
-**Byte-exactness itself is not yet asserted anywhere, and that is deliberate.** `renderOrg` is
-still a stub that throws `OrgError.notImplemented` (section 2), so no test in this repository
-currently checks the contract this section states. Everything above is a claim about what the
-TREE retains, established by inspecting `org-element` and by the conformance fixtures that pin
-each field -- not by a passing round-trip. Wiring the actual byte-exact assertion is ORG-4's work,
-once a renderer exists. Read this section as the specification a renderer will be held to, not as
-a result already demonstrated.
+**Byte-exactness is now asserted by two suites, read as a pair.**
+`Tests/OrgSwiftTests/RendererConformanceTests.swift` renders every checked-in `expected.json`
+and compares RAW bytes against `input.org` (no normalizer -- measured: no conformance case
+exercises a Reason-A loss), and `RoundTripTests.swift` asserts the full
+`renderOrg(parseOrg(text))` loop on the real-world files, byte-exact for files hitting no loss
+and normalized per-file for exactly the losses a file demonstrably hits (its
+`lossAnnotatedFiles` documents which, with a vacuity guard on every annotation). Items 1, 2, 3
+and 5 of the list above all have real vendored customers exercising them. A paragraph in this
+spot used to say no test asserted this contract; that stopped being true when the renderer
+landed.
 
 **Why this is not "parity with `org-element-interpret-data`'s output".** `InterpretDataRoundTripTests`
 (see that suite's docstring) characterizes `org-element`'s OWN serializer, `org-element-interpret-data`
