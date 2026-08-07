@@ -17,15 +17,23 @@ import OrgSwift
 /// a wrong tree is indistinguishable from one that is simply unimplemented, and it can stay that
 /// way forever. SCHEMA.md section 8 is the same asymmetry stated from the other side.
 ///
-/// This suite reports THREE states where the rest of the repository reports two:
+/// This suite reports FOUR states where the rest of the repository reports two:
 ///
-///     MATCH      the parser's tree equals org's
-///     MISMATCH   the parser emitted a tree org does not produce   <- a WRONG TREE, right now
-///     THROW      the parser refused
+///     MATCH             the parser's tree equals org's
+///     MISMATCH          the parser emitted a tree org does not produce  <- a WRONG TREE, now
+///     EXPECTED THROW    the parser refused, and `knownRefusals` names it
+///     UNEXPECTED THROW  the parser refused and nothing said it would    <- also fatal
 ///
 /// and it enforces the invariant `parseOrg`'s own doc comment states: never emit a tree it is not
-/// confident is correct. **A MISMATCH is a hard failure. A THROW is not.** Over-throwing costs
-/// coverage; a wrong tree costs correctness, and only one of those is allowed to be silent.
+/// confident is correct. **A MISMATCH is a hard failure. A THROW is not** -- inside
+/// `neverEmitsAWrongTree`, which is the per-case comparison. Over-throwing costs coverage; a
+/// wrong tree costs correctness, and only one of those is allowed to be silent.
+///
+/// That asymmetry has its own cost, and `refusalsAreExactlyTheNamedSet` is what pays it. From
+/// inside a `catch`, a construct that REGRESSED into a refusal and a case that was never
+/// exercised are the same observation, so the per-case test can watch refusals grow without
+/// limit and stay green. This suite's fourth state exists because that is not hypothetical: see
+/// `knownRefusals`.
 ///
 /// Nine defects were found by this instrument -- ORG-22 through ORG-30, plus the citation-prefix
 /// restriction row the Wave 3 generator found -- five of them live in the published repository at
@@ -42,7 +50,7 @@ import OrgSwift
 ///
 /// The stored answers are regenerable from this repository's own oracle -- see `sweep/README.md`
 /// and `sweep/regen-expected.sh`. A reader never has to trust them; they can rebuild and diff.
-@Suite("Sweep (a wrong tree fails, a refusal does not)")
+@Suite("Sweep (a wrong tree fails, and so does an unnamed refusal)")
 struct SweepTests {
 
     struct SweepCase: Sendable, CustomTestStringConvertible {

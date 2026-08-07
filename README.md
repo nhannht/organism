@@ -26,14 +26,17 @@ over every org-element type its oracle can reach.
   `conformance/headline-inlinetask-depth`. Both facts are mechanised: one test reads org's live
   type list and fails if anything but `inlinetask` is unmapped, another fails if a mapped type
   has no fixture.
-- **Refusals that remain are narrow and named**, not whole constructs, and the claim is counted
-  rather than asserted. There are **18 throw sites** in `Sources/OrgSwift` (`grep -rn
-  'OrgError.unimplemented(' Sources/OrgSwift/`): 7 are an undecidable non-ASCII scalar at a class
-  boundary (block name, citation style, inline `src_`/`call_` prefix, footnote label, superscript
-  marker, script body, entity name), 1 is a CR byte in the source, 1 is the `#+BEGIN:`
-  dynamic-block family, and the rest are single unmeasured shapes. Each throws rather than
-  guessing. Across the 1,312-case differential sweep **18 cases refuse**, in three groups: 9
-  dynamic blocks, 8 non-ASCII script bodies, 1 non-ASCII footnote label.
+- **Refusals that remain are narrow and named**, not whole constructs, and that is now a counted
+  claim rather than an assertion. Across the 1,312-case differential sweep, **18 cases refuse**,
+  in three groups: 9 `#+BEGIN:` dynamic blocks, 8 an undecidable non-ASCII scalar at a
+  subscript/superscript body boundary, 1 the same at a footnote-label boundary. Everything else
+  parses. Each refusal throws rather than guessing.
+
+  For the throw SITES rather than the cases, read them off the source -- `grep -rn
+  'OrgError.unimplemented(' Sources/OrgSwift/` -- and do not trust a number written here for
+  them. A prose count of sites is exactly what went stale: this bullet claimed "four class
+  boundaries" while two more had landed in the same campaign, because a site count is not
+  behavioural and no gate can hold it honest.
 
   That second number used to be unknowable. The sweep accepts a refusal silently by design -- it
   guards against wrong trees, and from inside a `catch` an over-throw looks exactly like a case
@@ -58,7 +61,7 @@ the whole verification story - run them yourself rather than taking this table's
 |---|---|
 | `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
 | `harness/validate-schema.sh` | 1,432 of 1,432 stored answers valid against the published schema |
-| `swift test` | 32 tests, 10 suites, 0 failures, 53 known issues |
+| `swift test` | 34 tests, 10 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,312 inputs, 0 wrong trees - see `sweep/README.md` |
@@ -90,9 +93,12 @@ parsed, and how the next such fixture will behave.
 
 **`sweep/` is the only gate here that can fail on a WRONG TREE, and it is the one that keeps
 earning its place.** 1,312 generated inputs, each with org's own answer stored beside it,
-reporting three states rather than two: MATCH, MISMATCH (a wrong tree, right now) and THROW. A
-MISMATCH fails the build; a THROW does not, because over-throwing costs a construct while a
-wrong tree costs trust in every tree. Nine defects have been found this way, five of them live
+reporting four states where the rest of the repository reports two: MATCH, MISMATCH (a wrong
+tree, right now), an EXPECTED throw, and an unexpected one. A MISMATCH fails the build and a
+throw does not, because over-throwing costs a construct while a wrong tree costs trust in every
+tree - but WHICH cases throw is pinned by name in `SweepTests.knownRefusals`, so a new refusal is
+red too. That second half was missing until 2026-08-08 and is why `18 of 1,312` above is a gated
+number rather than a sentence. Nine defects have been found this way, five of them live
 in this repository at the time and none visible to `swift test`, `verify-corpus.sh` or the
 fixtures. The most recent was found by a GENERATED group of cases on its first run, four wrong
 trees in code that had landed an hour earlier and passed every other gate. Its count is NOT a
@@ -192,7 +198,7 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 32 tests, 10 suites, 0 real failures, 53 known issues: ZERO
+- `swift test` on this commit: 34 tests, 10 suites, 0 real failures, 53 known issues: ZERO
   parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
   `interpret-data` losses.
 - 1,312 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,

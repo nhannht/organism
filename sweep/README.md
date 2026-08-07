@@ -33,8 +33,21 @@ THROW      the parser refused
 and the test enforces the invariant `parseOrg`'s own doc comment states: never emit a tree it is
 not confident is correct.
 
-**A MISMATCH fails the build. A THROW does not.** Over-throwing costs a construct; a wrong tree
-costs trust in every tree the parser produces, and only one of those is allowed to be silent.
+**A MISMATCH fails the build. A THROW does not** - within the per-case comparison. Over-throwing
+costs a construct; a wrong tree costs trust in every tree the parser produces, and only one of
+those is allowed to be silent.
+
+**A SECOND test then reads the throws as a set, and there an unnamed one is fatal.** The
+asymmetry above has a cost that took this project two findings to see: from inside a `catch`, a
+construct that regressed into a refusal and a case that was never exercised are the same
+observation, so refusals could grow without limit and nothing would go red. ORG-30 measured five
+over-throws sitting at 0 of 1,181 with the whole suite green. `SweepTests.knownRefusals` pins
+every refusing case by name - currently 18, in three groups - and fails in BOTH directions: a new
+refusal is red, and a listed case that starts parsing is also red, which is what forces the name
+back out when a construct lands.
+
+So the honest summary is four states, not three: MATCH, MISMATCH (fatal), an EXPECTED throw, and
+an unexpected throw (fatal).
 
 Nine defects were found by this instrument - ORG-22 through ORG-30, plus the citation-prefix
 restriction row found by the Wave 3 generator - five of them live in the published repository at
