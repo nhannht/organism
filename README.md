@@ -62,7 +62,7 @@ the whole verification story - run them yourself rather than taking this table's
 |---|---|
 | `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
 | `harness/validate-schema.sh` | 1,432 of 1,432 stored answers valid against the published schema |
-| `swift test` | 34 tests, 10 suites, 0 failures, 53 known issues |
+| `swift test` | 55 tests, 13 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,312 inputs, 0 wrong trees - see `sweep/README.md` |
@@ -186,6 +186,54 @@ The accessors are `objectValue`, `arrayValue`, `stringValue`, `intValue`, `doubl
 silent truncation would hide a malformed tree. This exact example is compiled by
 `PublicAPITests`, so it cannot rot.
 
+### The typed tree
+
+`OrgJSON` is the cross-language contract, and string-keying through it is tedious in Swift. So
+there is a typed view of the same tree:
+
+```swift
+let doc = try OrgDocument(parsing: source)
+
+for headline in doc.allHeadlines where headline.todo == "TODO" {
+    print(headline.level, headline.title.plainText, headline.tags)
+}
+
+for link in doc.allLinks where link.linkType == .plain {
+    print(link.path)
+}
+```
+
+Required schema fields are non-optional, so `level` is `Int` rather than `Int?`. The eight
+enumerated fields are real enums (`.on` / `.off` / `.trans` for a checkbox, `.regular` /
+`.angle` / `.plain` for a link type, and so on), and a `switch` over `OrgNode` is exhaustive, so
+a node type added upstream is a build error rather than a silently skipped branch.
+
+`walk()` visits a node and all its descendants depth-first, including secondary strings - a
+headline's `title` and a link's `description` are node arrays too, and a traversal that saw only
+`children` would miss most of the objects in a real file.
+
+The whole layer is ADDITIVE. `parseOrg` and `OrgJSON` are unchanged, `OrgDocument(parsing:)` is
+sugar over them, and `renderOrg` takes either:
+
+```swift
+let doc = try OrgDocument(parsing: source)
+let back = try renderOrg(doc)        // identical bytes to renderOrg(parseOrg(source))
+```
+
+**It is generated, not hand-written.** `harness/regen-ast.py` reads
+`schema/org-node.schema.json` and emits `Sources/OrgSwift/OrgAST.generated.swift` - 55 node
+types, 8 enums, roughly 2,600 lines. The schema stays the single source of truth and the Swift
+types are a build product, so the two cannot drift:
+
+```bash
+python3 harness/regen-ast.py           # regenerate
+python3 harness/regen-ast.py --check   # fail if the committed file is not what the schema produces
+```
+
+What says the typed layer is complete and lossless: `OrgJSON -> OrgNode -> OrgJSON` is asserted
+identical for **all 1,432 stored trees**, and a companion test asserts the corpus exercises every
+one of the 55 generated types, so a green run is not green because something never ran.
+
 That is deliberately the shape of the published cross-language contract rather than a Swift-native
 AST, so the tree you get in Swift is the same tree a Rust or Python adapter gets. A typed layer
 over it is planned.
@@ -264,7 +312,7 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 34 tests, 10 suites, 0 real failures, 53 known issues: ZERO
+- `swift test` on this commit: 55 tests, 13 suites, 0 real failures, 53 known issues: ZERO
   parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
   `interpret-data` losses.
 - 1,312 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,

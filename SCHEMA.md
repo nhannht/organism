@@ -8,6 +8,16 @@ to `OrgSwift` alone: any conformant parser, in any language, must produce a tree
 shape for every `conformance/*/expected.json` case. `Sources/OrgSwift` is this repository's one
 reference implementation of the contract, not the definition of it.
 
+**The Swift typed AST is DERIVED from this document's machine-readable twin, not written beside
+it.** `harness/regen-ast.py` reads `schema/org-node.schema.json` and emits
+`Sources/OrgSwift/OrgAST.generated.swift`: 55 node types, 8 enums, one struct per section 4
+entry. So a change here that reaches the JSON Schema changes the Swift types on the next
+`python3 harness/regen-ast.py`, and `--check` fails until the committed file is regenerated.
+Never hand-edit the generated file, and treat this document plus the JSON Schema as the only
+place a node's shape is decided. What proves the derivation is faithful: `OrgJSON -> OrgNode ->
+OrgJSON` is asserted identical for all 1,432 stored trees
+(`Tests/OrgSwiftTests/ASTRoundTripTests.swift`).
+
 Ground truth for org-mode syntax is Nicolas Goaziou's spec: https://orgmode.org/worg/org-syntax.html
 Where this schema makes a normalization or representation choice the spec leaves open, that
 choice is called out explicitly below, under "Schema decisions and open questions".

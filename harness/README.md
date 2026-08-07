@@ -114,3 +114,34 @@ bash harness/fetch-corpus.sh
 ```
 
 Safe to run more than once; each run wipes and re-clones its own working directory.
+
+## Generators: regen-entities.sh, regen-ast.py, pinned-tables.el
+
+Three scripts write files that are COMMITTED and REGENERABLE. That combination is deliberate: a
+reader clones the repository and builds without running anything, and a maintainer can prove at
+any time that the committed output is still what the source produces.
+
+| Script | Writes | Source of truth |
+|---|---|---|
+| `regen-entities.sh` | `Sources/OrgSwift/EntityNames.swift` | the live Emacs `org-entities` table |
+| `regen-ast.py` | `Sources/OrgSwift/OrgAST.generated.swift` | `schema/org-node.schema.json` |
+| `pinned-tables.el` | nothing; prints for `PinnedTableDriftTests` | live Emacs case and syntax tables |
+
+```bash
+bash harness/regen-entities.sh          # after an Emacs or org upgrade; commit the diff
+python3 harness/regen-ast.py            # after any schema change
+python3 harness/regen-ast.py --check    # CI form: exit 1 if the committed file has drifted
+```
+
+`regen-ast.py` generates the typed AST - 55 node types, 8 enums, roughly 2,600 lines of Swift.
+Hand-writing it would create a second copy of the published contract kept in sync by hand, which
+is the shape this repository keeps finding bugs in; generating means the schema stays the single
+source of truth. Never edit `OrgAST.generated.swift` directly. Ergonomics that no schema implies
+belong in `Sources/OrgSwift/OrgAST+Support.swift`, which is hand-written and which the generator
+never touches.
+
+The generator refuses to emit an incomplete `OrgNode`: it re-reads the schema's own type
+discriminators and fails if its emitted set differs. That guard fired on its first run, catching
+`table` - the one node emitted outside the uniform loop, which had been generated and then left
+out of the enum. It compiled, and every document containing a table would have decoded as
+"unknown org-element type".

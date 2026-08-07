@@ -127,6 +127,33 @@ struct ASTSupportTests {
         #expect(rows.map(\.kind) == [.standard, .rule, .standard])
     }
 
+    /// The README's "The typed tree" example, kept compiling.
+    ///
+    /// Same role as `PublicAPITests.readmeExampleStillWorks`: this is published documentation a
+    /// reader will paste, so it fails here rather than in their editor.
+    @Test("the README typed example compiles and produces what it claims")
+    func readmeTypedExampleStillWorks() throws {
+        let source = "* TODO Ship it :work:\nsee http://example.com now\n"
+        let doc = try OrgDocument(parsing: source)
+
+        var headlines: [(Int, String, [String])] = []
+        for headline in doc.allHeadlines where headline.todo == "TODO" {
+            headlines.append((headline.level, headline.title.plainText, headline.tags))
+        }
+        #expect(headlines.count == 1)
+        #expect(headlines[0] == (1, "Ship it", ["work"]))
+
+        // A PLAIN link's `path` keeps the whole URI, scheme included, and `pathType` repeats the
+        // scheme beside it. Verified against live Emacs rather than assumed: org-element gives
+        // `:type "http"` with `:path "http://example.com"`. The intuition that `path` would be
+        // the part AFTER the scheme is wrong here, and is the reason this assertion exists.
+        let plain = doc.allLinks.filter { $0.linkType == .plain }
+        #expect(plain.map(\.path) == ["http://example.com"])
+        #expect(plain.map(\.pathType) == ["http"])
+
+        #expect(try renderOrg(doc) == source)
+    }
+
     /// The typed path and the untyped path must agree, end to end.
     @Test("renderOrg round-trips through the typed tree identically")
     func typedRenderMatchesUntyped() throws {
