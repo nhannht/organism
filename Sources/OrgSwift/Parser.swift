@@ -43,15 +43,18 @@
 ///
 /// ## Scope boundary: only what the schema maps
 ///
-/// This parser implements ONLY the node types `schema/org-node.schema.json` defines (42 of them,
-/// the `$defs` entries other than the helper shapes `affiliated`, `date`, `node`, `nodeArray`,
-/// `nodeArrayOrNull`, `postBlank`, `rep`, `tblfm`). Every org construct whose type the schema does
-/// NOT map must throw, permanently, rather than be approximated -- `entity`, `export-snippet`,
-/// `target`, `latex-environment`, `special-block`, `macro`, `inline-src-block`, `clock`,
-/// `babel-call`, `citation` and `inlinetask` among them. Two pairs look alike and are not:
-/// `latex-fragment` IS mapped and `latex-environment` is NOT; `radio-target` IS mapped and
-/// `target` is NOT. Emitting a node type the schema does not define would produce a tree no
-/// conformant consumer can read, which is worse than an honest `notImplemented`.
+/// This parser implements ONLY the node types `schema/org-node.schema.json` defines (the
+/// `$defs` entries other than the helper shapes `affiliated`, `date`, `node`, `nodeArray`,
+/// `nodeArrayOrNull`, `postBlank`, `rep`, `tblfm` -- the schema file is the authoritative
+/// list, deliberately not duplicated here as a count that rots). Every org construct whose
+/// type the schema does NOT map must throw rather than be approximated; a type leaves that
+/// set only by landing in full (oracle mapping, schema def, parser, renderer, fixtures), which
+/// is how `entity`, `target`, `macro`, `special-block`, `latex-environment`, `clock` and
+/// `export-snippet` left it. `inlinetask` is the one type that can never appear: the pinned
+/// oracle runs `emacs -Q`, which does not load `org-inlinetask`, so a 15-plus-star line is
+/// ordinary headlines there (measured). Emitting a node type the schema does not define would
+/// produce a tree no conformant consumer can read, which is worse than an honest
+/// `notImplemented`.
 ///
 /// ## Two passes, because radio links cannot be resolved in one
 ///
