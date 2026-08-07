@@ -3,8 +3,21 @@ import PackageDescription
 
 let package = Package(
     name: "OrgSwift",
+    // `Sources/OrgSwift` imports NOTHING -- not Foundation, not Darwin, not CoreFoundation.
+    // It is pure Swift standard library, so the library itself is portable everywhere Swift
+    // runs, Linux included. Linux needs no entry here: this list constrains Apple platforms
+    // only, and omitting a platform sets no minimum rather than excluding it.
+    //
+    // The minimums below are the swift-testing floor, which the TEST target needs -- not the
+    // library's. A consumer embedding OrgSwift is bound by these because SwiftPM applies
+    // package-level platforms to every target, but nothing in the library's own code requires
+    // them.
     platforms: [
-        .macOS(.v13)
+        .macOS(.v13),
+        .iOS(.v16),
+        .tvOS(.v16),
+        .watchOS(.v9),
+        .macCatalyst(.v16)
     ],
     products: [
         .library(name: "OrgSwift", targets: ["OrgSwift"])

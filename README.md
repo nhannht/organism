@@ -141,6 +141,63 @@ organism/
 └── Tests/OrgSwiftTests/    wires the three layers above into `swift test`
 ```
 
+## Using the Swift library
+
+Add the package:
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/nhannht/organism.git", from: "0.1.0")
+],
+targets: [
+    .target(name: "YourTarget", dependencies: [
+        .product(name: "OrgSwift", package: "organism")
+    ])
+]
+```
+
+Parse and re-emit:
+
+```swift
+import OrgSwift
+
+let tree = try parseOrg("* TODO Write docs :work:\nSome text.\n")
+let back = try renderOrg(tree)     // byte-for-byte, modulo the Rule D losses below
+```
+
+`parseOrg` returns `OrgJSON`, a plain JSON tree matching `schema/org-node.schema.json` exactly.
+Read it with the accessors on that type:
+
+```swift
+if let doc = tree.objectValue,
+   let children = doc["children"]?.arrayValue,
+   let first = children.first?.objectValue,
+   first["type"]?.stringValue == "headline" {
+    print(first["level"]?.intValue ?? 0)     // 1
+}
+```
+
+That is deliberately the shape of the published cross-language contract rather than a Swift-native
+AST, so the tree you get in Swift is the same tree a Rust or Python adapter gets. A typed layer
+over it is planned.
+
+**`parseOrg` throws rather than guessing.** It refuses 18 of the 1,312 differential-sweep inputs
+(see "Current state" for the three groups), and `SweepTests.knownRefusals` names every one. A
+refusal is always `OrgError.notImplemented` carrying the construct and the throw site, so handle
+it explicitly if you feed the parser files you do not control:
+
+```swift
+do { tree = try parseOrg(source) }
+catch OrgError.notImplemented(let reason) { /* reason names the construct and file:line */ }
+```
+
+**Requirements.** Swift 6.0+. Zero dependencies - `Sources/OrgSwift` imports nothing at all, not
+even Foundation, so it is pure standard library and compiles anywhere Swift runs. The platform
+minimums in `Package.swift` (macOS 13, iOS 16, tvOS 16, watchOS 9) are the `swift-testing` floor
+that the TEST target needs, not the library's own. Linux is unconstrained and should work; it is
+not currently exercised in CI, so treat that as untested rather than verified.
+
 ## Why a conformance suite, not just unit tests
 
 Org-mode has one authoritative reference implementation (`org-element.el`, inside Emacs) and one
