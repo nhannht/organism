@@ -28,7 +28,8 @@ over every org-element type its oracle can reach.
   has no fixture.
 - **Refusals that remain are narrow and named**, not whole constructs, and that is now a counted
   claim rather than an assertion. Across the 1,312-case differential sweep, **18 cases refuse**,
-  in three groups: 9 `#+BEGIN:` dynamic blocks, 8 an undecidable non-ASCII scalar at a
+  in three groups: 9 MALFORMED `#+BEGIN` shapes (unterminated, bare, or badly nested -- a
+  well-formed dynamic block such as a clocktable parses), 8 an undecidable non-ASCII scalar at a
   subscript/superscript body boundary, 1 the same at a footnote-label boundary. Everything else
   parses. Each refusal throws rather than guessing.
 

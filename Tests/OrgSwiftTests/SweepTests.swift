@@ -131,8 +131,14 @@ struct SweepTests {
     ///
     /// The 18 fall in three groups, and each group is a decision rather than an accident:
     ///
-    ///     i1-*   (9)   `#+BEGIN:` dynamic blocks and the malformed `#+BEGIN` shapes around them.
-    ///                  Unimplemented; see `isUnimplementedHashPlusElement`.
+    ///     i1-*   (9)   MALFORMED `#+BEGIN` shapes: unterminated, bare `#+BEGIN:`, bare
+    ///                  `#+BEGIN`, `#+END:` carrying junk, and nesting. A WELL-FORMED dynamic
+    ///                  block parses -- `#+BEGIN: clocktable :scope file` / body / `#+END:` is a
+    ///                  `dynamic-block` node, fixtured as `dynamic-block-simple`, in either case.
+    ///                  Do not read this group as "dynamic blocks are unimplemented"; an earlier
+    ///                  version of this comment said exactly that and it was wrong, because it
+    ///                  was written from `isUnimplementedHashPlusElement`'s NAME rather than from
+    ///                  a parse. The gate is on the malformed tail only.
     ///     i3-*   (8)   a non-ASCII scalar at a subscript/superscript body boundary.
     ///     i4-*   (1)   a non-ASCII scalar at a footnote-label boundary.
     ///
