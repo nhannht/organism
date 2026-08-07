@@ -582,9 +582,16 @@ coverage (`#+NAME:` attaching to a table) without conflating it with a standalon
 
 ## 8. `withKnownIssue` and the pending parser
 
+**As of 2026-08-07 the conformance suite has NO wrapped cases: all 120 assert normally, and so
+do all 13 real-world files in the oracle-diff and round-trip suites.** This section is kept
+because the mechanism is still wired up, still used the moment a fixture lands ahead of the
+code, and -- most importantly -- because its asymmetry below is the reason a green run has never
+been evidence of correctness here. Read it before adding a wrapper, not after.
+
 `Tests/OrgSwiftTests/ConformanceTests.swift` calls `parseOrg` inside Swift Testing's
-`withKnownIssue`. Today `parseOrg` throws `OrgError.notImplemented`, which `withKnownIssue`
-catches and reports as a known (expected) issue -- the suite stays green. The moment `parseOrg`
+`withKnownIssue` for any case not in `implementedCases`. When `parseOrg` throws
+`OrgError.notImplemented`, `withKnownIssue` catches it and reports a known (expected) issue --
+the suite stays green. The moment `parseOrg`
 is implemented and a case's tree actually matches, `withKnownIssue` will itself start **failing**
 that case, because it expects an issue that no longer occurs. That failure is the intended
 signal: removing the `withKnownIssue` wrapper (nothing else) is the correct fix once the parser
