@@ -1,0 +1,10 @@
+%%(diary-float t 4 2)
+
+#+NAME: anniversary
+%%(diary-anniversary 10 31 1948) Arthur's birthday
+
+%%(x) trailing words
+
+  %%(indented is a paragraph)
+
+%%not a sexp

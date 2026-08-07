@@ -340,7 +340,11 @@ Rules:
 - `diary-sexp` -- ELEMENT leaf (so it may carry affiliated keywords; a `#+NAME:` above one really
   does attach, measured). `value`: string, the whole column-0 `%%(SEXP)` line **including** the
   `%%` marker -- unlike `comment`, whose marker is stripped. Not to be confused with a diary
-  TIMESTAMP's `diarySexp` field in section 4 Timestamps: different slot, different node type.
+  TIMESTAMP's `diarySexp` field in section 4 Timestamps: different slot, different node type. Column
+  0 is required: `  %%(x)` is an ordinary PARAGRAPH, measured, and so is `%%not`. Trailing
+  whitespace stays INSIDE the value -- org's regexp is `\(%%(.*\)[ \t]*$` and `.*` is greedy, so
+  `%%(x)   ` has the value `%%(x)   ` even though the pattern reads at a glance like it trims.
+  One line only, and it separates a paragraph unconditionally, the way a clock line does.
 
   **These three types carried no `$defs` entry and no oracle branch until 2026-08-07**, and the
   gap was invisible rather than open. `harness/oracle-dump.el` fell through to its unmapped-type

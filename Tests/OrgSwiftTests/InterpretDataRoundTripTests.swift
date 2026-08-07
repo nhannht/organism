@@ -175,6 +175,14 @@ struct InterpretDataRoundTripTests {
         // fixture is one where THIS repository's renderer beats interpret-data, not the reverse.
         // The `#+CALLX:` line is the control: an ordinary keyword, and it must stay one.
         "conformance/babel-call-forms",
+        // Plain keyword-name case-folding and nothing else, on the ONE affiliated keyword in
+        // the file. Full before/after inspected on Emacs 30.2 (161 bytes in, 159 out, first
+        // difference at offset 25): `#+NAME: anniversary` re-emits as `#+name: anniversary`,
+        // and the two-byte shrink is org dropping the blank line after the LAST diary-sexp,
+        // not anything about the sexps themselves. All three `%%(` lines, the indented
+        // paragraph and the `%%not` paragraph come back byte-identical, which is the point
+        // of the fixture. renderOrg reproduces the whole file exactly.
+        "conformance/diary-sexp-forms",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

@@ -493,6 +493,25 @@ extension OrgParser {
             ]), end + 1)
         }
 
+        // DIARY SEXP, a whole-line `%%(...)` element. Column 0 only, and the same slice rule
+        // fixed-width carries below: a sliced first line is mid-line in the source, so it cannot
+        // hold one. `  %%(x)` really is a PARAGRAPH in org, measured, which is also why the old
+        // blanket `%%(` refusal was an over-throw on every indented one.
+        //
+        // The value is the WHOLE LINE, marker included, and trailing whitespace stays IN it:
+        // org's own regexp is `\(%%(.*\)[ \t]*$` and `.*` is greedy, so the trailing group
+        // matches empty and `%%(x)   ` has the value `%%(x)   `. Measured -- and worth stating,
+        // because the regexp reads at a glance like it trims. Distinct from `comment`, whose
+        // marker IS stripped, and from a diary TIMESTAMP `<%%(...)>`, which is an object.
+        if line.contentStart == 0, !(i == range.lowerBound && i == 0 && firstLineIsSliced),
+           line.text.starts(with: "%%(".unicodeScalars) {
+            return (.object([
+                "type": .string("diary-sexp"),
+                "value": .string(String(scalars: line.text[...])),
+                "postBlank": .int(0),
+            ]), i + 1)
+        }
+
         if let value = OrgParser.babelCallValue(of: line) {
             // A `#+CALL:` line is a `babel-call` ELEMENT, never a keyword, and it is one even
             // when it carries nothing at all: `#+CALL:` alone gives a babel-call whose value is
@@ -633,6 +652,18 @@ extension OrgParser {
                 // `org-element-paragraph-separate` with no double-check, and a line the
                 // regexp accepts is always dispatched as a clock element.
                 || OrgParser.isClockLine(candidate)
+                // A column-0 diary sexp separates UNCONDITIONALLY, for the same reason the clock
+                // line above does: it sits in `org-element-paragraph-separate` with no
+                // double-check. It needed a clause the moment `%%(` stopped throwing, and the
+                // sweep is what said so -- `i4t-diary` (`[fn:1] body` then `%%(diary-date 1 1)`)
+                // went straight from a refusal to ONE paragraph holding both lines, where org
+                // builds a paragraph and a diary-sexp side by side inside the definition. A
+                // wrong tree, introduced and caught in the same run.
+                //
+                // Column 0 only, matching the element itself: an INDENTED `%%(` is paragraph
+                // text in org and must not break the run.
+                || (candidate.contentStart == 0
+                    && candidate.text.starts(with: "%%(".unicodeScalars))
                 || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
@@ -901,7 +932,10 @@ extension OrgParser {
         // every other `[fn:` shape is an INLINE REFERENCE inside an ordinary paragraph, which
         // the object layer handles. An indented one is a paragraph too, and stays refused by the
         // indentation guard above rather than by a prefix.
-        if line.text[s...].starts(with: "%%(".unicodeScalars) { return true }
+        // `%%(` is GONE from this list: a column-0 diary sexp is a real `diary-sexp`
+        // element now, and an INDENTED one is an ordinary paragraph in org (measured:
+        // `  %%(x)` is a paragraph), so a prefix test here refused a construct org
+        // parses. The column rule lives with the element, not in a blanket refusal.
         return false
     }
 }

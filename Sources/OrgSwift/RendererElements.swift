@@ -38,6 +38,11 @@ extension OrgRenderer {
             // property carries it.
             let call = try string(node, "value", type)
             body = call.isEmpty ? "#+CALL:\n" : "#+CALL: \(call)\n"
+        case "diary-sexp":
+            // `org-element-diary-sexp-interpreter` is `(org-element-property :value ...)` and
+            // nothing else -- the value is the whole line, marker and any trailing whitespace
+            // included, so only the line ending is added here.
+            body = try string(node, "value", type) + "\n"
         case "comment":
             // The `#` marker plus one space per line was stripped into `value` (SCHEMA.md
             // section 4); re-emit it per line. The final newline belongs to the element.

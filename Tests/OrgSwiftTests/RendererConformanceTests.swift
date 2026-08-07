@@ -221,6 +221,10 @@ struct RendererConformanceTests {
         // exact bytes into one `inlinetask` node and silently re-parse every deep
         // headline in the corpus. The fixture is what makes that fork visible.
         "headline-inlinetask-depth",
+        // C2 / ORG-7: diary-sexp. Carries its own negatives -- an INDENTED `%%(` is a
+        // paragraph and `%%not` is a paragraph, both measured, and the old blanket `%%(`
+        // refusal got the indented one wrong.
+        "diary-sexp-forms",
     ]
 
     /// PERMANENT. Not "pending" -- the tree provably cannot carry these bytes, so no amount of
