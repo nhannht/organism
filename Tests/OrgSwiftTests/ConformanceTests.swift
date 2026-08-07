@@ -151,6 +151,9 @@ struct ConformanceTests {
         // Backslashes inside a bracket-link DESCRIPTION (the description group has no escape
         // rule): an entity, bare command fragments, and a trailing lone backslash as text.
         "link-description-backslash",
+        // Export snippets: source-case backend, empty and newline-crossing values, adjacency,
+        // and the three proven-text declines (no colon, empty backend, unclosed).
+        "export-snippet-forms",
         // The clock byte-loss fixture (keyword case, spacing, tab-duration drop) -- parse
         // side asserts here; the render loss lives in schemaLossCases (section 10 item 12).
         "clock-normalization",

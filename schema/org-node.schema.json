@@ -722,7 +722,7 @@
                                                                           "if": {
                                                                             "properties": {
                                                                               "type": {
-                                                                                "const": "target"
+                                                                                "const": "export-snippet"
                                                                               }
                                                                             },
                                                                             "required": [
@@ -730,13 +730,13 @@
                                                                             ]
                                                                           },
                                                                           "then": {
-                                                                            "$ref": "#/$defs/target"
+                                                                            "$ref": "#/$defs/export-snippet"
                                                                           },
                                                                           "else": {
                                                                             "if": {
                                                                               "properties": {
                                                                                 "type": {
-                                                                                  "const": "entity"
+                                                                                  "const": "target"
                                                                                 }
                                                                               },
                                                                               "required": [
@@ -744,13 +744,13 @@
                                                                               ]
                                                                             },
                                                                             "then": {
-                                                                              "$ref": "#/$defs/entity"
+                                                                              "$ref": "#/$defs/target"
                                                                             },
                                                                             "else": {
                                                                               "if": {
                                                                                 "properties": {
                                                                                   "type": {
-                                                                                    "const": "subscript"
+                                                                                    "const": "entity"
                                                                                   }
                                                                                 },
                                                                                 "required": [
@@ -758,13 +758,13 @@
                                                                                 ]
                                                                               },
                                                                               "then": {
-                                                                                "$ref": "#/$defs/subscript"
+                                                                                "$ref": "#/$defs/entity"
                                                                               },
                                                                               "else": {
                                                                                 "if": {
                                                                                   "properties": {
                                                                                     "type": {
-                                                                                      "const": "superscript"
+                                                                                      "const": "subscript"
                                                                                     }
                                                                                   },
                                                                                   "required": [
@@ -772,13 +772,13 @@
                                                                                   ]
                                                                                 },
                                                                                 "then": {
-                                                                                  "$ref": "#/$defs/superscript"
+                                                                                  "$ref": "#/$defs/subscript"
                                                                                 },
                                                                                 "else": {
                                                                                   "if": {
                                                                                     "properties": {
                                                                                       "type": {
-                                                                                        "const": "table"
+                                                                                        "const": "superscript"
                                                                                       }
                                                                                     },
                                                                                     "required": [
@@ -786,13 +786,13 @@
                                                                                     ]
                                                                                   },
                                                                                   "then": {
-                                                                                    "$ref": "#/$defs/table"
+                                                                                    "$ref": "#/$defs/superscript"
                                                                                   },
                                                                                   "else": {
                                                                                     "if": {
                                                                                       "properties": {
                                                                                         "type": {
-                                                                                          "const": "table-row"
+                                                                                          "const": "table"
                                                                                         }
                                                                                       },
                                                                                       "required": [
@@ -800,13 +800,13 @@
                                                                                       ]
                                                                                     },
                                                                                     "then": {
-                                                                                      "$ref": "#/$defs/table-row"
+                                                                                      "$ref": "#/$defs/table"
                                                                                     },
                                                                                     "else": {
                                                                                       "if": {
                                                                                         "properties": {
                                                                                           "type": {
-                                                                                            "const": "table-cell"
+                                                                                            "const": "table-row"
                                                                                           }
                                                                                         },
                                                                                         "required": [
@@ -814,13 +814,13 @@
                                                                                         ]
                                                                                       },
                                                                                       "then": {
-                                                                                        "$ref": "#/$defs/table-cell"
+                                                                                        "$ref": "#/$defs/table-row"
                                                                                       },
                                                                                       "else": {
                                                                                         "if": {
                                                                                           "properties": {
                                                                                             "type": {
-                                                                                              "const": "timestamp"
+                                                                                              "const": "table-cell"
                                                                                             }
                                                                                           },
                                                                                           "required": [
@@ -828,13 +828,13 @@
                                                                                           ]
                                                                                         },
                                                                                         "then": {
-                                                                                          "$ref": "#/$defs/timestamp"
+                                                                                          "$ref": "#/$defs/table-cell"
                                                                                         },
                                                                                         "else": {
                                                                                           "if": {
                                                                                             "properties": {
                                                                                               "type": {
-                                                                                                "const": "footnote-reference"
+                                                                                                "const": "timestamp"
                                                                                               }
                                                                                             },
                                                                                             "required": [
@@ -842,13 +842,13 @@
                                                                                             ]
                                                                                           },
                                                                                           "then": {
-                                                                                            "$ref": "#/$defs/footnote-reference"
+                                                                                            "$ref": "#/$defs/timestamp"
                                                                                           },
                                                                                           "else": {
                                                                                             "if": {
                                                                                               "properties": {
                                                                                                 "type": {
-                                                                                                  "const": "footnote-definition"
+                                                                                                  "const": "footnote-reference"
                                                                                                 }
                                                                                               },
                                                                                               "required": [
@@ -856,13 +856,13 @@
                                                                                               ]
                                                                                             },
                                                                                             "then": {
-                                                                                              "$ref": "#/$defs/footnote-definition"
+                                                                                              "$ref": "#/$defs/footnote-reference"
                                                                                             },
                                                                                             "else": {
                                                                                               "if": {
                                                                                                 "properties": {
                                                                                                   "type": {
-                                                                                                    "const": "latex-fragment"
+                                                                                                    "const": "footnote-definition"
                                                                                                   }
                                                                                                 },
                                                                                                 "required": [
@@ -870,13 +870,13 @@
                                                                                                 ]
                                                                                               },
                                                                                               "then": {
-                                                                                                "$ref": "#/$defs/latex-fragment"
+                                                                                                "$ref": "#/$defs/footnote-definition"
                                                                                               },
                                                                                               "else": {
                                                                                                 "if": {
                                                                                                   "properties": {
                                                                                                     "type": {
-                                                                                                      "const": "latex-environment"
+                                                                                                      "const": "latex-fragment"
                                                                                                     }
                                                                                                   },
                                                                                                   "required": [
@@ -884,13 +884,13 @@
                                                                                                   ]
                                                                                                 },
                                                                                                 "then": {
-                                                                                                  "$ref": "#/$defs/latex-environment"
+                                                                                                  "$ref": "#/$defs/latex-fragment"
                                                                                                 },
                                                                                                 "else": {
                                                                                                   "if": {
                                                                                                     "properties": {
                                                                                                       "type": {
-                                                                                                        "const": "line-break"
+                                                                                                        "const": "latex-environment"
                                                                                                       }
                                                                                                     },
                                                                                                     "required": [
@@ -898,13 +898,13 @@
                                                                                                     ]
                                                                                                   },
                                                                                                   "then": {
-                                                                                                    "$ref": "#/$defs/line-break"
+                                                                                                    "$ref": "#/$defs/latex-environment"
                                                                                                   },
                                                                                                   "else": {
                                                                                                     "if": {
                                                                                                       "properties": {
                                                                                                         "type": {
-                                                                                                          "const": "radio-target"
+                                                                                                          "const": "line-break"
                                                                                                         }
                                                                                                       },
                                                                                                       "required": [
@@ -912,9 +912,24 @@
                                                                                                       ]
                                                                                                     },
                                                                                                     "then": {
-                                                                                                      "$ref": "#/$defs/radio-target"
+                                                                                                      "$ref": "#/$defs/line-break"
                                                                                                     },
-                                                                                                    "else": false
+                                                                                                    "else": {
+                                                                                                      "if": {
+                                                                                                        "properties": {
+                                                                                                          "type": {
+                                                                                                            "const": "radio-target"
+                                                                                                          }
+                                                                                                        },
+                                                                                                        "required": [
+                                                                                                          "type"
+                                                                                                        ]
+                                                                                                      },
+                                                                                                      "then": {
+                                                                                                        "$ref": "#/$defs/radio-target"
+                                                                                                      },
+                                                                                                      "else": false
+                                                                                                    }
                                                                                                   }
                                                                                                 }
                                                                                               }
@@ -1625,6 +1640,31 @@
         "value": {
           "type": "string",
           "minLength": 1
+        },
+        "postBlank": {
+          "$ref": "#/$defs/postBlank"
+        }
+      }
+    },
+    "export-snippet": {
+      "type": "object",
+      "description": "SCHEMA.md section 4. @@backend:value@@ export snippet, a leaf. backEnd keeps source case; value may be empty and may contain newlines.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "backEnd",
+        "value",
+        "postBlank"
+      ],
+      "properties": {
+        "type": {
+          "const": "export-snippet"
+        },
+        "backEnd": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
         },
         "postBlank": {
           "$ref": "#/$defs/postBlank"

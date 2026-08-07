@@ -861,8 +861,27 @@ extension OrgParser {
                     continue
                 }
             case "@":
-                if i + 1 < chars.count, chars[i + 1] == "@" {
-                    throw OrgError.unimplemented("export snippet")
+                // EXPORT SNIPPET, a value leaf: `@@backend:value@@`. A `@@` that opens no
+                // snippet (no colon, empty backend, never closed) is proven text -- the
+                // matcher is org's regexp plus its unbounded closer search, transcribed.
+                if container.permits(.exportSnippet),
+                   let match = exportSnippetMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("export-snippet"),
+                        "backEnd": .string(match.backEnd),
+                        "value": .string(match.value),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
                 }
             case "*", "/", "+", "=", "~":
                 if let match = emphasisMatch(in: chars, at: i) {
@@ -1509,6 +1528,38 @@ extension OrgParser {
         guard j + 2 < chars.count, chars[j] == "}", chars[j + 1] == "}", chars[j + 2] == "}"
         else { return nil }
         return j + 3
+    }
+
+    /// An `@@backend:value@@` export snippet at `i`, or nil -- `org-element-export-snippet-parser`
+    /// transcribed:
+    ///
+    ///     @@\([-A-Za-z0-9]+\):   then value to the next literal `@@`, unbounded
+    ///
+    /// The backend keeps its source case. The value runs to the FIRST later `@@` with no other
+    /// condition -- it may be empty and it may cross newlines (both measured). No closing `@@`
+    /// anywhere after means no snippet at all: `@@html:x` unclosed, `@@html x@@` (no colon)
+    /// and `@@:x@@` (empty backend) are all plain text, measured.
+    private func exportSnippetMatch(
+        in chars: [Unicode.Scalar], at i: Int
+    ) -> (backEnd: String, value: String, end: Int)? {
+        guard i + 1 < chars.count, chars[i] == "@", chars[i + 1] == "@" else { return nil }
+        var j = i + 2
+        let nameStart = j
+        while j < chars.count,
+              (chars[j] >= "a" && chars[j] <= "z") || (chars[j] >= "A" && chars[j] <= "Z")
+              || (chars[j] >= "0" && chars[j] <= "9") || chars[j] == "-" {
+            j += 1
+        }
+        guard j > nameStart, j < chars.count, chars[j] == ":" else { return nil }
+        let contentStart = j + 1
+        var k = contentStart
+        while k + 1 < chars.count, !(chars[k] == "@" && chars[k + 1] == "@") { k += 1 }
+        guard k + 1 < chars.count else { return nil }
+        return (
+            backEnd: String(scalars: chars[nameStart..<j]),
+            value: String(scalars: chars[contentStart..<k]),
+            end: k + 2
+        )
     }
 
     /// A `$...$` or `$$...$$` latex fragment opening at `i`, or nil when this `$` opens none.

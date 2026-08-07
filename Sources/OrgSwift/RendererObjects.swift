@@ -50,6 +50,10 @@ extension OrgRenderer {
             // `value` is the whole source text, case intact -- emitting it verbatim is what
             // beats org's own interpreter, which rebuilds from the downcased :key.
             body = try string(node, "value", type)
+        case "export-snippet":
+            // `org-element-export-snippet-interpreter` verbatim: both fields re-emit as-is.
+            body = "@@" + (try string(node, "backEnd", type)) + ":"
+                + (try string(node, "value", type)) + "@@"
         case "timestamp":
             body = try renderTimestamp(node)
         case "footnote-reference":

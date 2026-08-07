@@ -139,6 +139,7 @@ struct RendererConformanceTests {
         "emphasis-underline-simple",
         "emphasis-underline-strike-nested",
         "emphasis-verbatim-inside-bold",
+        "export-snippet-forms",
         "emphasis-verbatim-simple",
         "fixed-width-simple",
         "footnote-definition-preblank",

@@ -1,0 +1,8 @@
+a @@html:<b>bold</b>@@ b
+
+@@BACK-end9:x@@ then @@latex:\alpha@@@@html:@@
+
+multi @@html:one
+two@@ tail
+
+@@html x@@ no colon, @@:x@@ empty backend, @@html:unclosed

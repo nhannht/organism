@@ -190,6 +190,10 @@ Rules:
   other, links, code/verbatim, entities, sub/superscript -- the "standard set"; see section 6).
 - `code`, `verbatim` -- leaf. `value`: string, **always literal** -- never further parsed for
   emphasis or links, regardless of what contains them (see section 7, emphasis nesting).
+- `export-snippet` -- leaf. `@@backend:value@@`. `backEnd` (string): `[-A-Za-z0-9]+`, source
+  case kept. `value` (string): runs to the FIRST later `@@` with no other condition -- may be
+  empty, may cross newlines (both measured). No closing `@@`, no colon, or an empty backend
+  means no snippet: the bytes stay plain text (all measured, `export-snippet-forms`).
 
 ### Links
 

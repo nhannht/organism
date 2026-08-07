@@ -1,0 +1,94 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "a "
+            },
+            {
+              "type": "export-snippet",
+              "backEnd": "html",
+              "value": "<b>bold</b>",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "b\n"
+            }
+          ],
+          "postBlank": 1
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "export-snippet",
+              "backEnd": "BACK-end9",
+              "value": "x",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "then "
+            },
+            {
+              "type": "export-snippet",
+              "backEnd": "latex",
+              "value": "\\alpha",
+              "postBlank": 0
+            },
+            {
+              "type": "export-snippet",
+              "backEnd": "html",
+              "value": "",
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\n"
+            }
+          ],
+          "postBlank": 1
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "multi "
+            },
+            {
+              "type": "export-snippet",
+              "backEnd": "html",
+              "value": "one\ntwo",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "tail\n"
+            }
+          ],
+          "postBlank": 1
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "@@html x@@ no colon, @@:x@@ empty backend, @@html:unclosed\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

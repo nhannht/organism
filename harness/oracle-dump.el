@@ -754,6 +754,14 @@ form; each shape's own measurement lives in the inline comments below and in
             ;; case; `renderOrg' emits `value' verbatim and must beat it.
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('export-snippet
+            ;; A LEAF: `@@backend:value@@'. `:back-end' keeps its source case;
+            ;; `:value' may be empty and may cross newlines (both measured).
+            ;; The interpreter re-emits both verbatim.
+            (org-swift--make-node schema-type
+              `(("backEnd" . ,(org-swift--prop node :back-end))
+                ("value" . ,(org-swift--prop node :value)))))
+
            ('entity
             ;; `:name' + `:use-brackets-p' fully determine the source bytes:
             ;; `org-element-entity-interpreter' emits "\\", the name, and "{}"
