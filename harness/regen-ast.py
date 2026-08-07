@@ -300,6 +300,37 @@ class Generator:
             # NULLABLE-required: the key must be present, carrying an explicit null.
             self.w(f'        o["{key}"] = self.{name}.map {{ v in {expr} }} ?? .null')
 
+    def emit_post_blank(self, names: list[str]) -> None:
+        """`postBlank` off any node, without first knowing which type it is.
+
+        Generated for the same reason as `childNodes`: a 55-case switch that has to stay exact.
+
+        Returns nil for `text` alone, the one node with no such key. Not a quirk to paper over
+        with 0 -- SCHEMA.md is explicit that a plain-text span carries no post-blank of its own
+        and that any inter-object space beside it belongs to the OBJECT. Returning 0 would assert
+        "no spaces follow", a different and often false claim.
+        """
+        self.w("""extension OrgNode {
+    /// This node's `postBlank`, or nil for `text` -- the one node type with no such field.
+    ///
+    /// The UNIT depends on position, which is org's convention rather than this package's: on an
+    /// OBJECT it counts SPACES following on the same line, on an ELEMENT it counts blank LINES.
+    /// SCHEMA.md section 1 has the measurement, and it is the reason `*bold* text` can be
+    /// reconstructed at all -- that space lives here and in no text node.
+    public var postBlank: Int? {
+        switch self {""")
+        for n in names:
+            if n == "table":
+                has = True
+            else:
+                has = any(f["json"] == "postBlank" for f in self.fields(self.nodes[n], n))
+            self.w(f"        case .{case_name(n)}(let x): return x.postBlank" if has
+                   else f"        case .{case_name(n)}: return nil")
+        self.w("        }")
+        self.w("    }")
+        self.w("}")
+        self.w()
+
     def assert_coverage(self, emitted: list[str]) -> None:
         """Every `type` const the schema declares must reach the OrgNode enum.
 
@@ -796,6 +827,54 @@ public indirect enum OrgNode: Equatable, Sendable {""")
         self.w("    }")
         self.w("}")
         self.w()
+        self.emit_child_nodes(names)
+
+    def emit_child_nodes(self, names: list[str]) -> None:
+        """Every nested `OrgNode` a node holds, in field order.
+
+        Generated rather than hand-written because it is a 55-case switch that must stay exact:
+        a node whose children this forgot would be silently invisible to every traversal built on
+        it, and no test of the traversal itself would notice. The generator already knows which
+        fields hold nodes, so it is the only place that cannot fall out of step.
+
+        Includes SECONDARY STRINGS, not just `children`. A headline's `title` and a link's
+        `description` are node arrays that happen to sit in a differently-named field; a walk
+        that skipped them would miss most of the objects in a real document.
+        """
+        self.w("""extension OrgNode {
+    /// Every nested node this one holds, in field order, one level down.
+    ///
+    /// Secondary strings count: a headline's `title` and a link's `description` are node arrays
+    /// too, and a traversal that visited only `children` would miss most of the objects in a
+    /// real file. See `walk()` in OrgAST+Support.swift for the recursive form.
+    public var childNodes: [OrgNode] {
+        switch self {""")
+        for n in names:
+            parts: list[str] = []
+            if n == "table":
+                self.w("        case .table(let x):")
+                self.w("            if case .org(let rows) = x.flavour "
+                       "{ return rows.map { OrgNode.tableRow($0) } }")
+                self.w("            return []")
+                continue
+            for f in self.fields(self.nodes[n], n):
+                kind, name = f["kind"], f["swift"]
+                if kind in ("nodeArray", "nodeArrayOrNull"):
+                    parts.append(f"(x.{name}{' ?? []' if f['optional'] else ''})")
+                elif kind.startswith("nodeList:"):
+                    inner = case_name(kind[9:])
+                    opt = " ?? []" if f["optional"] else ""
+                    parts.append(f"(x.{name}{opt}).map {{ OrgNode.{inner}($0) }}")
+            if not parts:
+                self.w(f"        case .{case_name(n)}: return []")
+            else:
+                self.w(f"        case .{case_name(n)}(let x): return "
+                       + " + ".join(parts))
+        self.w("        }")
+        self.w("    }")
+        self.w("}")
+        self.w()
+        self.emit_post_blank(names)
         # Conform every generated struct to ASTNode.
         self.w("// Every generated node type satisfies the decode/encode contract.")
         for n in names:

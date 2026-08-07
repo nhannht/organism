@@ -2469,6 +2469,143 @@ extension OrgNode: ASTNode {
     }
 }
 
+extension OrgNode {
+    /// Every nested node this one holds, in field order, one level down.
+    ///
+    /// Secondary strings count: a headline's `title` and a link's `description` are node arrays
+    /// too, and a traversal that visited only `children` would miss most of the objects in a
+    /// real file. See `walk()` in OrgAST+Support.swift for the recursive form.
+    public var childNodes: [OrgNode] {
+        switch self {
+        case .babelCall: return []
+        case .bold(let x): return (x.children)
+        case .centerBlock(let x): return (x.children)
+        case .citation(let x): return (x.prefix ?? []) + (x.suffix ?? []) + (x.children)
+        case .citationReference(let x): return (x.prefix ?? []) + (x.suffix ?? [])
+        case .clock: return []
+        case .code: return []
+        case .comment: return []
+        case .commentBlock: return []
+        case .diarySexp: return []
+        case .document(let x): return (x.children)
+        case .drawer(let x): return (x.children)
+        case .dynamicBlock(let x): return (x.children)
+        case .entity: return []
+        case .exampleBlock: return []
+        case .exportBlock: return []
+        case .exportSnippet: return []
+        case .fixedWidth: return []
+        case .footnoteDefinition(let x): return (x.children)
+        case .footnoteReference(let x): return (x.children ?? [])
+        case .headline(let x): return (x.title) + (x.children)
+        case .horizontalRule: return []
+        case .inlineBabelCall: return []
+        case .inlineSrcBlock: return []
+        case .italic(let x): return (x.children)
+        case .item(let x): return (x.tag ?? []) + (x.children)
+        case .keyword: return []
+        case .latexEnvironment: return []
+        case .latexFragment: return []
+        case .lineBreak: return []
+        case .link(let x): return (x.description ?? [])
+        case .list(let x): return (x.children).map { OrgNode.item($0) }
+        case .macro: return []
+        case .nodeProperty: return []
+        case .paragraph(let x): return (x.children)
+        case .planning: return []
+        case .propertyDrawer(let x): return (x.children).map { OrgNode.nodeProperty($0) }
+        case .quoteBlock(let x): return (x.children)
+        case .radioTarget(let x): return (x.children)
+        case .section(let x): return (x.children)
+        case .specialBlock(let x): return (x.children)
+        case .srcBlock: return []
+        case .statisticsCookie: return []
+        case .strikethrough(let x): return (x.children)
+        case .`subscript`(let x): return (x.children)
+        case .superscript(let x): return (x.children)
+        case .table(let x):
+            if case .org(let rows) = x.flavour { return rows.map { OrgNode.tableRow($0) } }
+            return []
+        case .tableCell(let x): return (x.children)
+        case .tableRow(let x): return (x.children).map { OrgNode.tableCell($0) }
+        case .target: return []
+        case .text: return []
+        case .timestamp: return []
+        case .underline(let x): return (x.children)
+        case .verbatim: return []
+        case .verseBlock(let x): return (x.children)
+        }
+    }
+}
+
+extension OrgNode {
+    /// This node's `postBlank`, or nil for `text` -- the one node type with no such field.
+    ///
+    /// The UNIT depends on position, which is org's convention rather than this package's: on an
+    /// OBJECT it counts SPACES following on the same line, on an ELEMENT it counts blank LINES.
+    /// SCHEMA.md section 1 has the measurement, and it is the reason `*bold* text` can be
+    /// reconstructed at all -- that space lives here and in no text node.
+    public var postBlank: Int? {
+        switch self {
+        case .babelCall(let x): return x.postBlank
+        case .bold(let x): return x.postBlank
+        case .centerBlock(let x): return x.postBlank
+        case .citation(let x): return x.postBlank
+        case .citationReference(let x): return x.postBlank
+        case .clock(let x): return x.postBlank
+        case .code(let x): return x.postBlank
+        case .comment(let x): return x.postBlank
+        case .commentBlock(let x): return x.postBlank
+        case .diarySexp(let x): return x.postBlank
+        case .document(let x): return x.postBlank
+        case .drawer(let x): return x.postBlank
+        case .dynamicBlock(let x): return x.postBlank
+        case .entity(let x): return x.postBlank
+        case .exampleBlock(let x): return x.postBlank
+        case .exportBlock(let x): return x.postBlank
+        case .exportSnippet(let x): return x.postBlank
+        case .fixedWidth(let x): return x.postBlank
+        case .footnoteDefinition(let x): return x.postBlank
+        case .footnoteReference(let x): return x.postBlank
+        case .headline(let x): return x.postBlank
+        case .horizontalRule(let x): return x.postBlank
+        case .inlineBabelCall(let x): return x.postBlank
+        case .inlineSrcBlock(let x): return x.postBlank
+        case .italic(let x): return x.postBlank
+        case .item(let x): return x.postBlank
+        case .keyword(let x): return x.postBlank
+        case .latexEnvironment(let x): return x.postBlank
+        case .latexFragment(let x): return x.postBlank
+        case .lineBreak(let x): return x.postBlank
+        case .link(let x): return x.postBlank
+        case .list(let x): return x.postBlank
+        case .macro(let x): return x.postBlank
+        case .nodeProperty(let x): return x.postBlank
+        case .paragraph(let x): return x.postBlank
+        case .planning(let x): return x.postBlank
+        case .propertyDrawer(let x): return x.postBlank
+        case .quoteBlock(let x): return x.postBlank
+        case .radioTarget(let x): return x.postBlank
+        case .section(let x): return x.postBlank
+        case .specialBlock(let x): return x.postBlank
+        case .srcBlock(let x): return x.postBlank
+        case .statisticsCookie(let x): return x.postBlank
+        case .strikethrough(let x): return x.postBlank
+        case .`subscript`(let x): return x.postBlank
+        case .superscript(let x): return x.postBlank
+        case .table(let x): return x.postBlank
+        case .tableCell(let x): return x.postBlank
+        case .tableRow(let x): return x.postBlank
+        case .target(let x): return x.postBlank
+        case .text: return nil
+        case .timestamp(let x): return x.postBlank
+        case .underline(let x): return x.postBlank
+        case .verbatim(let x): return x.postBlank
+        case .verseBlock(let x): return x.postBlank
+        }
+    }
+}
+
 // Every generated node type satisfies the decode/encode contract.
 extension OrgBabelCall: ASTNode {}
 extension OrgBold: ASTNode {}
