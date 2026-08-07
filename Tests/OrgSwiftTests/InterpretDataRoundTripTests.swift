@@ -164,6 +164,15 @@ struct InterpretDataRoundTripTests {
         "conformance/easy-priority-and-tags-headline", "real/org-mode-samples/tags.org",
         // Planning-line keyword canonical reordering (always DEADLINE before SCHEDULED).
         "conformance/planning-scheduled-and-deadline",
+        // Duration-only clock: org's interpreter concatenates a blank timestamp and emits
+        // `CLOCK:  => 12:34` (double space) for source `CLOCK: => 12:34`, measured. The other
+        // four clock lines in the fixture re-emit byte-identically; `renderOrg` beats the
+        // interpreter here by emitting the source form (single space).
+        "conformance/clock-forms",
+        // The clock byte-loss fixture: keyword case-folding, spacing normalization, duration
+        // padding and the dropped tab-duration all diverge by design (SCHEMA.md section 10
+        // item 12).
+        "conformance/clock-normalization",
         // Paragraph/body indentation under a headline is stripped.
         "real/org-mode-samples/headings.org",
         // Ordered-list counters renumbered sequentially, dropping an out-of-order source counter.

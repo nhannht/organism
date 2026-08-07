@@ -141,7 +141,16 @@ Rules:
 - `planning` -- `scheduled`, `deadline`, `closed`: each a `timestamp` node or `null`. Present
   only for keywords that actually occur on the planning line; absent keywords are `null`, not
   omitted (all three keys are always present).
-- `property-drawer` -- `children`: `[node-property*]`.
+- `clock` -- `value`: a `timestamp` node or `null`, `duration`: string or `null`. The line
+  grammar is `org-element-clock-line-re`: `CLOCK:` (case-folded, measured) then either an
+  inactive timestamp (optionally `--` timestamp ` => H:MM` -- a duration REQUIRES the range
+  form; a single timestamp plus duration is a paragraph, measured) or a bare ` => H:MM`
+  duration with no timestamp at all (then `value` is `null`, measured). `status` is
+  deliberately NOT stored: org derives it as `closed` exactly when `:duration` is non-nil,
+  so `duration` alone carries it (same derivability rule as the entity renderings and the
+  macro key). Clock lines separate paragraphs unconditionally and never take affiliated
+  keywords (`#+NAME:` before a clock stands alone, measured). Byte losses on this line shape
+  are section 10 item 12.
 - `node-property` -- leaf-ish: `key` (string, the `:NAME:` without colons), `value` (string).
 - `drawer` -- `name` (string, e.g. `"LOGBOOK"`), `children`: element nodes.
 - `quote-block` -- `children`: element nodes (a quote block is a *greater element*: it holds
@@ -614,7 +623,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 11 known instances,
+read (per-type properties outside this schema's curated field set). 12 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -624,7 +633,7 @@ substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:
 `:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
 read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
 `rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
-each pinned by a conformance fixture. What remains below is 8 items that no tree built on
+each pinned by a conformance fixture. What remains below is 10 items that no tree built on
 `org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
 recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
 and 10 below -- which is the ordinary result of actually checking, and they are listed here
@@ -723,6 +732,17 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    WITH-tags sibling of this byte class is item 3 (tag-column padding); this is what is lost
    when there is no tag group for item 3 to blame. Pinned by `conformance/headline-empty-title`
    in `RendererConformanceTests.schemaLossCases`.
+
+12. Clock-line normalization, Reason A, four byte classes in one line shape (all probed live
+   on Emacs 30.2, pinned by `conformance/clock-normalization` in
+   `RendererConformanceTests.schemaLossCases`): the keyword's source case (`clock:` matches
+   case-folded, the tree holds no case, org's interpreter re-emits `CLOCK:`); internal and
+   trailing whitespace (`CLOCK:  [ts]`, `CLOCK: [ts]   ` -- spacing lives in no property);
+   duration spacing/format (` => 1:07` re-emits through org's `%2s:%02s` as ` =>  1:07`,
+   single-digit hours padded); and the dropped tab-duration (`=>\t1:07` passes the clock LINE
+   regexp but fails the parser's literal `"=> "` search, so `:duration` is nil and the bytes
+   after the range are in NO property -- org's own interpreter re-emits the line without
+   them, status running).
 
 `renderOrg` MUST be byte-exact on everything else -- including block content indent, headline
 body indent, list numbering, multi-blank lines, inline spacing (`postBlank`), all text, and NUL

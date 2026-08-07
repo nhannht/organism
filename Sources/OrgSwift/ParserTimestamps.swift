@@ -378,6 +378,165 @@ extension OrgParser {
     }
 }
 
+// MARK: - Clock elements
+
+extension OrgParser {
+
+    /// Position just past the `CLOCK:` keyword at `contentStart`, or nil. Case-folded:
+    /// `clock: [ts]` IS a clock, measured (the dispatch site runs under `case-fold-search`).
+    private static func clockKeywordEnd(of line: Line) -> Int? {
+        let t = line.text
+        var j = line.contentStart
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift.
+        for expected in "clock:".unicodeScalars {
+            guard j < t.count, asciiLowered(t[j]) == expected else { return nil }
+            j += 1
+        }
+        return j
+    }
+
+    /// The DURATION arm of `org-element-clock-line-re` followed by the line end:
+    /// `[ \t]+=>[ \t]+[0-9]+:[0-9][0-9][ \t]*$` from `i`. Note tabs ARE accepted here --
+    /// it is the clock PARSER's later literal `"=> "` search that rejects them, not this
+    /// line regexp (measured: `=>\t1:07` is still a clock line, with the duration dropped).
+    private static func clockDurationClosesLine(_ t: [Unicode.Scalar], from i: Int) -> Bool {
+        var j = i
+        let wsStart = j
+        while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
+        guard j > wsStart, j + 1 < t.count, t[j] == "=", t[j + 1] == ">" else { return false }
+        j += 2
+        let ws2 = j
+        while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
+        guard j > ws2 else { return false }
+        let digitsStart = j
+        while j < t.count, t[j].asciiDigitValue != nil { j += 1 }
+        guard j > digitsStart, j < t.count, t[j] == ":" else { return false }
+        j += 1
+        guard j + 2 <= t.count, t[j].asciiDigitValue != nil,
+              t[j + 1].asciiDigitValue != nil else { return false }
+        j += 2
+        while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
+        return j == t.count
+    }
+
+    /// Every end position where `org-ts-regexp-inactive` can match starting at `p`:
+    /// `\[[0-9]{4}-[0-9]{2}-[0-9]{2}(?: .*?)?\]`. The `.*?` backtracks, so after
+    /// `[YYYY-MM-DD ` EVERY later `]` on the line is a candidate end -- that backtracking is
+    /// how `CLOCK: [a]--[b]` with no duration matches the line regexp at all (the whole range
+    /// reads as ONE loose timestamp), measured.
+    private static func inactiveTimestampEnds(_ t: [Unicode.Scalar], at p: Int) -> [Int] {
+        func isDigit(_ i: Int) -> Bool { i < t.count && t[i].asciiDigitValue != nil }
+        guard p < t.count, t[p] == "[",
+              isDigit(p + 1), isDigit(p + 2), isDigit(p + 3), isDigit(p + 4),
+              p + 5 < t.count, t[p + 5] == "-", isDigit(p + 6), isDigit(p + 7),
+              p + 8 < t.count, t[p + 8] == "-", isDigit(p + 9), isDigit(p + 10),
+              p + 11 < t.count else { return [] }
+        if t[p + 11] == "]" { return [p + 12] }
+        // The optional group is `(?: .*?)?` -- a literal SPACE, so a tab after the date kills
+        // the match entirely rather than being absorbed.
+        guard t[p + 11] == " " else { return [] }
+        var ends: [Int] = []
+        var q = p + 12
+        while q < t.count {
+            if t[q] == "]" { ends.append(q + 1) }
+            q += 1
+        }
+        return ends
+    }
+
+    /// `org-element-clock-line-re`, transcribed with its backtracking:
+    ///
+    ///     ^[ \t]*CLOCK:( [ \t]+ TS ( -- TS DURATION )?  |  DURATION ) [ \t]*$
+    ///
+    /// where TS is the loose inactive-timestamp regexp above and DURATION is
+    /// `[ \t]+=>[ \t]+[0-9]+:[0-9][0-9]`. Measured consequences pinned by `clock-forms`:
+    /// a single timestamp plus duration is NOT a clock (duration needs the range arm), an
+    /// active timestamp is not, `CLOCK:` glued to the bracket is not, one-digit minutes are
+    /// not -- each falls to the paragraph path. A clock line also separates the paragraph
+    /// before it UNCONDITIONALLY (it sits in `org-element-paragraph-separate` with no
+    /// double-check).
+    static func isClockLine(_ line: Line) -> Bool {
+        guard let j = clockKeywordEnd(of: line) else { return false }
+        let t = line.text
+        if clockDurationClosesLine(t, from: j) { return true }
+        var k = j
+        while k < t.count, t[k] == " " || t[k] == "\t" { k += 1 }
+        guard k > j else { return false }
+        for e1 in inactiveTimestampEnds(t, at: k) {
+            var w = e1
+            while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
+            if w == t.count { return true }
+            if e1 + 1 < t.count, t[e1] == "-", t[e1 + 1] == "-" {
+                for e2 in inactiveTimestampEnds(t, at: e1 + 2)
+                where clockDurationClosesLine(t, from: e2) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// Builds the clock node for a line `isClockLine` accepted, following
+    /// `org-element-clock-parser` exactly. `status` is DERIVABLE -- org sets it to `closed`
+    /// exactly when `:duration` is non-nil -- so it is not duplicated in the tree, same rule
+    /// as the entity renderings and the macro key.
+    func clockNode(of line: Line) throws -> OrgJSON {
+        let t = line.text
+        var j = line.contentStart + "clock:".unicodeScalars.count
+        while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
+        var value: OrgJSON = .null
+        var searchFrom = j
+        if j < t.count, t[j] == "[" {
+            // org re-parses with the REAL timestamp parser here, so ranges come out as
+            // ranges even though the line regexp read them as one loose timestamp.
+            guard let match = timestampMatch(in: t, at: j) else {
+                throw OrgError.unimplemented(
+                    "clock: line matched org-element-clock-line-re but its timestamp did not parse")
+            }
+            // `org-element-timestamp-parser` consumes the following `[ \t]` run as the
+            // timestamp OBJECT's own post-blank -- `CLOCK: [ts]   ` carries the 3 in the
+            // timestamp node, and the space before ` => ` counts too, measured.
+            var w = match.end
+            while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
+            if var timestampFields = match.node.objectValue {
+                timestampFields["postBlank"] = .int(w - match.end)
+                value = .object(timestampFields)
+            } else {
+                value = match.node
+            }
+            searchFrom = w
+        }
+        // org: `search-forward "=> "` -- LITERAL, single trailing space, ONE attempt at the
+        // first occurrence -- then skip whitespace and take `\S-+` only if it reaches the line
+        // end. A tab after `=>` fails the literal search and the duration is silently DROPPED
+        // (status stays running), measured; that byte loss is SCHEMA.md section 10 item 12.
+        var duration: OrgJSON = .null
+        var s = searchFrom
+        while s + 2 < t.count {
+            if t[s] == "=", t[s + 1] == ">", t[s + 2] == " " {
+                var k = s + 3
+                while k < t.count, t[k] == " " || t[k] == "\t" { k += 1 }
+                let runStart = k
+                while k < t.count, t[k] != " ", t[k] != "\t" { k += 1 }
+                var w = k
+                while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
+                if k > runStart, w == t.count {
+                    duration = .string(String(scalars: t[runStart..<k]))
+                }
+                break
+            }
+            s += 1
+        }
+        return .object([
+            "type": .string("clock"),
+            "value": value,
+            "duration": duration,
+            "postBlank": .int(0),
+        ])
+    }
+}
+
 extension Unicode.Scalar {
     /// 0-9 only. Deliberately NOT `properties.numericType`, which is true for every Unicode digit
     /// -- org's timestamp pattern is ASCII digits, and a Devanagari digit must not parse as a year.

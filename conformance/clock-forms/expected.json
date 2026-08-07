@@ -1,0 +1,221 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "clock",
+          "value": {
+            "type": "timestamp",
+            "kind": "inactive",
+            "rangeType": null,
+            "start": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 10,
+              "minute": 0
+            },
+            "end": null,
+            "repeater": null,
+            "delay": null,
+            "postBlank": 0
+          },
+          "duration": null,
+          "postBlank": 0
+        },
+        {
+          "type": "clock",
+          "value": {
+            "type": "timestamp",
+            "kind": "inactive-range",
+            "rangeType": "daterange",
+            "start": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 10,
+              "minute": 0
+            },
+            "end": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 11,
+              "minute": 7
+            },
+            "repeater": null,
+            "delay": null,
+            "postBlank": 1
+          },
+          "duration": "1:07",
+          "postBlank": 0
+        },
+        {
+          "type": "clock",
+          "value": {
+            "type": "timestamp",
+            "kind": "inactive-range",
+            "rangeType": "daterange",
+            "start": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 10,
+              "minute": 0
+            },
+            "end": {
+              "year": 2026,
+              "month": 8,
+              "day": 16,
+              "dayname": "Sun",
+              "hour": 10,
+              "minute": 12
+            },
+            "repeater": null,
+            "delay": null,
+            "postBlank": 1
+          },
+          "duration": "212:12",
+          "postBlank": 0
+        },
+        {
+          "type": "clock",
+          "value": {
+            "type": "timestamp",
+            "kind": "inactive-range",
+            "rangeType": "daterange",
+            "start": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 10,
+              "minute": 0
+            },
+            "end": {
+              "year": 2026,
+              "month": 8,
+              "day": 7,
+              "dayname": "Fri",
+              "hour": 11,
+              "minute": 7
+            },
+            "repeater": null,
+            "delay": null,
+            "postBlank": 0
+          },
+          "duration": null,
+          "postBlank": 0
+        },
+        {
+          "type": "clock",
+          "value": null,
+          "duration": "12:34",
+          "postBlank": 1
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "CLOCK: "
+            },
+            {
+              "type": "timestamp",
+              "kind": "inactive",
+              "rangeType": null,
+              "start": {
+                "year": 2026,
+                "month": 8,
+                "day": 7,
+                "dayname": "Fri",
+                "hour": 10,
+                "minute": 0
+              },
+              "end": null,
+              "repeater": null,
+              "delay": null,
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "=> 1:07\nCLOCK: "
+            },
+            {
+              "type": "timestamp",
+              "kind": "active",
+              "rangeType": null,
+              "start": {
+                "year": 2026,
+                "month": 8,
+                "day": 7,
+                "dayname": "Fri",
+                "hour": 10,
+                "minute": 0
+              },
+              "end": null,
+              "repeater": null,
+              "delay": null,
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\nCLOCK:"
+            },
+            {
+              "type": "timestamp",
+              "kind": "inactive",
+              "rangeType": null,
+              "start": {
+                "year": 2026,
+                "month": 8,
+                "day": 7,
+                "dayname": "Fri",
+                "hour": 10,
+                "minute": 0
+              },
+              "end": null,
+              "repeater": null,
+              "delay": null,
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "\nCLOCK: "
+            },
+            {
+              "type": "timestamp",
+              "kind": "inactive",
+              "rangeType": null,
+              "start": {
+                "year": 2026,
+                "month": 8,
+                "day": 7,
+                "dayname": "Fri",
+                "hour": 10,
+                "minute": 5
+              },
+              "end": null,
+              "repeater": null,
+              "delay": null,
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "=> 0:5\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

@@ -144,6 +144,13 @@ struct ConformanceTests {
         // Case-folded pairing, mid-line closers, a same-line open+close, and the unpaired
         // opener falling through to a paragraph whose `\begin{x}` is a command fragment.
         "latex-environment-forms",
+        // Clocks: running/closed/range/duration-only forms plus the four line shapes the
+        // clock regexp REJECTS into a paragraph (single-ts + duration, active ts, glued
+        // bracket, one-digit minutes).
+        "clock-forms",
+        // The clock byte-loss fixture (keyword case, spacing, tab-duration drop) -- parse
+        // side asserts here; the render loss lives in schemaLossCases (section 10 item 12).
+        "clock-normalization",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

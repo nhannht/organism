@@ -88,6 +88,8 @@ extension OrgRenderer {
             // `org-element-latex-environment-interpreter` is the identity: `value` is the raw
             // source run, opener line through closer line inclusive, re-emitted verbatim.
             body = try string(node, "value", type)
+        case "clock":
+            body = try renderClock(node)
         case "dynamic-block":
             var head = "#+BEGIN: \(try string(node, "blockName", type))"
             if let arguments = try stringOrNull(node, "arguments", type) { head += " \(arguments)" }
@@ -115,6 +117,42 @@ extension OrgRenderer {
         }
         let affiliated = try renderAffiliated(node, type)
         return affiliated + body + String(repeating: "\n", count: try postBlank(node, type))
+    }
+
+    // MARK: - Clock
+
+    /// `org-element-clock-interpreter`, with one deliberate improvement: a duration-only
+    /// clock (`CLOCK: => 12:34`, null `value`) emits no timestamp and no extra space, where
+    /// org concatenates a blank timestamp and produces `CLOCK:  => 12:34` (double space,
+    /// measured) -- emitting the source form beats it, same rule as the macro interpreter.
+    ///
+    /// The duration re-emits through org's `%2s:%02s` format when it has the canonical
+    /// `H+:MM` shape: a single-digit hour gains a leading space, which is exactly the byte
+    /// org-clock itself writes (` =>  1:07`). Any other duration string re-emits verbatim,
+    /// where org's interpreter would error on it.
+    static func renderClock(_ node: OrgJSON) throws -> String {
+        let type = "clock"
+        guard let value = try fields(node, type)["value"] else {
+            throw OrgError.malformedTree("clock: missing 'value'")
+        }
+        var body = "CLOCK:"
+        if case .null = value {} else {
+            body += " " + (try renderTimestamp(value))
+        }
+        if let duration = try stringOrNull(node, "duration", type) {
+            body += " => " + formattedClockDuration(duration)
+        }
+        return body + "\n"
+    }
+
+    private static func formattedClockDuration(_ duration: String) -> String {
+        let chars = Array(duration.unicodeScalars)
+        guard let colon = chars.firstIndex(of: ":"), colon > 0,
+              chars[..<colon].allSatisfy({ $0.asciiDigitValue != nil }),
+              chars.count == colon + 3,
+              chars[colon + 1].asciiDigitValue != nil, chars[colon + 2].asciiDigitValue != nil
+        else { return duration }
+        return (colon == 1 ? " " : "") + duration
     }
 
     // MARK: - Headline

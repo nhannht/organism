@@ -135,6 +135,7 @@ struct RendererConformanceTests {
         "emphasis-nested-bold-italic",
         "emphasis-reject-space-borders",
         "emphasis-strikethrough-simple",
+        "clock-forms",
         "emphasis-underline-simple",
         "emphasis-underline-strike-nested",
         "emphasis-verbatim-inside-bold",
@@ -238,6 +239,13 @@ struct RendererConformanceTests {
         // property; interpret-data itself re-emits `** ` (12 bytes in, 11 out, measured on
         // this fixture). The render is correct AND cannot equal the input.
         "headline-empty-title",
+        // Reason A, SCHEMA.md section 10 item 12: clock-line normalization. Keyword source
+        // case (`clock:`), internal/trailing spacing, single-space durations (re-emitted
+        // through org's `%2s:%02s` padding), and the tab-duration line whose ` =>\t1:07`
+        // bytes are in NO property (the clock LINE regexp accepts a tab, the parser's
+        // literal `"=> "` search does not, so `:duration` is nil) -- org's own interpreter
+        // re-emits every one of these lines differently from the source, probed live.
+        "clock-normalization",
     ]
 
     /// Deliberately NOT wrapped, same reasoning as `RoundTripTests.corpusIsWired()`: if the loader

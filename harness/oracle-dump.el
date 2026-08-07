@@ -721,6 +721,17 @@ form; each shape's own measurement lives in the inline comments below and in
             ;; `org-element-latex-environment-interpreter' re-emits it verbatim.
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('clock
+            ;; `:status' is DERIVABLE and therefore not duplicated: org sets it
+            ;; to `closed' exactly when `:duration' is non-nil
+            ;; (org-element-clock-parser), so `duration' alone carries it.
+            ;; `value' is the clock's timestamp node, or null for a
+            ;; duration-only `CLOCK: => 12:34' line (measured -- such a line IS
+            ;; a clock, with no timestamp at all).
+            (org-swift--make-node schema-type
+              `(("value" . ,(org-swift--node-json (org-swift--prop node :value)))
+                ("duration" . ,(org-swift--str-or-null (org-swift--prop node :duration))))))
+
            ('paragraph (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
 
            ((or 'bold 'italic 'underline 'strike-through)

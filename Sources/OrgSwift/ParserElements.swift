@@ -193,8 +193,11 @@ extension OrgParser {
             // ENDS the section, so it is excluded by `range` before this code runs; a comment is
             // an element INSIDE the section that org simply declines to decorate. Two different
             // mechanisms -- a shared branch would assert a common cause that does not exist.
+            // Clock joins comment in the refuses-affiliated set for a different mechanical
+            // reason: org checks the clock line regexp BEFORE collecting affiliated keywords
+            // at all, so `#+NAME: n` before `CLOCK: [ts]` stands alone as a keyword, measured.
             if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank,
-               !isCommentLine(lines[runEnd]) {
+               !isCommentLine(lines[runEnd]), !OrgParser.isClockLine(lines[runEnd]) {
                 let (node, next) = try parseOneElement(at: runEnd, in: range)
                 guard var fields = node.objectValue else { throw OrgError.unimplemented("affiliated keywords attach to a non-object element") }
                 fields["affiliated"] = try affiliatedValue(from: affiliated)
@@ -280,6 +283,14 @@ extension OrgParser {
                 "value": .string(values.joined(separator: "\n")),
                 "postBlank": .int(0),
             ]), i)
+        }
+
+        // CLOCK lines. Dispatched BEFORE the block/keyword group because org checks
+        // `org-element-clock-line-re` before collecting affiliated keywords -- a clock can
+        // never carry them (`#+NAME:` before a clock stands alone, measured, and the
+        // attachment loop in `parseSection` excludes clock lines for the same reason).
+        if OrgParser.isClockLine(line) {
+            return (try clockNode(of: line), i + 1)
         }
 
         // Blocks are dispatched BEFORE keywords and before the unimplemented-element check,
@@ -552,6 +563,10 @@ extension OrgParser {
                 // `\end{NAME}` closes within this range (org-element-paragraph-parser's latex
                 // branch). An unpaired opener is swallowed as paragraph text, measured.
                 || latexEnvironmentSeparates(at: i, in: range)
+                // A clock line separates UNCONDITIONALLY: it sits in
+                // `org-element-paragraph-separate` with no double-check, and a line the
+                // regexp accepts is always dispatched as a clock element.
+                || OrgParser.isClockLine(candidate)
                 || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
@@ -798,8 +813,10 @@ extension OrgParser {
         // flagged during ORG-19 as needing re-derivation against that variable rather than an
         // ASCII narrowing, and this is that re-derivation: they fall through to the paragraph
         // path, which is org's answer rather than a widened guess.
-        // Clock lines, diary sexp ELEMENTS (distinct from the inline `<%%(...)>` timestamp, which
-        // does parse), footnote definitions.
+        // Diary sexp ELEMENTS (distinct from the inline `<%%(...)>` timestamp, which does
+        // parse). `CLOCK:` is GONE from this list: `isClockLine` transcribes
+        // `org-element-clock-line-re` and dispatches real clock lines, and every `CLOCK:` line
+        // the regexp rejects is a PARAGRAPH in org, measured (`clock-forms` pins four such).
         //
         // NOTE what is deliberately GONE: `SCHEDULED:`, `DEADLINE:` and `CLOSED:`. They belonged
         // here while planning was unimplemented, and keeping them would now be a pure over-throw.
@@ -818,9 +835,7 @@ extension OrgParser {
         // every other `[fn:` shape is an INLINE REFERENCE inside an ordinary paragraph, which
         // the object layer handles. An indented one is a paragraph too, and stays refused by the
         // indentation guard above rather than by a prefix.
-        for prefix in ["CLOCK:", "%%("] {
-            if line.text[s...].starts(with: prefix.unicodeScalars) { return true }
-        }
+        if line.text[s...].starts(with: "%%(".unicodeScalars) { return true }
         return false
     }
 }
