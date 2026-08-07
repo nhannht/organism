@@ -262,7 +262,7 @@ extension OrgParser {
         guard j < chars.count, chars[j] == "]" else { return nil }
         let target = Array(chars[(i + 2)..<j])
         guard !target.isEmpty else { return nil }
-        if target.contains("\\") { throw OrgError.notImplemented }
+        if target.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link target") }
 
         // `]]` closes a description-less link; `][` opens a description.
         guard j + 1 < chars.count else { return nil }
@@ -276,7 +276,7 @@ extension OrgParser {
         guard k + 1 < chars.count, chars[k] == "]", chars[k + 1] == "]" else { return nil }
         let description = Array(chars[(j + 2)..<k])
         guard !description.isEmpty else { return nil }
-        if description.contains("\\") { throw OrgError.notImplemented }
+        if description.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link description") }
 
         return LinkMatch(end: k + 2, linkType: "regular", rawTarget: target, description: description)
     }
@@ -299,7 +299,7 @@ extension OrgParser {
         var j = colon + 1
         while j < chars.count, chars[j] != ">", chars[j] != "\n" { j += 1 }
         guard j < chars.count else { return nil }
-        if chars[j] == "\n" { throw OrgError.notImplemented }
+        if chars[j] == "\n" { throw OrgError.unimplemented("newline before the closing > of an angle link") }
 
         let target = Array(chars[(i + 1)..<j])
         return LinkMatch(end: j + 1, linkType: "angle", rawTarget: target, description: nil)

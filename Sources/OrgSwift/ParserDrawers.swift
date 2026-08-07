@@ -124,7 +124,7 @@ extension OrgParser {
             var properties: [OrgJSON] = []
             for row in body {
                 guard let property = OrgParser.nodePropertyNode(of: lines[row]) else {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("PROPERTIES drawer row is not a node-property")
                 }
                 properties.append(property)
             }

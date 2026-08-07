@@ -385,7 +385,7 @@ extension OrgParser {
         guard objects.count == 1,
               let only = objects.first?.objectValue,
               only["type"] == OrgJSON.string("text") else {
-            throw OrgError.notImplemented
+            throw OrgError.unimplemented("keyword dual value containing markup")
         }
         return .string(dual)
     }

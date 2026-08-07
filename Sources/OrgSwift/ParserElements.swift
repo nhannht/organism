@@ -153,7 +153,7 @@ extension OrgParser {
                     // one leading blank gives `paragraph postBlank=1` whose text is `"\n"`, two
                     // blanks give `postBlank=2` with the text unchanged. Throwing is the honest
                     // answer until that rule is derived rather than guessed.
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("leading blank line inside a greater-block body")
                 }
                 last["postBlank"] = .int(existing + count)
                 elements.append(.object(last))
@@ -196,7 +196,7 @@ extension OrgParser {
             if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank,
                !isCommentLine(lines[runEnd]) {
                 let (node, next) = try parseOneElement(at: runEnd, in: range)
-                guard var fields = node.objectValue else { throw OrgError.notImplemented }
+                guard var fields = node.objectValue else { throw OrgError.unimplemented("affiliated keywords attach to a non-object element") }
                 fields["affiliated"] = try affiliatedValue(from: affiliated)
                 elements.append(.object(fields))
                 i = next
@@ -318,7 +318,7 @@ extension OrgParser {
                 ]), end + 1)
             default:
                 // Every other `#+begin_X` is a `special-block`, a type the schema does not map.
-                throw OrgError.notImplemented
+                throw OrgError.unimplemented("special-block (#+begin_ with an unrecognized name)")
             }
         }
 
@@ -607,7 +607,7 @@ extension OrgParser {
     }
 
     private func throwIfUnimplementedElementStart(_ line: Line) throws {
-        if isUnimplementedElementStart(line) { throw OrgError.notImplemented }
+        if isUnimplementedElementStart(line) { throw OrgError.unimplemented("unimplemented element start (clock, diary sexp, unknown block, or #-tab comment)") }
     }
 
     /// Lines that open (or could open) an element type outside the implemented subset. Also used

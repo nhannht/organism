@@ -25,7 +25,7 @@ extension OrgParser {
         // scalars throughout (see `OrgParser.Line`), which is org's own unit, so CR is just an
         // unsupported byte rather than a hole in the tokenizer.
         guard !source.unicodeScalars.contains(where: { $0.value == 0x0D }) else {
-            throw OrgError.notImplemented
+            throw OrgError.unimplemented("CR byte in source")
         }
 
         // An empty or all-blank document is a document with no children at all -- no section,
@@ -212,7 +212,7 @@ extension OrgParser {
         let titleChars = Array(line.text[start..<end])
 
         // Empty titles are not exercised by any implemented case.
-        guard !titleChars.isEmpty else { throw OrgError.notImplemented }
+        guard !titleChars.isEmpty else { throw OrgError.unimplemented("headline with an empty title") }
 
         // TAGS. Org's rule is `[ \t]*:[[:alnum:]_@#%:]+:[ \t]*$` matched at the EARLIEST position
         // that works, not "the last whitespace-delimited word". The difference is not academic --

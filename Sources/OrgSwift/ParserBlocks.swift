@@ -215,7 +215,7 @@ extension OrgParser {
               isLetterScalar(text[i]) || isNumberScalar(text[i]) { i += 1 }
         // A non-ASCII scalar sitting where the name could continue -- including at its very
         // first position -- is the undecidable case above, never a name boundary.
-        if i < text.count, !text[i].isASCII { throw OrgError.notImplemented }
+        if i < text.count, !text[i].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a block-name boundary") }
         // No name at all. `#+BEGIN:` and `#+BEGIN: ` are ordinary `keyword` elements in org
         // (key `BEGIN`, value ""), measured, so declining here is what lets them reach the
         // keyword branch rather than being claimed as a malformed block.

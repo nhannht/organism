@@ -394,7 +394,7 @@ extension OrgParser {
             // latex-fragment and NO radio link. This branch throws either way, so keeping it here
             // is an over-throw that covers both of org's answers; letting the radio scan run first
             // would emit a link where org emits a fragment.
-            if c == "$" { throw OrgError.notImplemented }
+            if c == "$" { throw OrgError.unimplemented("$-delimited latex fragment") }
 
             // RADIO links: plain text matching a `<<<target>>>` collected in pass 1. Empty in
             // pass 1 itself, so this costs nothing there. See `parseOrg` for the two-pass shape
@@ -514,7 +514,7 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if plainLinkCouldStart(in: chars, at: i) { throw OrgError.notImplemented }
+                if plainLinkCouldStart(in: chars, at: i) { throw OrgError.unimplemented("text abutting a possible plain-link start") }
             }
 
             switch c {
@@ -555,7 +555,7 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                throw OrgError.notImplemented
+                throw OrgError.unimplemented("backslash construct that is not a bracket latex fragment")
             case "[":
                 // `[[...]]` is a bracket link. Every OTHER `[` construct still throws: footnote
                 // references (`[fn:1]`), citations (`[cite:...]`), statistics cookies (`[1/2]`,
@@ -634,7 +634,7 @@ extension OrgParser {
                 // A link description is now the one container where none is, so its `[` reaches
                 // the text run below. See `bracketOpenableObjects`.
                 if container.permitsAny(of: Self.bracketOpenableObjects) {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("[ construct this parser cannot rule out")
                 }
             case "<":
                 // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
@@ -700,7 +700,7 @@ extension OrgParser {
                     continue
                 }
                 if container.permitsAny(of: Self.angleOpenableObjects) {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("< construct this parser cannot rule out")
                 }
             case "^", "_":
                 // The PRE rule here is org's `\S-` -- a single NEGATION of whitespace -- and it is
@@ -744,17 +744,17 @@ extension OrgParser {
                     // matcher can rule out; a body it declined for an undecidable reason has
                     // already thrown above. Throwing here keeps every unrecognised `_`/`^` form
                     // visible, which is what the plan's own withdrawn `a__b` claim cost.
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("unrecognized sub/superscript form")
                 }
                 // A `_` preceded by whitespace cannot open a script, but it can still open an
                 // UNDERLINE, which is unimplemented.
                 if c == "_", emphasisMatch(in: chars, at: i) != nil {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("underline emphasis")
                 }
             case "+":
                 // A full border-rule match here would be strikethrough.
                 if emphasisMatch(in: chars, at: i) != nil {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("strikethrough emphasis")
                 }
             case "c", "s":
                 // `call_NAME(ARGS)` and `src_LANG{BODY}`. Both unimplemented and both OUTSIDE the
@@ -768,15 +768,15 @@ extension OrgParser {
                 // subscript, and text `{b}`.
                 let inlineKind: ObjectKind = c == "s" ? .inlineSrcBlock : .inlineBabelCall
                 if container.permits(inlineKind), inlineSrcOrCallCouldStart(in: chars, at: i) {
-                    throw OrgError.notImplemented
+                    throw OrgError.unimplemented("inline src block or babel call")
                 }
             case "{":
                 if i + 2 < chars.count, chars[i + 1] == "{", chars[i + 2] == "{" {
-                    throw OrgError.notImplemented // macro
+                    throw OrgError.unimplemented("macro")
                 }
             case "@":
                 if i + 1 < chars.count, chars[i + 1] == "@" {
-                    throw OrgError.notImplemented // export snippet
+                    throw OrgError.unimplemented("export snippet")
                 }
             case "*", "/", "=", "~":
                 if let match = emphasisMatch(in: chars, at: i) {
@@ -1037,7 +1037,7 @@ extension OrgParser {
         while j < chars.count, OrgParser.isFootnoteLabelScalar(chars[j]) { j += 1 }
         // A non-ASCII scalar sitting where the label could continue is undecidable, exactly as
         // in `dynamicBlockBeginLine`. Declining is the only safe answer.
-        if j < chars.count, !chars[j].isASCII { throw OrgError.notImplemented }
+        if j < chars.count, !chars[j].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a footnote-label boundary") }
         let label = j > labelStart ? String(scalars: chars[labelStart..<j]) : nil
 
         guard j < chars.count else { return nil }
@@ -1150,7 +1150,7 @@ extension OrgParser {
         }
         // The scalar that ENDED the run decides whether this answer can be trusted. An ASCII one
         // is a real boundary; a non-ASCII one might be an `[[:alnum:]]` org would have consumed.
-        if j < chars.count, !chars[j].isASCII { throw OrgError.notImplemented }
+        if j < chars.count, !chars[j].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a script-body boundary") }
         guard let last = lastAlnum else { return nil }
         return ScriptMatch(end: last + 1, body: (i + 1)..<(last + 1), useBrackets: false)
     }

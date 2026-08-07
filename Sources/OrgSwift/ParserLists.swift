@@ -197,7 +197,7 @@ extension OrgParser {
     /// the first item carries a ` :: ` tag.
     func parseList(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
         guard let head = OrgParser.bulletMatch(of: lines[start]) else {
-            throw OrgError.notImplemented
+            throw OrgError.unimplemented("list dispatch reached a non-bullet line")
         }
         let indent = head.indent
         var items: [OrgJSON] = []
