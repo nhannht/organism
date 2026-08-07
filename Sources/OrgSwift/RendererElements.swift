@@ -68,25 +68,8 @@ extension OrgRenderer {
             // Verse contents are OBJECTS, not elements (SCHEMA.md section 4), and the body's
             // final newline lives in the last text node.
             body = "#+begin_verse\n" + (try renderObjects(try array(node, "children", type))) + "#+end_verse\n"
-        case "src-block":
-            var head = "#+begin_src"
-            if let language = try stringOrNull(node, "language", type) { head += " \(language)" }
-            if let switches = try stringOrNull(node, "switches", type) { head += " \(switches)" }
-            if let params = try stringOrNull(node, "params", type) { head += " \(params)" }
-            body = head + "\n" + (try string(node, "value", type)) + "#+end_src\n"
-        case "example-block":
-            var head = "#+begin_example"
-            if let switches = try stringOrNull(node, "switches", type) { head += " \(switches)" }
-            body = head + "\n" + (try string(node, "value", type)) + "#+end_example\n"
-        case "export-block":
-            // org-element upcases `:type` (the tree says "HTML" for a source `html`), so the
-            // source case is unrecoverable; lowercase is the corpus's convention. See the
-            // renderer-conformance docstring's emission table.
-            var head = "#+begin_export"
-            if let backend = try stringOrNull(node, "backend", type) { head += " \(backend.lowercased())" }
-            body = head + "\n" + (try string(node, "value", type)) + "#+end_export\n"
-        case "comment-block":
-            body = "#+begin_comment\n" + (try string(node, "value", type)) + "#+end_comment\n"
+        case "src-block", "example-block", "export-block", "comment-block":
+            body = try renderLiteralBlock(node, type, linePrefix: "")
         case "dynamic-block":
             var head = "#+BEGIN: \(try string(node, "blockName", type))"
             if let arguments = try stringOrNull(node, "arguments", type) { head += " \(arguments)" }
@@ -98,10 +81,7 @@ extension OrgRenderer {
         case "table":
             body = try renderTable(node)
         case "list":
-            body = ""
-            for child in try array(node, "children", type) {
-                body += try renderItem(child)
-            }
+            body = try renderList(node, itemIndent: "")
         case "footnote-definition":
             // `preBlank` here counts NEWLINES between the `[fn:label]` marker and the content:
             // 0 means same line (separated by one space), 2 means marker line plus one blank
@@ -171,6 +151,44 @@ extension OrgRenderer {
         return parts.joined(separator: " ") + "\n"
     }
 
+    // MARK: - Literal blocks
+
+    /// The four literal block types (SCHEMA.md section 4): `value` re-emits VERBATIM -- inside
+    /// an item its lines already carry their absolute source indentation (measured against the
+    /// oracle, 2026-08-07: `- x` + a src block indented two gives `value` `"  (+ 1 1)\n"`).
+    /// Only the `#+begin_`/`#+end_` LINES take `linePrefix`: their own indentation is
+    /// normalized out of the tree, the same way nested bullet lines are, so inside an item it
+    /// is reconstructed at bullet width.
+    static func renderLiteralBlock(_ node: OrgJSON, _ type: String, linePrefix: String) throws -> String {
+        var head: String
+        var tail: String
+        switch type {
+        case "src-block":
+            head = "#+begin_src"
+            if let language = try stringOrNull(node, "language", type) { head += " \(language)" }
+            if let switches = try stringOrNull(node, "switches", type) { head += " \(switches)" }
+            if let params = try stringOrNull(node, "params", type) { head += " \(params)" }
+            tail = "#+end_src"
+        case "example-block":
+            head = "#+begin_example"
+            if let switches = try stringOrNull(node, "switches", type) { head += " \(switches)" }
+            tail = "#+end_example"
+        case "export-block":
+            // org-element upcases `:type` (the tree says "HTML" for a source `html`), so the
+            // source case is unrecoverable; lowercase is the corpus's convention. See the
+            // renderer-conformance docstring's emission table.
+            head = "#+begin_export"
+            if let backend = try stringOrNull(node, "backend", type) { head += " \(backend.lowercased())" }
+            tail = "#+end_export"
+        case "comment-block":
+            head = "#+begin_comment"
+            tail = "#+end_comment"
+        default:
+            throw OrgError.malformedTree("renderLiteralBlock: '\(type)' is not a literal block")
+        }
+        return linePrefix + head + "\n" + (try string(node, "value", type)) + linePrefix + tail + "\n"
+    }
+
     // MARK: - Greater blocks
 
     static func renderGreaterBlock(_ node: OrgJSON, kind: String) throws -> String {
@@ -237,16 +255,38 @@ extension OrgRenderer {
 
     // MARK: - List items
 
-    static func renderItem(_ node: OrgJSON) throws -> String {
+    /// Indentation model, measured against the oracle (2026-08-07) rather than assumed,
+    /// because the obvious "hanging indent" reconstruction is wrong in a way Layer 1 cannot
+    /// see:
+    ///
+    ///   - A paragraph INSIDE an item carries its continuation lines' full source indentation
+    ///     in its own text (`- a\n  b` parses to text `"a\n  b\n"`), so re-indenting rendered
+    ///     child text double-indents it. Child content re-emits ABSOLUTE bytes, untouched.
+    ///   - A nested item's BULLET-LINE indentation is NOT in the tree, and org normalizes it
+    ///     (`  - a` and `   - a` parse identically), so it is a convention: parent bullet
+    ///     width per level, pinned by `list-nested-by-indent`.
+    ///
+    /// So the only reconstruction here is `itemIndent` on each bullet line; everything else is
+    /// already in the tree's strings.
+    static func renderList(_ node: OrgJSON, itemIndent: String) throws -> String {
+        var body = ""
+        for item in try array(node, "children", "list") {
+            body += try renderItem(item, indent: itemIndent)
+            body += String(repeating: "\n", count: try postBlank(item, "item"))
+        }
+        return body
+    }
+
+    static func renderItem(_ node: OrgJSON, indent: String) throws -> String {
         let type = "item"
         let bullet = try string(node, "bullet", type)
-        var first = bullet
-        if let counter = try intOrNull(node, "counter", type) { first += "[@\(counter)] " }
+        var out = indent + bullet
+        if let counter = try intOrNull(node, "counter", type) { out += "[@\(counter)] " }
         if let checkbox = try stringOrNull(node, "checkbox", type) {
             switch checkbox {
-            case "on": first += "[X] "
-            case "off": first += "[ ] "
-            case "trans": first += "[-] "
+            case "on": out += "[X] "
+            case "off": out += "[ ] "
+            case "trans": out += "[-] "
             default: throw OrgError.malformedTree("item: unknown checkbox state '\(checkbox)'")
             }
         }
@@ -254,20 +294,7 @@ extension OrgRenderer {
             guard let tagObjects = tagValue.arrayValue else {
                 throw OrgError.malformedTree("item: 'tag' is neither array nor null")
             }
-            first += try renderObjects(tagObjects) + " :: "
-        }
-        var content = ""
-        for child in try array(node, "children", type) {
-            content += try renderElement(child)
-        }
-        // Hanging indent: every line of the item's content after the first is indented by the
-        // bullet's own width (pinned by `list-nested-by-indent`: bullet "- " gives the nested
-        // list two columns). Blank lines stay empty -- indenting one would manufacture
-        // trailing whitespace no source had.
-        let indent = String(repeating: " ", count: bullet.count)
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        let indented = lines.enumerated().map { index, line -> Substring in
-            index == 0 || line.isEmpty ? line : Substring(indent + line)
+            out += try renderObjects(tagObjects) + " :: "
         }
         // No corpus case pins where a nonzero item `preBlank` puts its blank lines (a bullet
         // line with blanks before its own content is not in the corpus), so guessing is not an
@@ -275,7 +302,42 @@ extension OrgRenderer {
         guard try int(node, "preBlank", type) == 0 else {
             throw OrgError.malformedTree("item: nonzero preBlank is not renderable yet (no fixture pins its placement)")
         }
-        return first + indented.joined(separator: "\n")
+        let children = try array(node, "children", type)
+        guard !children.isEmpty else {
+            throw OrgError.malformedTree("item: empty item is not renderable yet (no fixture pins its line ending)")
+        }
+        for (index, child) in children.enumerated() {
+            switch try nodeType(child) {
+            case "paragraph":
+                // First paragraph starts ON the bullet line; continuation lines and any later
+                // paragraph carry their own absolute indentation in their text.
+                out += try renderElement(child)
+            case "list":
+                // Rendered directly (not via renderElement) to thread the indent, so the two
+                // things renderElement would have added are accounted for here: postBlank
+                // explicitly, and affiliated by refusal -- silently dropping an affiliated
+                // keyword would be a lossy emission.
+                guard try fields(child, "list")["affiliated"] == nil else {
+                    throw OrgError.malformedTree("item: a nested list carrying affiliated keywords is not renderable yet")
+                }
+                out += try renderList(child, itemIndent: indent + String(repeating: " ", count: bullet.count))
+                out += String(repeating: "\n", count: try postBlank(child, "list"))
+            case "src-block", "example-block", "export-block", "comment-block":
+                // Same accounting as the nested-list branch: rendered directly to thread the
+                // line prefix, so postBlank is handled here and affiliated by refusal.
+                guard try fields(child, "literal block")["affiliated"] == nil else {
+                    throw OrgError.malformedTree("item: a block carrying affiliated keywords inside an item is not renderable yet")
+                }
+                out += try renderLiteralBlock(child, try nodeType(child),
+                                              linePrefix: indent + String(repeating: " ", count: bullet.count))
+                out += String(repeating: "\n", count: try postBlank(child, "literal block"))
+            default:
+                // Any other element's line indentation inside an item is not in the tree and
+                // has no pinning fixture; wrong bytes are worse than an honest refusal.
+                throw OrgError.malformedTree("item: child type '\(try nodeType(child))' at position \(index) is not renderable inside an item yet")
+            }
+        }
+        return out
     }
 
     // MARK: - Affiliated keywords

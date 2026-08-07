@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import OrgSwift
 
@@ -44,14 +45,23 @@ extension CorpusLoader.RealFile: CustomTestStringConvertible {
 /// and 10), never from loosening the contract to fit an implementation. Expect it to grow again
 /// if someone audits an area nobody has looked at yet.
 ///
-/// The suite splits on `implementedFiles` (below), the same mechanism as
-/// `ConformanceTests.implementedCases` -- see SCHEMA.md section 8 for why, and for the rule
-/// that moving a file into the set (nothing else) is the only correct fix once its wrapper
-/// fails by passing. The `#expect` comparison is still literal `==`: right for every file in
-/// `implementedFiles` (none may hit a section 10 loss), and encoding "byte-exact modulo the
-/// SCHEMA.md section 10 losses" as a real comparison -- which the loss-hitting files below
-/// need before they can ever convert -- is still deferred, now to the Layer 2 comparator
-/// increment.
+/// The suite splits three ways, echoing `RendererConformanceTests`' buckets:
+///
+///   - `implementedFiles` assert plain byte equality, unwrapped. A file may live here only
+///     when it hits NO section 10 loss.
+///   - `lossAnnotatedFiles` assert equality after that file's annotated loss normalizers are
+///     applied to BOTH sides, unwrapped. This is the "byte-exact modulo the SCHEMA.md section
+///     10 losses" comparison the earlier docstring deferred. Each normalizer is scoped to one
+///     enumerated Reason-A loss, line-anchored, and each annotation carries a VACUITY GUARD:
+///     the normalizer must actually change that file's source bytes, or the annotation is
+///     stale and the test fails. A divergence outside the annotated classes survives
+///     normalization and fails -- there is deliberately no catch-all.
+///   - everything else stays wrapped in `withKnownIssue` until it converts.
+///
+/// A normalizer weakens THIS gate for the annotated file (tags.org normalized on tag padding
+/// can no longer distinguish one-space from two-space tag emission), which is accepted because
+/// the renderer-conformance gate pins the emission convention with raw byte equality on the
+/// Layer 1 corpus -- the two gates are read as a pair.
 ///
 /// Normalization caveat, corrected here after an earlier draft got it wrong: it is NOT true
 /// that none of the vendored files exercise the Reason-A exceptions, or the dimensions
@@ -75,11 +85,85 @@ struct RoundTripTests {
     /// Files whose full `renderOrg(parseOrg(text)) == text` round-trip is byte-exact TODAY --
     /// these assert normally, everything else stays wrapped, same split mechanism as
     /// `ConformanceTests.implementedCases` (SCHEMA.md section 8). A file enters this set only
-    /// when the wrapper's own failure announces it, and only with plain `==`: none of the
-    /// files here may hit a section 10 loss (a file that does needs the loss-annotated
-    /// comparator this suite's docstring defers, which is still unbuilt).
+    /// when the wrapper's own failure announces it, and only with plain `==`: a file hitting
+    /// a section 10 loss belongs in `lossAnnotatedFiles` instead.
     static let implementedFiles: Set<String> = [
+        "real/doomemacs-docs/index.org",
         "real/org-mode-samples/pathological.org",
+    ]
+
+    /// The section 10 Reason-A losses that real vendored files actually hit, one normalizer
+    /// per loss. Each is line-anchored and rewrites BOTH sides, so it can only mask a renderer
+    /// defect inside the exact byte class the loss already makes unrecoverable (see the suite
+    /// docstring for why that residual blindness is accepted and where it is covered instead).
+    enum RuleDLoss {
+        /// Item 1: keyword name case (`#+title:` vs `#+TITLE:` -- org-element upcases, the
+        /// source case is gone). Uppercases every `#+NAME:`-shaped line head on both sides.
+        case keywordNameCase
+        /// Item 2: keyword/property alignment whitespace, BOTH halves of the class section 10
+        /// names -- value padding (`:ID:       x`, `#+KEY:   x`) and the line's own leading
+        /// whitespace (`  #+FILETAGS: ...`).
+        case keywordValuePadding
+        /// Item 3: headline tag-column padding (`* Heading  :tag:`), INCLUDING width zero --
+        /// org accepts a tag group glued directly to the title (`...not:a:tag:`), and the
+        /// padding is unrecoverable in both directions, so both sides normalize to one space.
+        case tagColumnPadding
+        /// Item 5: trailing whitespace on otherwise-blank lines.
+        case blankLineTrailingWhitespace
+
+        func normalize(_ text: String) -> String {
+            switch self {
+            case .keywordNameCase:
+                return Self.replacingMatches(in: text, pattern: #"^#\+[A-Za-z0-9_]+:"#) { $0.uppercased() }
+            case .keywordValuePadding:
+                let dedented = Self.replacingMatches(in: text, pattern: #"^[ \t]+(:[A-Za-z0-9_@-]+:|#\+[A-Za-z0-9_]+:)"#, template: "$1")
+                return Self.replacingMatches(in: dedented, pattern: #"^((?::[A-Za-z0-9_@-]+:|#\+[A-Za-z0-9_]+:))[ \t]+"#, template: "$1 ")
+            case .tagColumnPadding:
+                return Self.replacingMatches(in: text, pattern: #"^(\*+[^\n]*?)[ \t]*(:[A-Za-z0-9_@#%:]+:)[ \t]*$"#, template: "$1 $2")
+            case .blankLineTrailingWhitespace:
+                return Self.replacingMatches(in: text, pattern: #"^[ \t]+$"#, template: "")
+            }
+        }
+
+        private static func replacingMatches(in text: String, pattern: String, template: String) -> String {
+            let regex = compiled(pattern)
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: template)
+        }
+
+        /// Transform-based replacement (NSRegularExpression templates cannot change case).
+        private static func replacingMatches(in text: String, pattern: String, transform: (String) -> String) -> String {
+            let regex = compiled(pattern)
+            let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+            var result = text
+            for match in regex.matches(in: text, options: [], range: nsRange).reversed() {
+                guard let range = Range(match.range, in: result) else { continue }
+                result.replaceSubrange(range, with: transform(String(result[range])))
+            }
+            return result
+        }
+
+        private static func compiled(_ pattern: String) -> NSRegularExpression {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+                preconditionFailure("RuleDLoss: invalid pattern \(pattern)")
+            }
+            return regex
+        }
+    }
+
+    /// Files that round-trip byte-exact EXCEPT for the annotated section 10 losses. Assert
+    /// unwrapped, after normalizing both sides with exactly the listed losses -- nothing else.
+    /// Each entry was diagnosed from the file's actual first divergence, not assumed.
+    static let lossAnnotatedFiles: [String: [RuleDLoss]] = [
+        // `:ID:       e103c1bc-...` in a property drawer (7 alignment spaces, item 2) plus a
+        // lowercase `#+title:` line (item 1).
+        "real/doomemacs-docs/examples.org": [.keywordNameCase, .keywordValuePadding],
+        // One line containing two spaces between two headline bodies, item 5.
+        "real/doomemacs-docs/contributing.org": [.blankLineTrailingWhitespace],
+        // `* Heading  :tag:` with two spaces before the tag group, and `not:a:tag:` with the
+        // group glued to the title -- both item 3, at widths two and zero. Plus an indented
+        // `  #+FILETAGS:` line, item 2's leading-whitespace half.
+        "real/org-mode-samples/tags.org": [.tagColumnPadding, .keywordValuePadding],
     ]
 
     /// Deliberately NOT wrapped in `withKnownIssue`: this checks that the corpus is wired up at
@@ -94,16 +178,28 @@ struct RoundTripTests {
 
     @Test("renderOrg(parseOrg(text)) == text, byte-exact except the SCHEMA.md section 10 losses", arguments: realFiles)
     func roundTrips(_ file: CorpusLoader.RealFile) throws {
-        let assertion = {
-            let tree = try parseOrg(file.text)
-            let rendered = try renderOrg(tree)
-            #expect(rendered == file.text, "\(file.name): round-trip did not match the Rule D contract (SCHEMA.md section 10, and this suite's docstring)")
-        }
         if Self.implementedFiles.contains(file.name) {
-            try assertion()
+            let rendered = try renderOrg(try parseOrg(file.text))
+            #expect(rendered == file.text, "\(file.name): round-trip did not match the Rule D contract (SCHEMA.md section 10, and this suite's docstring)")
+        } else if let losses = Self.lossAnnotatedFiles[file.name] {
+            let rendered = try renderOrg(try parseOrg(file.text))
+            var normalizedSource = file.text
+            var normalizedRendered = rendered
+            for loss in losses {
+                normalizedSource = loss.normalize(normalizedSource)
+                normalizedRendered = loss.normalize(normalizedRendered)
+            }
+            // Vacuity guard: an annotation whose normalizer changes nothing in the SOURCE is
+            // stale -- the loss it claims is not in the file, and the annotation is silently
+            // weakening the gate for no reason. Fail loudly instead.
+            #expect(normalizedSource != file.text,
+                    "\(file.name): loss annotation is vacuous -- its normalizers change nothing in this file")
+            #expect(normalizedRendered == normalizedSource,
+                    "\(file.name): round-trip diverges beyond its annotated section 10 losses")
         } else {
             withKnownIssue("parser/renderer does not round-trip this file yet: \(file.name)") {
-                try assertion()
+                let rendered = try renderOrg(try parseOrg(file.text))
+                #expect(rendered == file.text, "\(file.name): round-trip did not match the Rule D contract (SCHEMA.md section 10, and this suite's docstring)")
             }
         }
     }
