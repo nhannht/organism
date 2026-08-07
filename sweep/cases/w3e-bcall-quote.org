@@ -1,0 +1,3 @@
+#+begin_quote
+#+CALL: f()
+#+end_quote

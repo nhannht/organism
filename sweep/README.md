@@ -1,6 +1,6 @@
 # `sweep/` - the generated differential corpus
 
-1,208 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
+1,312 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
 via `Tests/OrgSwiftTests/SweepTests.swift`.
 
 ```
@@ -36,22 +36,25 @@ not confident is correct.
 **A MISMATCH fails the build. A THROW does not.** Over-throwing costs a construct; a wrong tree
 costs trust in every tree the parser produces, and only one of those is allowed to be silent.
 
-Eight defects were found by this instrument in a single session - ORG-22 through ORG-30 - five of
-them live in the published repository at the time. Not one was visible to `swift test`,
+Nine defects were found by this instrument - ORG-22 through ORG-30, plus the citation-prefix
+restriction row found by the Wave 3 generator - five of them live in the published repository at
+the time. Not one was visible to `swift test`,
 `harness/verify-corpus.sh`, or the 80 conformance fixtures.
 
 ## What a zero here does NOT mean
 
-"1,208 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
+"1,312 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
 
 It means: no disagreement with org on inputs someone THOUGHT TO CONSTRUCT. This corpus is the
 product of one reviewer's guesses about where the parser might be wrong. Every defect it found was
 found by probing somewhere nobody had probed before, and there is no reason to believe that
 process is exhausted.
 
-Twice in one session the count read zero, a new group of cases was added, and wrong trees that had
-been present all along appeared immediately. The number went from 0 to 14 with no change to the
-parser.
+THREE times now the count has read zero, a new group of cases has been added, and wrong trees
+that were present all along appeared immediately. The first two took it from 0 to 14 with no
+change to the parser. The third was `sweep/gen/gen-wave3-containers.py`, whose very first run
+found four -- a citation's own prefix and suffix were lexed under the wrong restriction row,
+in code that had landed an hour earlier and passed every other gate.
 
 Quote the count and this section together, or neither.
 

@@ -1,0 +1,1 @@
+[cite:@k; a src_py{q} b]

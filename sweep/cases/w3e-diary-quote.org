@@ -1,0 +1,3 @@
+#+begin_quote
+%%(diary-float t 4 2)
+#+end_quote

@@ -1,0 +1,2 @@
+#+CAPTION: a call_f() b
+para

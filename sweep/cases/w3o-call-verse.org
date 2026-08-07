@@ -1,0 +1,3 @@
+#+begin_verse
+a call_f() b
+#+end_verse

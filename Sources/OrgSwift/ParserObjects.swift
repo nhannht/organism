@@ -1207,9 +1207,15 @@ extension OrgParser {
     func citationNode(
         _ match: CitationMatch, in chars: [Unicode.Scalar]
     ) throws -> OrgJSON {
+        // The citation's OWN prefix and suffix are lexed under the CITATION-REFERENCE row, not
+        // the citation's. org spells it out -- `org-element-citation-parser` binds
+        // `(types (org-element-restriction 'citation-reference))` once and uses it for both --
+        // and the two rows are nothing alike: `citation` permits ONLY citation-reference, which
+        // is why using it here made a common prefix plain text. Found by the generated container
+        // cross-product, four wrong trees, on its first run.
         func secondary(_ range: Range<Int>?) throws -> OrgJSON {
             guard let range else { return .null }
-            return .array(try parseObjects(String(scalars: chars[range]), in: .citation))
+            return .array(try parseObjects(String(scalars: chars[range]), in: .citationReference))
         }
         var postBlank = 0
         var k = match.end

@@ -1,0 +1,3 @@
+#+begin_verse
+a [cite:@k] b
+#+end_verse

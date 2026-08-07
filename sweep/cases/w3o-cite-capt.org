@@ -1,0 +1,2 @@
+#+CAPTION: a [cite:@k] b
+para

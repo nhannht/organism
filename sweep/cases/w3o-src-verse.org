@@ -1,0 +1,3 @@
+#+begin_verse
+a src_py{q} b
+#+end_verse

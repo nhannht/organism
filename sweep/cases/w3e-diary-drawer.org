@@ -1,0 +1,3 @@
+:D:
+%%(diary-float t 4 2)
+:END:
