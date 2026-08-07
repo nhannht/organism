@@ -110,13 +110,21 @@ extension OrgParser {
     /// Extend this table by MEASURING, never by reasoning about which characters "should" behave
     /// this way. The enumeration that produced it is cheap to re-run.
     ///
-    /// **Staleness is NOT self-detecting, and the literal form does not change that.** Nothing in
-    /// this repository re-runs the enumeration, and no fixture in the conformance corpus exercises
-    /// any of these 57 scalars -- measured: the corpus known-issue count and `implementedCases`
-    /// are byte-identical before and after this table grew from 2 entries to 57, while a 192-probe
-    /// differential against the live oracle went from 82 matching to 192. A stale table here fails
-    /// exactly as quietly as the 2-entry version did. Re-measuring on a toolchain bump is a manual
-    /// obligation on whoever bumps it, not a guard the build enforces.
+    /// **Staleness used to be non-self-detecting, and is not any more (ORG-17, 2026-08-07).**
+    /// `PinnedTableDriftTests` recomputes this table at test time -- the Swift half here, the
+    /// Emacs half through `harness/pinned-tables.el` -- and fails with the added and removed
+    /// scalars named. Note WHAT it recomputes: this is a DIFFERENCE SET, so both halves have to
+    /// be measured independently and subtracted. A guard that dumped only Emacs's table would
+    /// report drift on all 57 entries while the code was perfectly correct.
+    ///
+    /// The gap that guard closed was real and this note used to describe it: no fixture in the
+    /// conformance corpus exercises any of these 57 scalars -- measured, the corpus known-issue
+    /// count and `implementedCases` were byte-identical before and after this table grew from 2
+    /// entries to 57, while a 192-probe differential against the live oracle went from 82
+    /// matching to 192. A stale table failed exactly as quietly as the 2-entry version did.
+    ///
+    /// Re-measuring is still the response to a failure; what changed is that the failure now
+    /// arrives on its own.
     ///
     /// Boundary of the evidence: the enumeration is exhaustive over scalars, so within the two
     /// pinned toolchain versions there are no unswept members. It says nothing about any other
@@ -327,9 +335,12 @@ extension OrgParser {
     /// Kept as RANGES rather than a `Set`: ranges are the form the enumeration produced, and a
     /// binary search over 735 entries beats building a 40,985-member `Set`.
     ///
-    /// Nothing in `swift test` re-runs the enumeration. Fourth Emacs table with that gap, tracked
-    /// under ORG-17 alongside `upcaseDeclined`, `radioCanonExtra` and the
-    /// `org-element-object-restrictions` transcription.
+    /// `PinnedTableDriftTests` re-runs this enumeration at test time (ORG-17), asking Emacs both
+    /// halves of the predicate again and comparing the RANGE COUNT as well as the membership --
+    /// a table can hold the right scalars in the wrong runs, and "735 ranges" is a quoted figure.
+    /// Fifth and last of the pinned tables to get that guard, alongside `upcaseDeclined`,
+    /// `radioCanonExtra`, `radioCanonDeclined`, the `org-element-object-restrictions`
+    /// transcription and the inline-callable boundary table.
     static let radioBlockingRanges: [ClosedRange<UInt32>] = [
         0x0030...0x0039, 0x0041...0x005A, 0x0061...0x007A, 0x00AA...0x00AA,
         0x00B5...0x00B5, 0x00BA...0x00BA, 0x00C0...0x00D6, 0x00D8...0x00F6,
@@ -614,7 +625,8 @@ extension OrgParser {
     ///
     /// The zero is what licenses the fallthrough. If a future Unicode or Emacs revision makes it
     /// non-zero, this function is silently wrong for every scalar in that class and no table
-    /// lookup here will say so -- re-run the enumeration on any toolchain bump, per ORG-17.
+    /// lookup here would say so -- which is why `PinnedTableDriftTests` asserts the ZERO itself
+    /// (ORG-17), not just the two tables. The licence is checked, not only the data it licenses.
     /// Do NOT "simplify" this by deleting a table: each one is the complement of a measurement,
     /// not a list of special cases.
     static func radioCanon(_ s: Unicode.Scalar) -> Unicode.Scalar {
