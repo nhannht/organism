@@ -131,6 +131,13 @@ extension Array where Element == OrgNode {
     /// not carry -- SCHEMA.md keeps org's six per-entity renderings out of the node. Its trailing
     /// space still lands, so the example above flattens to `"a b c d e  f"`, with the double
     /// space marking where the entity was. Use `renderOrg` when the exact source bytes matter.
+    ///
+    /// INTENDED FOR SECONDARY STRINGS -- a headline `title`, a link `description`, a citation
+    /// `prefix`. Nothing stops you calling it on an array of ELEMENTS (`doc.children.plainText`
+    /// compiles), and there the spacing is wrong rather than merely coarse: on an element
+    /// `postBlank` counts blank LINES, and this emits that many spaces. The result is still
+    /// readable text, so it will not look broken; it just is not what you want. Walk the elements
+    /// and flatten their own secondary strings instead.
     public var plainText: String {
         var out = ""
         for node in self {

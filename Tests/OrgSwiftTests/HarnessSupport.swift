@@ -42,6 +42,41 @@ enum HarnessSupport {
     /// script's header.
     static let validateSchemaScript = repoRoot.appendingPathComponent("harness/validate-schema.sh")
 
+    static let astGeneratorScript = repoRoot.appendingPathComponent("harness/regen-ast.py")
+
+    /// Whether `harness/regen-ast.py` can run: `python3` on `PATH` and the script present.
+    /// Gates `ASTGeneratedDriftTests`, so a clone without python3 stays green rather than
+    /// failing -- the same graceful-skip contract `emacsAvailable` gives the Emacs-backed suites.
+    ///
+    /// No `jsonschema` check here, unlike `schemaValidatorAvailable`: the generator reads the
+    /// schema with the standard-library `json` module and validates nothing, so it has no
+    /// third-party dependency to be missing.
+    static let astGeneratorAvailable: Bool = {
+        FileManager.default.fileExists(atPath: astGeneratorScript.path)
+            && executablePath(named: "python3") != nil
+    }()
+
+    /// Runs `python3 harness/regen-ast.py --check` and returns its status with combined output.
+    ///
+    /// `--check` regenerates in memory and diffs; it never writes. That matters for a test: a
+    /// drift check that repaired the file would turn its own failure green and leave the drift as
+    /// an unexplained working-tree diff.
+    static func runASTGeneratorCheck() throws -> (status: Int32, output: String) {
+        guard let python3Path = executablePath(named: "python3") else {
+            throw OracleError.emacsUnavailable
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: python3Path)
+        process.arguments = [astGeneratorScript.path, "--check"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
     /// The on-disk path to a Layer 1 conformance case's `input.org`, given its case name --
     /// `conformance/<name>/input.org`, the fixed layout SCHEMA.md documents and
     /// `CorpusLoader.conformanceCases()` reads from. Used to cross-check the hand-authored

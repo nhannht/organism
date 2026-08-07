@@ -62,7 +62,7 @@ the whole verification story - run them yourself rather than taking this table's
 |---|---|
 | `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
 | `harness/validate-schema.sh` | 1,432 of 1,432 stored answers valid against the published schema |
-| `swift test` | 55 tests, 13 suites, 0 failures, 53 known issues |
+| `swift test` | 57 tests, 14 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,312 inputs, 0 wrong trees - see `sweep/README.md` |
@@ -148,7 +148,7 @@ Add the package:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/nhannht/organism.git", from: "0.1.1")
+    .package(url: "https://github.com/nhannht/organism.git", from: "0.2.0")
 ],
 targets: [
     .target(name: "YourTarget", dependencies: [
@@ -229,6 +229,13 @@ types are a build product, so the two cannot drift:
 python3 harness/regen-ast.py           # regenerate
 python3 harness/regen-ast.py --check   # fail if the committed file is not what the schema produces
 ```
+
+**`swift test` runs that check for you** (`ASTGeneratedDriftTests`), so drift is a red run rather
+than a habit. That matters because the other AST gates cannot see it: a schema change that adds
+an optional field or widens an enum stays compatible with every stored tree, so the round-trip
+and coverage tests both pass while the generated Swift sits stale. Measured, by adding exactly
+such a field: all 9 other AST tests stayed green and only the drift test went red. It skips
+gracefully when `python3` is absent, like the Emacs-backed suites.
 
 What says the typed layer is complete and lossless: `OrgJSON -> OrgNode -> OrgJSON` is asserted
 identical for **all 1,432 stored trees**, and a companion test asserts the corpus exercises every
@@ -312,7 +319,7 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 55 tests, 13 suites, 0 real failures, 53 known issues: ZERO
+- `swift test` on this commit: 57 tests, 14 suites, 0 real failures, 53 known issues: ZERO
   parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
   `interpret-data` losses.
 - 1,312 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,

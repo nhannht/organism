@@ -130,8 +130,12 @@ any time that the committed output is still what the source produces.
 ```bash
 bash harness/regen-entities.sh          # after an Emacs or org upgrade; commit the diff
 python3 harness/regen-ast.py            # after any schema change
-python3 harness/regen-ast.py --check    # CI form: exit 1 if the committed file has drifted
+python3 harness/regen-ast.py --check    # exit 1 if the committed file has drifted
 ```
+
+`swift test` runs the `--check` form itself, in `ASTGeneratedDriftTests`, so nobody has to
+remember it. There is no CI in this repository, which is precisely why the check lives in the
+test suite rather than in a workflow file: a guard nobody runs is not a guard.
 
 `regen-ast.py` generates the typed AST - 55 node types, 8 enums, roughly 2,600 lines of Swift.
 Hand-writing it would create a second copy of the published contract kept in sync by hand, which
