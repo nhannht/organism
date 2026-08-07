@@ -103,6 +103,12 @@ struct ConformanceTests {
         // an entity and a `\name` fragment are told apart by a lookup in org's 414-name table,
         // not by shape, so narrowing further needs the whole table.
         "latex-fragment-inline",
+        // `$` forms, including the two measured traps: the currency shape stays text, and the
+        // closer's follower is tested by SYNTAX CLASS (`-` rejects where `.` accepts).
+        "latex-fragment-dollar-simple",
+        "latex-fragment-dollar-display",
+        "latex-fragment-dollar-rejects",
+        "latex-fragment-dollar-closer-class",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

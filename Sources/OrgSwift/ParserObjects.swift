@@ -391,10 +391,33 @@ extension OrgParser {
             //     https://q.com  id:q  src_a{b}  call_a()
             //
             // and the one exception, also measured: `<<<$a$>>>` against `x $a$ y` gives a
-            // latex-fragment and NO radio link. This branch throws either way, so keeping it here
-            // is an over-throw that covers both of org's answers; letting the radio scan run first
-            // would emit a link where org emits a fragment.
-            if c == "$" { throw OrgError.unimplemented("$-delimited latex fragment") }
+            // latex-fragment and NO radio link. So a `$` that OPENS a fragment is emitted here,
+            // before the radio scan. A `$` that opens NO fragment while a radio match starts at
+            // the same position is the one corner the measurement above does not cover, and it
+            // refuses rather than picking a winner. Like the `\(` form below, `latex-fragment`
+            // sits in all 19 restriction rows, so there is no container gate.
+            if c == "$" {
+                if let end = try dollarLatexMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("latex-fragment"),
+                        "value": .string(String(scalars: chars[i..<end])),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
+                }
+                if container.permits(.link), radioMatchEnd(in: chars, at: i) != nil {
+                    throw OrgError.unimplemented("$ at a radio-link candidate that is not a fragment")
+                }
+            }
 
             // RADIO links: plain text matching a `<<<target>>>` collected in pass 1. Empty in
             // pass 1 itself, so this costs nothing there. See `parseOrg` for the two-pass shape
@@ -1183,9 +1206,8 @@ extension OrgParser {
     ///
     /// Everything else a backslash opens keeps throwing. `\command{arg}` really is a fragment and
     /// `\alpha` really is an entity, but they are told apart by a LOOKUP in that 414-name table,
-    /// not by shape, so implementing either needs the whole table. `$` keeps throwing too: it is
-    /// a fragment in org, but it appears in ordinary prose as currency and its delimitation is
-    /// fiddly, so the blast radius of guessing is real and it costs no case.
+    /// not by shape, so implementing either needs the whole table. The `$` forms live in
+    /// `dollarLatexMatch` below, with their own measured rules.
     ///
     /// Measured, with the delimiters INCLUDED in `value` and the closer being the matching one:
     ///
@@ -1209,6 +1231,82 @@ extension OrgParser {
             j += 1
         }
         return nil
+    }
+
+    /// A `$...$` or `$$...$$` latex fragment opening at `i`, or nil when this `$` opens none.
+    ///
+    /// Transcribed from `org-element-latex-fragment-parser` (org-element.el, org 9.7.11) and
+    /// then measured through a 20-case battery against the oracle; both agree on every case.
+    ///
+    /// `$$...$$`: chosen whenever the NEXT scalar is also `$`, and closed by the first later
+    /// `$$` with NO other condition -- it crosses newlines, its contents may hold a lone `$`,
+    /// and when no `$$` follows there is no fragment at all (the single-`$` rule is never tried
+    /// from this position). Measured: `$$a b$$` and `$$x$ y$$` are fragments; `$$` alone and
+    /// `$x$$y$` are plain text.
+    ///
+    /// Single `$`: four conditions, all measured --
+    ///   - the scalar BEFORE the opener is not `$`;
+    ///   - the scalar after the opener is none of space, tab, newline, `,`, `.`, `;`;
+    ///   - the closer is the NEXT `$` (org never retries a later one), and the scalar before
+    ///     it is none of space, tab, newline, `,`, `.` (`;` IS legal there, asymmetrically);
+    ///   - the scalar after the closer is end-of-text, a newline, `'`, or an ASCII scalar whose
+    ///     org-mode SYNTAX CLASS is punctuation, whitespace, open, close, or string-quote.
+    ///
+    /// That last condition is the trap: it is a syntax-table test, not a char list. The table
+    /// was dumped from a live org-mode buffer (`char-syntax` over ASCII 33..126, 2026-08-07):
+    /// letters, digits, `$` and `%` are class `w`; `& * + - / = \ | ~ _` are class `_` (symbol);
+    /// and BOTH classes reject -- so `$x$- done` is plain text while `$x$. done` is a fragment.
+    /// `'` is class `w` yet accepted, because org's regexp names it literally. The accepting
+    /// ASCII set is exactly: space, tab, `! # , . : ; ? @ ^` + backtick, `( < [ {`, `) > ] }`,
+    /// `"`, and `'`. A NON-ASCII scalar after the closer is undecidable without measuring its
+    /// syntax class, so it refuses rather than guessing.
+    ///
+    /// No fragment forms mid-word from the CLOSER side only; the OPENER side is unguarded, and
+    /// `word$x$ done` really is a fragment, measured. `$5 and $6` is plain text (space before
+    /// the candidate closer), which is what keeps ordinary currency out.
+    private func dollarLatexMatch(in chars: [Unicode.Scalar], at i: Int) throws -> Int? {
+        guard i + 1 < chars.count else { return nil }
+        if chars[i + 1] == "$" {
+            var j = i + 2
+            while j + 1 < chars.count {
+                if chars[j] == "$", chars[j + 1] == "$" { return j + 2 }
+                j += 1
+            }
+            return nil
+        }
+        if i > 0, chars[i - 1] == "$" { return nil }
+        let afterOpener = chars[i + 1]
+        if afterOpener == " " || afterOpener == "\t" || afterOpener == "\n"
+            || afterOpener == "," || afterOpener == "." || afterOpener == ";" {
+            return nil
+        }
+        var j = i + 1
+        while j < chars.count, chars[j] != "$" { j += 1 }
+        guard j < chars.count else { return nil }
+        let beforeCloser = chars[j - 1]
+        if beforeCloser == " " || beforeCloser == "\t" || beforeCloser == "\n"
+            || beforeCloser == "," || beforeCloser == "." {
+            return nil
+        }
+        let after = j + 1
+        if after < chars.count, chars[after] != "\n" {
+            let s = chars[after]
+            let isASCIIAlnum = (s >= "0" && s <= "9") || (s >= "a" && s <= "z")
+                || (s >= "A" && s <= "Z")
+            let accepting = "\t !#,.:;?@^`(<[{)>]}\"'"
+            let rejecting = "$%&*+-/=\\|~_"
+            if accepting.unicodeScalars.contains(s) {
+                // measured accepting classes: punctuation, whitespace, open, close,
+                // string-quote, plus the literal `'`
+            } else if isASCIIAlnum || rejecting.unicodeScalars.contains(s) {
+                return nil
+            } else {
+                // Non-ASCII, or an ASCII control scalar outside the measured 33..126 range:
+                // its syntax class was never dumped, so neither answer can be trusted.
+                throw OrgError.unimplemented("unmeasured scalar after a $-fragment closer")
+            }
+        }
+        return j + 1
     }
 
     /// Index just past a statistics cookie starting at `i`, or nil.
