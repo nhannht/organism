@@ -1,0 +1,5 @@
+[[https://e.com][a \alpha b]]
+
+[[https://e.com][path C:\temp\x]]
+
+[[https://e.com][ends with \]]

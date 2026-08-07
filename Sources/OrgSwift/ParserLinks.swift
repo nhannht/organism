@@ -247,12 +247,20 @@ extension OrgParser {
     /// the bare URL inside. A parser that treated `][]]` as "empty description, close enough"
     /// would emit one regular link where org emits three nodes.
     ///
-    /// **Backslashes refuse.** `:raw-link` is UNESCAPED by org, so the path is not the source
-    /// text: `[[a\]b]]` has path `a]b`. The unescaping rule is a run-length rule interacting with
-    /// the terminator search, and probing found forms where org declines to make a link at all
-    /// (`[[a\\[b]]` produces none). Rather than ship a half-characterized rule as a silent wrong
-    /// tree, any backslash anywhere in the bracket payload throws. No conformance fixture
-    /// exercises one, the refusal is suite-visible, and it is tracked rather than forgotten.
+    /// **Backslashes in the TARGET refuse.** `:raw-link` is UNESCAPED by org, so the path is
+    /// not the source text: `[[a\]b]]` has path `a]b`. The unescaping rule is a run-length rule
+    /// interacting with the terminator search (org-link-bracket-re's target group), and probing
+    /// found forms where org declines to make a link at all (`[[a\\[b]]` produces none). Rather
+    /// than ship a half-characterized rule as a silent wrong tree, any backslash in the target
+    /// throws. The refusal also covers escaped-bracket targets shifting where the description
+    /// starts: `[[a\]b][d]]`'s target scan stops at the escaped `]` with the `a\` prefix in
+    /// hand, and the backslash throws before a mis-split can be emitted.
+    ///
+    /// The DESCRIPTION is different and backslashes there parse: org's description group is a
+    /// non-greedy `(+? anychar)` with NO escape rule -- `]]` closes it whatever precedes -- so
+    /// a `\` in a description is ordinary object content (an entity, a latex fragment, or plain
+    /// text), handled by the object layer since those landed. The old blanket refusal stood
+    /// only while `\` had no object-level answer.
     func bracketLinkMatch(in chars: [Unicode.Scalar], at i: Int) throws -> LinkMatch? {
         guard i + 1 < chars.count, chars[i] == "[", chars[i + 1] == "[" else { return nil }
 
@@ -283,7 +291,6 @@ extension OrgParser {
         guard k + 1 < chars.count else { return nil }
         let description = Array(chars[(j + 2)..<k])
         guard !description.isEmpty else { return nil }
-        if description.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link description") }
 
         return LinkMatch(
             end: k + 2, linkType: "regular",

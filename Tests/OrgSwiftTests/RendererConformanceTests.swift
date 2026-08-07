@@ -161,6 +161,7 @@ struct RendererConformanceTests {
         "line-break-in-verse",
         "line-break-simple",
         "link-angle",
+        "link-description-backslash",
         "link-plain",
         "link-radio",
         "link-regular-no-description",

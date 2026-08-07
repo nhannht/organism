@@ -73,6 +73,11 @@ struct OracleDiffTests {
         // the bracket-target newline collapse.
         "real/doomemacs-docs/getting_started.org",
         "real/org-mode-samples/text.org",
+        // The LAST file in. Its blocker was one refusal: a backslash inside a bracket-link
+        // description. The lift was not a link change at all -- the description group has no
+        // escape rule, so the `\` just needed an object-level answer, which entities and
+        // command fragments provided. With this entry the set is 13 of 13.
+        "real/doomemacs-docs/faq.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

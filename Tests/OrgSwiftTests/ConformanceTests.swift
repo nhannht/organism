@@ -148,6 +148,9 @@ struct ConformanceTests {
         // clock regexp REJECTS into a paragraph (single-ts + duration, active ts, glued
         // bracket, one-digit minutes).
         "clock-forms",
+        // Backslashes inside a bracket-link DESCRIPTION (the description group has no escape
+        // rule): an entity, bare command fragments, and a trailing lone backslash as text.
+        "link-description-backslash",
         // The clock byte-loss fixture (keyword case, spacing, tab-duration drop) -- parse
         // side asserts here; the render loss lives in schemaLossCases (section 10 item 12).
         "clock-normalization",
