@@ -521,21 +521,35 @@ CAPTION is in `org-element-multiple-keywords', confirmed live: two
 `#+CAPTION:' lines before one table produced a genuine two-entry list, in
 order, not the single last-one-wins value an earlier version of this
 function kept via `(caar (last caption))'. Each entry is itself a 2-element
-list `(LONG SHORT)' - CAPTION is ALSO in `org-element-dual-keywords':
+CONS `(LONG . SHORT)' - CAPTION is ALSO in `org-element-dual-keywords':
 LONG is always a list of parsed object-nodes (even for a single resulting
-object, e.g. plain text with no markup still comes back as a 1-element
-list); SHORT is a single raw, propertized STRING when the
-`#+CAPTION[short]: long' dual form was used, or absent, making the entry a
-1-element list, otherwise. Confirmed live both ways: `(cdr entry)' is always
-a proper (nil-terminated) list, never a dotted pair, so `(cadr entry)' safely
-reads SHORT (or nil) either way - CAPTION's own dual form does not use the
-dotted-pair shape RESULTS below does."
+object, e.g. plain text with no markup still comes back as a 1-element list),
+and SHORT is ANOTHER such list, or nil when the dual form was not used.
+Read from org-element's own source, which builds the pair with a bare
+`(cons value dual-value)' (org-element.el:4901) and parses dual-value through
+`org-element--parse-objects' whenever the keyword is a parsed one, which
+CAPTION is.
+
+ORG-16: this used to read SHORT with `(cadr entry)' on a docstring claim that
+it was \"a single raw, propertized STRING\". It is not, and the wrong read had
+two distinct failure modes that a plain-text short hides completely, because
+a plain-text short is a ONE-element list and `(cadr entry)' happens to return
+its only element:
+
+  #+CAPTION[short]: long    (cadr entry) -> \"short\"          accidentally right
+  #+CAPTION[a *b* c]: long  (cadr entry) -> \"a \"             SILENT TRUNCATION
+  #+CAPTION[*b*]: long      (cadr entry) -> a bold NODE       json-serialize CRASH
+
+The crash is the loud one -- `json-serialize' rejects the node's killed-buffer
+`:parent' -- and the truncation is the dangerous one. `(cdr entry)' is the
+whole secondary string and is what this now reads, through the same
+`org-swift--dump-secondary-or-null' every other secondary value uses."
   (org-swift--json-array
     (mapcar
       (lambda (entry)
         (org-swift--plain-object
           `(("long" . ,(org-swift--dump-secondary (car entry)))
-            ("short" . ,(org-swift--str-or-null (cadr entry))))))
+            ("short" . ,(org-swift--dump-secondary-or-null (cdr entry))))))
       caption)))
 
 (defun org-swift--dump-results (results)

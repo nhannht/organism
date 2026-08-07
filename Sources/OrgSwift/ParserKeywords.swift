@@ -91,20 +91,18 @@ extension OrgParser {
     /// - **Dynamic blocks** (`#+BEGIN:`). With a matching `#+END:` this is a `dynamic-block`;
     ///   WITHOUT one it is a `paragraph`, NOT a keyword -- org does not fall back to keyword
     ///   parsing for it. Two different unimplemented answers, so it throws either way.
-    /// - **Babel calls** (`#+CALL:`, any case). Org parses this as a `babel-call` element, not a
-    ///   keyword: `#+CALL: myfunc()` gives `babel-call` with value `"myfunc()"`, and `#+CALL:`
-    ///   with an empty value still gives `babel-call`. `babel-call` is NOT one of the node types
-    ///   `schema/org-node.schema.json` maps, so the correct output is `notImplemented` -- not a
-    ///   `babel-call` node, and certainly not the `keyword` node this used to emit.
+    /// **Babel calls are GONE from this set.** `#+CALL:` is a `babel-call` element and now parses
+    /// as one, dispatched by `babelCallValue` before the keyword branch is reached. The exactness
+    /// note below moved there with it: `#+CALLX:` and `#+CALLBACK:` are ordinary keywords.
     ///
     /// `#+END:` deliberately sits on the OTHER side of this predicate, which looks like an
     /// inconsistency and is not: `#+END:` on its own IS an ordinary keyword, key `END`, value
     /// `""` (measured). It only stops being one when a `#+BEGIN:` above it consumes it, and any
     /// document containing such a `#+BEGIN:` has already thrown by then.
     ///
-    /// The `CALL` match is exact, not a prefix: `#+CALLX: v` and `#+CALLBACK: v` are ordinary
-    /// keywords, measured. So are `#+INCLUDE:`, `#+MACRO:`, `#+FILETAGS:`, and a `#+TBLFM:` with
-    /// no table above it -- that last one looks like it should be special and genuinely is not.
+    /// Also ordinary keywords, all measured: `#+INCLUDE:`, `#+MACRO:`, `#+FILETAGS:`, and a
+    /// `#+TBLFM:` with no table above it -- that last one looks like it should be special and
+    /// genuinely is not.
     static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
@@ -401,36 +399,30 @@ extension OrgParser {
     /// `org-element-parsed-keywords` and RESULTS is not, so CAPTION's secondary value goes through
     /// `org-element--parse-objects` (an empty range yields no objects, hence nil) while RESULTS'
     /// is kept as the raw match (hence `""`). A whitespace-only bracket parses to one text object
-    /// either way, so `#+CAPTION[  ]:` is `"  "`, not null -- only the truly EMPTY bracket differs.
+    /// either way, so `#+CAPTION[  ]:` is one text node, not null -- only the truly EMPTY bracket
+    /// differs.
     ///
-    /// **The `objects.count == 1` guard is a refusal to reproduce a defect in the oracle, and it
-    /// is deliberately not a workaround for one.** Because CAPTION is a parsed keyword, its
-    /// secondary value is a LIST of objects, but `harness/oracle-dump.el`'s `org-swift--dump-caption`
-    /// reads it with `(cadr entry)`, which takes only the list's FIRST object -- and its own
-    /// docstring asserts the value is "a single raw, propertized STRING", which org-element's
-    /// source contradicts. For a plain-text short the list has exactly one element and the read is
-    /// accidentally correct, which is why every fixture passes. For a marked-up short it silently
-    /// truncates: `#+CAPTION[a *b* c]:` dumps `short` as `"a "`, losing `*b*` and `"c"`.
+    /// **`short` is a SECONDARY STRING, not a string, and that is ORG-16.** Being a parsed
+    /// keyword is the whole reason: org builds the entry as a bare `(cons LONG DUAL)` and runs
+    /// DUAL through `org-element--parse-objects` whenever the keyword is parsed
+    /// (org-element.el:4885-4901), so the two halves of a caption are the same KIND of value.
+    /// Three shapes, and a plain-text short hides both defects because it is a ONE-element list:
     ///
-    /// This parser therefore emits a short ONLY when it is a single plain-text run, where the
-    /// oracle is right, and throws otherwise rather than reproducing the truncation. Reported to
-    /// `main`; SCHEMA.md also types `short` as a plain string, so representing a marked-up short
-    /// needs a schema answer, not a parser one.
+    ///     #+CAPTION[short]: long      one text node                accidentally fine before
+    ///     #+CAPTION[a *b* c]: long    text, bold, text             was TRUNCATED to `a `
+    ///     #+CAPTION[*b*]: long        one bold node                CRASHED the oracle
+    ///
+    /// This parser used to throw on anything but the first shape rather than reproduce the
+    /// oracle's truncation, which was the right call while the schema still typed `short` as a
+    /// string. The schema now types it `[object-nodes] or null`, so there is nothing left to
+    /// refuse and the throw is gone.
+    ///
+    /// The SHORT form is the same keyword container as `long`, so it carries the same ORG-22
+    /// permission: a caption permits `line-break`, org's `keyword` restriction row being the
+    /// standard set minus `footnote-reference`.
     private func captionShort(_ dual: String?) throws -> OrgJSON {
-        guard let dual else { return .null }
-        guard !dual.isEmpty else { return .null }
-        // The caption SHORT form is the same keyword container as `long`, so it carries the same
-        // ORG-22 permission. It is moot for the value this returns -- a short containing a
-        // `line-break` cannot be a single plain-text run, so it throws below either way -- but a
-        // table whose two halves disagree about the same container is how the next reader
-        // learns the wrong rule.
-        let objects = try parseObjects(dual, in: .keyword)
-        guard objects.count == 1,
-              let only = objects.first?.objectValue,
-              only["type"] == OrgJSON.string("text") else {
-            throw OrgError.unimplemented("keyword dual value containing markup")
-        }
-        return .string(dual)
+        guard let dual, !dual.isEmpty else { return .null }
+        return .array(try parseObjects(dual, in: .keyword))
     }
 
     // MARK: File-level settings (the two-pass scan)

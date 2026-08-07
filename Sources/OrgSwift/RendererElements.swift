@@ -459,10 +459,14 @@ extension OrgRenderer {
                     } else if let dual = entry.objectValue, let long = dual["long"]?.arrayValue {
                         var head = "#+\(key)"
                         if let short = dual["short"], short != .null {
-                            guard let s = short.stringValue else {
-                                throw OrgError.malformedTree("\(elementType): affiliated '\(key)' short is neither string nor null")
+                            // ORG-16: `short` is a SECONDARY STRING, the same kind of value as
+                            // `long`, because CAPTION is a parsed keyword. It was a plain string
+                            // here until 2026-08-07, which silently dropped every marked-up
+                            // short: `#+CAPTION[a *b* c]:` kept only `a `.
+                            guard let objects = short.arrayValue else {
+                                throw OrgError.malformedTree("\(elementType): affiliated '\(key)' short is neither an object array nor null")
                             }
-                            head += "[\(s)]"
+                            head += "[" + (try renderObjects(objects)) + "]"
                         }
                         out += head + ": " + (try renderObjects(long)) + "\n"
                     } else {

@@ -431,8 +431,23 @@ Each entry's `"value"` shape depends on the key, exactly as before the array con
 `NAME`/`PLOT` a plain **string** (last occurrence wins); `HEADER` and the open-ended `ATTR_*`
 family an **array of strings**, one per line, in source order; `RESULTS` an object
 `{"value", "hash"}` (`hash` null unless the `#+RESULTS[hash]:` dual form was used); `CAPTION`
-an **array of `{"long", "short"}` entries**, one per line, `long` an array of parsed
-object-nodes, `short` a string or null.
+an **array of `{"long", "short"}` entries**, one per line, with `long` and `short` BOTH arrays
+of parsed object-nodes -- `short` null when the `#+CAPTION[short]: long` dual form was not used.
+
+`short` was typed as a plain **string** until 2026-08-07 (ORG-16), and that was wrong in org's
+own terms. CAPTION is in `org-element-parsed-keywords`, so org builds the entry as a bare
+`(cons LONG DUAL)` and runs DUAL through `org-element--parse-objects` exactly as it does the
+long half (`org-element.el:4885-4901`). A plain-text short hid it completely, because such a
+short is a ONE-element list and reading its first element happens to give the right answer.
+Two shapes it did not survive: `#+CAPTION[a *b* c]:` was silently TRUNCATED to `a `, and
+`#+CAPTION[*b*]:` CRASHED the oracle outright, `json-serialize` refusing the bold node's
+killed-buffer `:parent`. Pinned by `conformance/affiliated-caption-short-markup`.
+
+An EMPTY bracket is not an empty array: `#+CAPTION[]:` gives `short` null, because parsing an
+empty range yields no objects and nil is also what "no bracket" produces. Contrast
+`#+RESULTS[]:`, whose `hash` is the empty STRING -- RESULTS is not a parsed keyword, so its dual
+value is kept as the raw match. The two brackets look identical and follow different rules.
+That collapse is section 10 item 13.
 
 The `ATTR_*` family's key class is `ATTR_[-_A-Z0-9]+`, and both halves of that are measured
 rather than assumed. org's own `org-element--affiliated-re` allows `ATTR_[-_A-Za-z0-9]+`, so a
@@ -717,7 +732,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 13 known instances,
+read (per-type properties outside this schema's curated field set). 14 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -727,7 +742,7 @@ substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:
 `:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
 read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
 `rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
-each pinned by a conformance fixture. What remains below is 11 items that no tree built on
+each pinned by a conformance fixture. What remains below is 12 items that no tree built on
 `org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
 recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
 and 10 below -- which is the ordinary result of actually checking, and they are listed here
@@ -842,6 +857,16 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    round-trips byte-exact even where org's own interpreter -- which rebuilds from
    `:call`/`:inside-header`/`:arguments`/`:end-header` -- would apply the identical
    normalization and lose the bytes. Same relationship as `macro`, and for the same reason.
+13. Empty caption bracket -- `#+CAPTION[]: x` re-emits as `#+CAPTION: x`. Reason A, and the
+   same upstream-normalization shape as item 12: CAPTION is a parsed keyword, so org runs its
+   dual value through `org-element--parse-objects`, and an empty range yields no objects. The
+   resulting nil is the identical value "no bracket was written" produces, so the two inputs are
+   the SAME tree and no renderer can tell them apart. `org-element-interpret-data` drops the
+   bracket too, measured (51 bytes in, 49 out). Not shared by `#+RESULTS[]:`, which keeps the
+   empty string because RESULTS is not parsed. Pinned by
+   `conformance/affiliated-caption-short-empty`, a permanent resident of
+   `RendererConformanceTests.schemaLossCases`.
+
 
 12. Clock-line normalization, Reason A, four byte classes in one line shape (all probed live
    on Emacs 30.2, pinned by `conformance/clock-normalization` in

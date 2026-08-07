@@ -253,6 +253,12 @@ struct ConformanceTests {
         // paragraph and `%%not` is a paragraph, both measured, and the old blanket `%%(`
         // refusal got the indented one wrong.
         "diary-sexp-forms",
+        // C1 / ORG-16: a caption SHORT carrying markup. Before this landed the oracle
+        // CRASHED on the first line (json-serialize on a node with a killed-buffer
+        // parent) and silently truncated the second to `a `. The third is the control:
+        // an empty bracket really is null, not an empty array.
+        "affiliated-caption-short-markup",
+        "affiliated-caption-short-empty",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

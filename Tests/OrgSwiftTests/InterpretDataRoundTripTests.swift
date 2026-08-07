@@ -183,6 +183,22 @@ struct InterpretDataRoundTripTests {
         // paragraph and the `%%not` paragraph come back byte-identical, which is the point
         // of the fixture. renderOrg reproduces the whole file exactly.
         "conformance/diary-sexp-forms",
+        // ORG-16's two caption fixtures, and they diverge for DIFFERENT reasons, which is why
+        // they are listed together with both measurements rather than folded into the
+        // case-fold group above.
+        //
+        // `-short-markup`: pure keyword-name case-folding, 105 bytes in, 105 out, first
+        // difference at offset 2 (`#+CAPTION[*bold short*]:` -> `#+caption[*bold short*]:`).
+        // The byte count is UNCHANGED, so both marked-up shorts survive org's own re-emit
+        // intact -- which is the fixture's point: before this commit the same input crashed
+        // the oracle outright.
+        //
+        // `-short-empty`: the case-fold PLUS a two-byte shrink, 51 in, 49 out, because
+        // `#+CAPTION[]:` re-emits as `#+caption:`. That is SCHEMA.md section 10 item 13 and
+        // is org losing the bytes, not this repository -- an empty bracket parses to no
+        // objects, the same nil "no bracket" produces.
+        "conformance/affiliated-caption-short-markup",
+        "conformance/affiliated-caption-short-empty",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

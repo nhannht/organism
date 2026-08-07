@@ -1,0 +1,5 @@
+#+CAPTION[*bold short*]: A long caption
+| a |
+
+#+CAPTION[a *b* c]: Three objects in the short form
+| b |

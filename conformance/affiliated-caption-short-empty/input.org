@@ -1,0 +1,2 @@
+#+CAPTION[]: Empty bracket, so short is null
+| c |

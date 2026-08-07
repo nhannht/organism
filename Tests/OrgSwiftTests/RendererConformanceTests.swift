@@ -225,6 +225,11 @@ struct RendererConformanceTests {
         // paragraph and `%%not` is a paragraph, both measured, and the old blanket `%%(`
         // refusal got the indented one wrong.
         "diary-sexp-forms",
+        // C1 / ORG-16: a caption SHORT carrying markup. Before this landed the oracle
+        // CRASHED on the first line (json-serialize on a node with a killed-buffer
+        // parent) and silently truncated the second to `a `. The third is the control:
+        // an empty bracket really is null, not an empty array.
+        "affiliated-caption-short-markup",
     ]
 
     /// PERMANENT. Not "pending" -- the tree provably cannot carry these bytes, so no amount of
@@ -258,6 +263,15 @@ struct RendererConformanceTests {
         // itself re-emits `- folded` for `- [x] folded`, measured -- no tree built on
         // org-element can carry the byte, so the render is correct AND cannot equal the input.
         "list-checkbox-forms",
+        // Reason A, SCHEMA.md section 10 item 13: an EMPTY caption bracket. CAPTION is a
+        // parsed keyword, so org runs its dual value through org-element--parse-objects,
+        // and an empty range yields no objects -- nil, the same value "no bracket was
+        // written" produces. `#+CAPTION[]: x` and `#+CAPTION: x` are the SAME tree, so the
+        // render is correct AND cannot equal the input. org-element itself re-emits
+        // `#+caption: x`, measured (157 bytes in, 155 out on the larger draft of this
+        // fixture). Contrast `#+RESULTS[]:`, which keeps the empty STRING because RESULTS
+        // is NOT a parsed keyword -- the two brackets look identical and are not.
+        "affiliated-caption-short-empty",
         // Reason A, SCHEMA.md section 10 item 11: headline-line trailing whitespace with no
         // tag group. `**  ` holds title [text ""] with the second separator space in no
         // property; interpret-data itself re-emits `** ` (12 bytes in, 11 out, measured on
