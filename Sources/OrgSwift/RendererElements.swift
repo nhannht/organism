@@ -24,6 +24,20 @@ extension OrgRenderer {
             body = try renderObjects(try array(node, "children", type))
         case "keyword":
             body = "#+\(try string(node, "key", type)): \(try string(node, "value", type))\n"
+        case "babel-call":
+            // Beats `org-element-babel-call-interpreter` twice, and both wins come from carrying
+            // `value` whole instead of rebuilding from the four derived slots. org emits
+            //     (concat "#+call: " :call [ "[" ih "]" ] "(" args ")" [ " " eh ])
+            // which inserts a SPACE before the end-header that was never in the source
+            // (`#+CALL: f()[:c]` becomes `#+CALL: f() [:c]`), and turns an EMPTY call into
+            // `#+call: ()`. Emitting the value verbatim does neither.
+            //
+            // The empty case drops the separator too, so `#+CALL:` round-trips byte-exact
+            // rather than gaining a trailing space. The keyword's own CASE is still lost --
+            // `#+call:` re-emits uppercase, SCHEMA.md section 10 item 1's family, since no
+            // property carries it.
+            let call = try string(node, "value", type)
+            body = call.isEmpty ? "#+CALL:\n" : "#+CALL: \(call)\n"
         case "comment":
             // The `#` marker plus one space per line was stripped into `value` (SCHEMA.md
             // section 4); re-emit it per line. The final newline belongs to the element.

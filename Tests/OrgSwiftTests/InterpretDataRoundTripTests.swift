@@ -156,6 +156,25 @@ struct InterpretDataRoundTripTests {
         // forbid (ORG-15), so a future divergence that mangled the hyphen rather than the case
         // must not be absorbed silently into the group entry above.
         "conformance/affiliated-attr-hyphenated-backend",
+        // THREE divergences in one file, and only the first is the ordinary case-fold, so this is
+        // listed separately rather than folded into the group above. Full before/after text
+        // inspected on Emacs 30.2 (128 bytes in, 132 out, first difference at offset 2), all five
+        // changed lines reproduced:
+        //
+        //     #+CALL: report()                     -> #+call: report()
+        //     #+CALL: r[:results output](x=1)[:e]  -> #+call: r[...](x=1) [:e]   <- SPACE added
+        //     #+CALL: a:b()                        -> #+call: a:b()
+        //     #+CALL:                              -> #+call: ()                 <- () fabricated
+        //     #+CALLX: not a call                  -> #+callx: not a call
+        //
+        // The two beyond the case-fold are org's own serializer inventing bytes:
+        // `org-element-babel-call-interpreter` rebuilds the line from :call/:inside-header/
+        // :arguments/:end-header rather than from :value, so it emits `" " eh` for an end-header
+        // that had no space in front of it, and `(concat "(" nil ")")` for an empty call.
+        // `renderOrg` carries `value` whole and reproduces all five lines byte-exact, so this
+        // fixture is one where THIS repository's renderer beats interpret-data, not the reverse.
+        // The `#+CALLX:` line is the control: an ordinary keyword, and it must stay one.
+        "conformance/babel-call-forms",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

@@ -272,6 +272,21 @@ Rules:
 - `keyword` -- `key` (string, **UPPERCASE**, e.g. `"TITLE"`, `"TODO"`), `value` (string,
   verbatim, unless the key is in the parsed-keyword set -- none of the Layer 1 corpus cases
   exercise a parsed keyword value, so `value` is always a plain string in this corpus).
+- `babel-call` -- leaf ELEMENT, a `#+CALL:` line. `value`: string, everything after the FIRST
+  colon on the line with leading blanks skipped and the run trimmed. It is NOT a `keyword` node
+  and has no `key`. Three things a "split on the colon" reading gets wrong, all measured:
+  `#+CALL: a:b()` has the value `"a:b()"` (later colons are ordinary value bytes);
+  `#+CALL:foo()` needs no separating space; and `#+CALL:` alone is still a babel-call, with the
+  EMPTY string as its value. The name match is exact -- `#+CALLX:` and `#+CALLBACK:` are ordinary
+  keywords. `org-element`'s `:call`, `:inside-header`, `:arguments` and `:end-header` are
+  re-readings of the same bytes and are not duplicated, the same rule `macro` uses.
+
+  **`renderOrg` beats `org-element-interpret-data` here, twice.** Emacs rebuilds the line from
+  the four derived slots, so it emits a space that was never in the source before an end-header
+  (`#+CALL: f()[:c]` becomes `#+CALL: f() [:c]`) and fabricates `()` for an empty call
+  (`#+CALL:` becomes `#+call: ()`). Carrying `value` whole reproduces both byte-exact. What is
+  still lost is the keyword's own CASE and any leading indentation, which are section 10 items 1
+  and 2, not new losses. Pinned by `conformance/babel-call-forms`.
 
 ### Misc leaves / small containers
 

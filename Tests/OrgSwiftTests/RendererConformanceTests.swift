@@ -213,6 +213,9 @@ struct RendererConformanceTests {
         // characters that suppress the construct.
         "inline-src-block-forms",
         "inline-babel-call-forms",
+        // B2: the `#+CALL:` element. Includes the empty-value form, which is still a
+        // babel-call, and a `#+CALLX:` control that must stay an ordinary keyword.
+        "babel-call-forms",
     ]
 
     /// PERMANENT. Not "pending" -- the tree provably cannot carry these bytes, so no amount of

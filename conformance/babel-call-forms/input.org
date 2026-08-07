@@ -1,0 +1,11 @@
+#+CALL: report()
+
+#+CALL: report[:results output](x=1)[:exports both]
+
+#+CALL: a:b()
+
+#+CALL:
+
+#+CALLX: not a call
+
+Text after.

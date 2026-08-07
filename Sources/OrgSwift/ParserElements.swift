@@ -493,6 +493,19 @@ extension OrgParser {
             ]), end + 1)
         }
 
+        if let value = OrgParser.babelCallValue(of: line) {
+            // A `#+CALL:` line is a `babel-call` ELEMENT, never a keyword, and it is one even
+            // when it carries nothing at all: `#+CALL:` alone gives a babel-call whose value is
+            // the empty string. That is why this sits BEFORE the keyword branch rather than
+            // inside it -- `keywordParts` would happily report key `CALL`, which is the tree org
+            // does not build.
+            return (.object([
+                "type": .string("babel-call"),
+                "value": .string(value),
+                "postBlank": .int(0),
+            ]), i + 1)
+        }
+
         if !OrgParser.isUnimplementedHashPlusElement(line),
            let (key, value) = OrgParser.keywordParts(of: line) {
             // An affiliated keyword reaching HERE is one that attached to nothing, so it stands

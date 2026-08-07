@@ -241,6 +241,9 @@ struct ConformanceTests {
         // characters that suppress the construct.
         "inline-src-block-forms",
         "inline-babel-call-forms",
+        // B2: the `#+CALL:` element. Includes the empty-value form, which is still a
+        // babel-call, and a `#+CALLX:` control that must stay an ordinary keyword.
+        "babel-call-forms",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

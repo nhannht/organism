@@ -118,7 +118,44 @@ extension OrgParser {
         let lower = OrgParser.asciiLowered(String(scalars: line.text[line.contentStart...]))
         return lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
             || lower == "#+begin"
-            || lower.hasPrefix("#+call:")
+    }
+
+    /// The `:value` of a `#+CALL:` line, or nil when the line is not one.
+    ///
+    /// `org-element-babel-call-parser` (org-element.el:2229) computes it in three steps that a
+    /// "split on the colon" reading gets wrong:
+    ///
+    ///     (search-forward ":" before-blank t)   the FIRST colon on the line, which is the one
+    ///                                           in `#+CALL:` itself
+    ///     (skip-chars-forward " \t")            leading blanks after it are not value
+    ///     (org-trim (point) (line-end-position))
+    ///
+    /// So `#+CALL: a:b()` has the value `a:b()` -- the LATER colons are ordinary value bytes --
+    /// and `#+CALL:foo()` has `foo()` with no separator required. Measured, both.
+    ///
+    /// The value MAY be empty. `#+CALL:` and `#+CALL: ` are both babel-calls whose value is `""`,
+    /// which is exactly why this returns an optional String rather than using emptiness as the
+    /// "not a call" signal.
+    ///
+    /// The name match is EXACT: `#+CALLX:` and `#+CALLBACK:` are ordinary keywords, measured.
+    /// Leading indentation is allowed and is not part of the value -- `  #+CALL: foo()` is a
+    /// babel-call, and the two leading spaces survive in no property (SCHEMA.md section 10,
+    /// item 2's family).
+    static func babelCallValue(of line: Line) -> String? {
+        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
+        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
+        let content = Array(line.text[line.contentStart...])
+        let prefix = Array("#+call:".unicodeScalars)
+        guard content.count >= prefix.count else { return nil }
+        for (offset, expected) in prefix.enumerated()
+        where OrgParser.asciiLowered(content[offset]) != expected {
+            return nil
+        }
+        var j = prefix.count
+        while j < content.count, content[j] == " " || content[j] == "\t" { j += 1 }
+        var end = content.count
+        while end > j, content[end - 1] == " " || content[end - 1] == "\t" { end -= 1 }
+        return String(scalars: content[j..<end])
     }
 
     // MARK: Affiliated keywords

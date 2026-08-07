@@ -805,6 +805,16 @@ form; each shape's own measurement lives in the inline comments below and in
             ;; `macro' above, so the four are not duplicated onto the node.
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('babel-call
+            ;; A `#+CALL:' line, an ELEMENT (affiliated keywords attach; measured).
+            ;; `:value' is everything after the FIRST colon on the line, leading
+            ;; whitespace skipped and the whole run `org-trim'med -- so
+            ;; `#+CALL: a:b()' has the value "a:b()", not "b()", and `#+CALL:'
+            ;; alone has the EMPTY string, which is still a babel-call.
+            ;; :call/:inside-header/:arguments/:end-header are re-readings of those
+            ;; same bytes and are not duplicated (same rule as `macro').
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
            ('diary-sexp
             ;; A column-0 `%%(SEXP)' line, an ELEMENT (so the shared tail below
             ;; attaches affiliated keywords -- measured: `#+NAME: d' above one
