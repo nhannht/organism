@@ -189,6 +189,7 @@ struct RendererConformanceTests {
         "timestamp-with-delay",
         "timestamp-with-repeater",
         "timestamp-with-time",
+        "underline-vs-subscript",
         "todo-default-recognized",
         "todo-default-unrecognized",
         "todo-hidden-by-unterminated-example",

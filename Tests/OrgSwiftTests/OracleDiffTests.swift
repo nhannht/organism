@@ -66,6 +66,9 @@ struct OracleDiffTests {
         "real/org-mode-samples/lists.org",
         // Joined when empty-title headlines landed (title [] vs [text ""], measured rule).
         "real/org-mode-samples/headings.org",
+        // Joined when `_` took org's lexer order (underline before subscript) and a proven
+        // script decline became text.
+        "real/doomemacs-docs/appendix.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

@@ -1,0 +1,5 @@
+a (_x_) b
+a {_x_} b
+no{_underline_}spaces
+a_b c
+e_} f

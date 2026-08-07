@@ -124,6 +124,10 @@ struct ConformanceTests {
         // Empty titles: [] only when the line ends hard against the last consumed token;
         // any trailing whitespace (the stars' separator included) gives [text ""].
         "headline-empty-title",
+        // org's lexer order at `_`: underline first, subscript second -- after the five
+        // non-space emphasis-PRE scalars both can match and underline wins. Plus the proven
+        // script decline (`e_}`) staying text.
+        "underline-vs-subscript",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

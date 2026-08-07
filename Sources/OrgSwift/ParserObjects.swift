@@ -578,7 +578,7 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                throw OrgError.unimplemented("backslash construct that is not a bracket latex fragment")
+                throw OrgError.unimplemented("backslash construct that is not a bracket latex fragment: \(Self.refusalSnippet(chars, at: i))")
             case "[":
                 // `[[...]]` is a bracket link. The other `[` objects -- footnote references
                 // (`[fn:1]`), statistics cookies (`[1/2]`, `[50%]`) and INACTIVE TIMESTAMPS
@@ -738,6 +738,21 @@ extension OrgParser {
                 // that guard is ever lifted, TWO rules break at once and in opposite directions:
                 // measured, `a\r*bold*` IS bold (CR is a valid emphasis PRE char) while `a\r_x` is
                 // NOT a subscript (CR is whitespace, so `\S-` fails).
+                // UNDERLINE is tried BEFORE the scripts, because that is org's own lexer order
+                // (`?_` in `org-element--object-lex`: underline-parser, or else
+                // subscript-parser) and the two can both match: after `-`, `(`, `'`, `"` or
+                // `{` -- the non-space members of the emphasis PRE class -- a `_` satisfies
+                // `\S-` too. Measured on all five: `no{_underline_}spaces` is text + UNDERLINE
+                // + text, never a subscript. The old order emitted the subscript and was masked
+                // by the throw below, which is gone for the same reason.
+                if c == "_", let match = emphasisMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    nodes.append(try emphasisContainerNode(
+                        "underline", .underline, match, in: chars, openedAt: i))
+                    i = match.closer + 1 + match.postBlank
+                    textStart = i
+                    continue
+                }
                 if let before = charBefore(i), !isBorderWhitespace(before) {
                     let kind: ObjectKind = c == "_" ? .subscript : .superscript
                     if container.permits(kind), let match = try scriptMatch(in: chars, at: i) {
@@ -763,21 +778,13 @@ extension OrgParser {
                         textStart = k
                         continue
                     }
-                    // No body matched. org leaves this as text, but only for the forms this
-                    // matcher can rule out; a body it declined for an undecidable reason has
-                    // already thrown above. Throwing here keeps every unrecognised `_`/`^` form
-                    // visible, which is what the plan's own withdrawn `a__b` claim cost.
-                    throw OrgError.unimplemented("unrecognized sub/superscript form")
-                }
-                // A `_` preceded by whitespace cannot open a script, but it can still open an
-                // UNDERLINE, under the same border rule as the other three container emphases.
-                if c == "_", let match = emphasisMatch(in: chars, at: i) {
-                    flushText(upTo: i)
-                    nodes.append(try emphasisContainerNode(
-                        "underline", .underline, match, in: chars, openedAt: i))
-                    i = match.closer + 1 + match.postBlank
-                    textStart = i
-                    continue
+                    // No body matched, and that is a PROOF, not a gap: `scriptMatch` is
+                    // `org-match-substring-regexp` transcribed -- braces and parens balanced to
+                    // exactly depth 3, `*`, or the signed alnum/`.,\` run -- and every
+                    // undecidable body (non-ASCII at a boundary) has already thrown inside it.
+                    // So an unmatched `_`/`^` falls through to text, org's own answer for
+                    // `e_}`. The blanket throw that stood here guarded the withdrawn `a__b`
+                    // claim; the transcription is what retired it.
                 }
             case "c", "s":
                 // `call_NAME(ARGS)` and `src_LANG{BODY}`. Both unimplemented and both OUTSIDE the
@@ -857,6 +864,13 @@ extension OrgParser {
             "children": .array(try parseObjects(contents, in: container)),
             "postBlank": .int(match.postBlank),
         ])
+    }
+
+    /// A short window of source around a refusal site, embedded in the reason so an
+    /// object-layer refusal names WHICH construct it hit, not just which rule.
+    static func refusalSnippet(_ chars: [Unicode.Scalar], at i: Int) -> String {
+        let lo = max(0, i - 12), hi = min(chars.count, i + 18)
+        return String(String(scalars: chars[lo..<hi]).map { $0 == "\n" ? " " : $0 })
     }
 
     /// Whether `[` at `i` opens a citation PREFIX -- `org-element-citation-prefix-re`:
