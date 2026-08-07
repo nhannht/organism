@@ -260,6 +260,14 @@ Rules:
   node terminates.
 - `fixed-width` -- `value`: string (a `: ...` line).
 - `statistics-cookie` -- leaf. `value`: string, e.g. `"[1/3]"` or `"[50%]"`.
+- `entity` -- leaf. `name`: string (`org-element`'s `:name`, the exact `org-entities` table
+  key -- the 20 whitespace entities' names contain their literal spaces, e.g. `"_ "`);
+  `useBrackets`: bool (`:use-brackets-p`, true when the source wrote `\name{}` and the braces
+  were consumed). Those two fields fully determine the source bytes -- Emacs's own interpreter
+  emits backslash, name, and `{}` when bracketed, nothing else. The six per-entity renderings
+  (`:latex`, `:latex-math-p`, `:html`, `:ascii`, `:latin1`, `:utf-8`) are the table row for
+  `name`, derivable by any consumer holding the same `org-entities` table, and are deliberately
+  NOT duplicated onto every node.
 - `subscript`, `superscript` -- `useBrackets` (bool, always present, `org-element`'s
   `:use-brackets-p`: `false` for `a_b`, `true` for `a_{b}`. Without it the braced and unbraced
   source forms produce an identical tree. The field name drops the Lisp predicate `-p`, following

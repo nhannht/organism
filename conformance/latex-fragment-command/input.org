@@ -1,0 +1,1 @@
+a \foo{x}[y] b, \bar* c, path C:\Users\me, lone \5 d

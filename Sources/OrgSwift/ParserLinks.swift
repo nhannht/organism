@@ -267,7 +267,9 @@ extension OrgParser {
         // `]]` closes a description-less link; `][` opens a description.
         guard j + 1 < chars.count else { return nil }
         if chars[j + 1] == "]" {
-            return LinkMatch(end: j + 2, linkType: "regular", rawTarget: target, description: nil)
+            return LinkMatch(
+                end: j + 2, linkType: "regular",
+                rawTarget: collapsingNewlineIndentation(target), description: nil)
         }
         guard chars[j + 1] == "[" else { return nil }
 
@@ -283,7 +285,35 @@ extension OrgParser {
         guard !description.isEmpty else { return nil }
         if description.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link description") }
 
-        return LinkMatch(end: k + 2, linkType: "regular", rawTarget: target, description: description)
+        return LinkMatch(
+            end: k + 2, linkType: "regular",
+            rawTarget: collapsingNewlineIndentation(target), description: description)
+    }
+
+    /// A bracket-link TARGET with each `[ \t]*\n[ \t]*` run collapsed to ONE space --
+    /// `org-element-link-parser`'s own transform for newlines inside `[[...]]` (its comment
+    /// notes the deliberate divergence from RFC 3986, which would drop them entirely). The
+    /// DESCRIPTION is untouched: its newlines stay literal text in the parsed objects,
+    /// measured (see `linkNode`'s description note). A trailing newline in the target
+    /// therefore leaves a trailing SPACE in `path`, which is org's answer for
+    /// `[[url<newline>][desc]]` in real files.
+    private func collapsingNewlineIndentation(_ target: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        var i = 0
+        while i < target.count {
+            var j = i
+            while j < target.count, target[j] == " " || target[j] == "\t" { j += 1 }
+            if j < target.count, target[j] == "\n" {
+                j += 1
+                while j < target.count, target[j] == " " || target[j] == "\t" { j += 1 }
+                out.append(" ")
+                i = j
+                continue
+            }
+            out.append(target[i])
+            i += 1
+        }
+        return out
     }
 
     /// Matches `<TYPE:...>` at `i`, or nil.

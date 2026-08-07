@@ -542,9 +542,10 @@ extension OrgParser {
 
             switch c {
             case "\\":
-                // A FORCED line break, the one `\` construct implemented. Everything else a
-                // backslash can start -- entities (`\alpha`), latex fragments (`\\b`, measured as
-                // a latex-fragment rather than a break) -- is still unimplemented.
+                // org's lexer order at `\`: line-break (only for `\\` at end of line), else
+                // entity-parser, else latex-fragment-parser. All four constructs below follow
+                // that order; a `\` that opens none of them is plain text (`\5`, `\ `, and the
+                // FIRST backslash of `\\b` -- whose second opens a fragment `\b`, measured).
                 if container.permits(.lineBreak), let past = lineBreakEnd(at: i) {
                     flushText(upTo: i)
                     // A leaf with NO `value` and NO `children`, exactly like horizontal-rule:
@@ -555,13 +556,36 @@ extension OrgParser {
                     textStart = past
                     continue
                 }
+                // ENTITY, before both fragment forms: the command form below would otherwise
+                // claim every `\alpha`. Like `latex-fragment`, `entity` sits in all 19
+                // restriction rows, so there is no container gate.
+                if let match = try entityMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("entity"),
+                        "name": .string(match.name),
+                        "useBrackets": .bool(match.useBrackets),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
+                }
                 // `latex-fragment` appears in ALL 19 restriction rows, so unlike `link`,
                 // `timestamp` and `footnote-reference` it needs no container gate. Checked
                 // end to end rather than read off the table: a fragment forms in a headline
                 // title, a table cell, a link description, a bold span, a radio target and an
                 // item. `* a \(x\) b\\` is the one that pins both rules at once -- the fragment
                 // forms AND the trailing `\\` stays literal, because a headline refuses breaks.
-                if let end = latexFragmentEnd(in: chars, at: i) {
+                // The bracket forms and the `\command` macro form emit the same leaf.
+                if let end = latexFragmentEnd(in: chars, at: i)
+                    ?? commandLatexFragmentEnd(in: chars, at: i) {
                     flushText(upTo: i)
                     var postBlank = 0
                     var k = end
@@ -578,7 +602,8 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                throw OrgError.unimplemented("backslash construct that is not a bracket latex fragment: \(Self.refusalSnippet(chars, at: i))")
+                // All four `\` matchers above are transcriptions with proven declines, so a
+                // backslash reaching here is ordinary text -- org's own answer.
             case "[":
                 // `[[...]]` is a bracket link. The other `[` objects -- footnote references
                 // (`[fn:1]`), statistics cookies (`[1/2]`, `[50%]`) and INACTIVE TIMESTAMPS
@@ -1230,6 +1255,24 @@ extension OrgParser {
             (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
         }
         guard i + 1 < chars.count else { return nil }
+        // The CANDIDATE gate, from `org-element--object-regexp`, and it applies to `^` ONLY:
+        // a script position is handed to this parser when the next scalar is one of `-{(*+.,`
+        // or alnum. `_` does not need that to be reached -- it re-enters through the EMPHASIS
+        // candidate (`[*~=+_/]` + non-space), whose lexer branch still falls through to the
+        // subscript parser with the FULL body grammar. So `a_\z` is a subscript while `a^\z`
+        // is no candidate at all and its `\z` parses as a latex fragment -- the measured pair
+        // is sweep i3-bs-sub / i3-bs-sup. Emacs's `[:alnum:]` here is Unicode, so a non-ASCII
+        // scalar after `^` is undecidable and throws.
+        if chars[i] == "^" {
+            let gate = chars[i + 1]
+            if !(isASCIIAlnum(gate) || gate == "-" || gate == "{" || gate == "(" || gate == "*"
+                 || gate == "+" || gate == "." || gate == ",") {
+                guard gate.isASCII else {
+                    throw OrgError.unimplemented("non-ASCII scalar after a superscript marker")
+                }
+                return nil
+            }
+        }
 
         if chars[i + 1] == "{" {
             guard let end = balancedEnd(
@@ -1300,6 +1343,103 @@ extension OrgParser {
             j += 1
         }
         return nil
+    }
+
+    /// An entity opening at `i` (`chars[i] == "\\"`), or nil -- `org-element-entity-parser`
+    /// (org 9.7.11) transcribed, then a lookup in the generated `entityNames` table (the same
+    /// `org-entities` the oracle consults; see harness/regen-entities.sh).
+    ///
+    /// The candidate regexp, in its own alternation order:
+    ///   - `_` + one-or-more SPACES (the 20 whitespace entities; their names contain the
+    ///     literal spaces, and no boundary is required);
+    ///   - `there4`, `sup[123]`, `frac[13][24]` -- the digit-bearing names, enumerated because
+    ///     the run alternative below cannot cross a digit -- or the maximal `[a-zA-Z]+` run;
+    ///     each followed by a BOUNDARY: end of text, a newline, `{}` (consumed, and the one
+    ///     way `useBrackets` becomes true), or a non-letter scalar (NOT consumed).
+    ///
+    /// One lookup, no retry: `\sup1x` fails `sup1`'s boundary, re-matches as run `sup` with
+    /// boundary `1`, misses the table, and is NO entity -- org does not try other names after
+    /// the lookup misses. A non-ASCII scalar at the boundary is the one undecidable spot
+    /// (Emacs's `(not letter)` is a Unicode category test) and throws.
+    private func entityMatch(
+        in chars: [Unicode.Scalar], at i: Int
+    ) throws -> (name: String, useBrackets: Bool, end: Int)? {
+        let j = i + 1
+        guard j < chars.count else { return nil }
+        if chars[j] == "_" {
+            var k = j + 1
+            while k < chars.count, chars[k] == " " { k += 1 }
+            guard k > j + 1 else { return nil }
+            let name = String(scalars: chars[j..<k])
+            return OrgParser.entityNames.contains(name) ? (name, false, k) : nil
+        }
+        func isASCIILetter(_ s: Unicode.Scalar) -> Bool {
+            (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+        }
+        // Boundary after a candidate name ending at `k`: nil when the boundary REJECTS,
+        // otherwise (useBrackets, end).
+        func boundary(_ k: Int) throws -> (useBrackets: Bool, end: Int)? {
+            if k == chars.count { return (false, k) }
+            let s = chars[k]
+            if s == "{", k + 1 < chars.count, chars[k + 1] == "}" { return (true, k + 2) }
+            if s == "\n" { return (false, k) }
+            if isASCIILetter(s) { return nil }
+            guard s.isASCII else {
+                throw OrgError.unimplemented("non-ASCII scalar at an entity-name boundary")
+            }
+            return (false, k)
+        }
+        func candidate(_ name: String) -> Bool {
+            let scalars = Array(name.unicodeScalars)
+            guard j + scalars.count <= chars.count else { return false }
+            for (offset, s) in scalars.enumerated() where chars[j + offset] != s { return false }
+            return true
+        }
+        for special in ["there4", "sup1", "sup2", "sup3", "frac12", "frac14", "frac32", "frac34"]
+        where candidate(special) {
+            if let b = try boundary(j + special.count) {
+                // The digit-bearing names are all in the table except `frac32`, and the lookup
+                // is what says so -- same single-lookup rule as the run below.
+                return OrgParser.entityNames.contains(special)
+                    ? (special, b.useBrackets, b.end) : nil
+            }
+        }
+        var k = j
+        while k < chars.count, isASCIILetter(chars[k]) { k += 1 }
+        guard k > j, let b = try boundary(k) else { return nil }
+        let name = String(scalars: chars[j..<k])
+        return OrgParser.entityNames.contains(name) ? (name, b.useBrackets, b.end) : nil
+    }
+
+    /// Index just past a `\command` macro-form latex fragment at `i`, or nil -- the third
+    /// branch of `org-element-latex-fragment-parser`'s non-`$` cond, transcribed:
+    ///
+    ///     \\[a-zA-Z]+\*?\(\(\[[^][\n{}]*\]\)\|\({[^{}\n]*}\)\)*
+    ///
+    /// A letter run, an optional star, then any number of COMPLETE `[...]` or `{...}` groups
+    /// whose contents exclude brackets, braces and newlines; an unclosed group is simply not
+    /// consumed (the `*` stops before it). Tried after `entityMatch`, so `\alpha` is an entity
+    /// and `\alphax` -- whose boundary check fails the entity -- is this fragment.
+    private func commandLatexFragmentEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+        func isASCIILetter(_ s: Unicode.Scalar) -> Bool {
+            (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+        }
+        var j = i + 1
+        let runStart = j
+        while j < chars.count, isASCIILetter(chars[j]) { j += 1 }
+        guard j > runStart else { return nil }
+        if j < chars.count, chars[j] == "*" { j += 1 }
+        while j < chars.count, chars[j] == "[" || chars[j] == "{" {
+            let closer: Unicode.Scalar = chars[j] == "[" ? "]" : "}"
+            var k = j + 1
+            while k < chars.count, chars[k] != "[", chars[k] != "]",
+                  chars[k] != "{", chars[k] != "}", chars[k] != "\n" {
+                k += 1
+            }
+            guard k < chars.count, chars[k] == closer else { break }
+            j = k + 1
+        }
+        return j
     }
 
     /// A `$...$` or `$$...$$` latex fragment opening at `i`, or nil when this `$` opens none.

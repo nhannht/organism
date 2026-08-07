@@ -1,0 +1,62 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "a "
+            },
+            {
+              "type": "entity",
+              "name": "alpha",
+              "useBrackets": false,
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "b, "
+            },
+            {
+              "type": "entity",
+              "name": "alpha",
+              "useBrackets": true,
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "x, spaced"
+            },
+            {
+              "type": "entity",
+              "name": "_ ",
+              "useBrackets": false,
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": "y, "
+            },
+            {
+              "type": "entity",
+              "name": "frac12",
+              "useBrackets": false,
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "z\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

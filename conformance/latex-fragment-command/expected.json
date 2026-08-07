@@ -1,0 +1,54 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "a "
+            },
+            {
+              "type": "latex-fragment",
+              "value": "\\foo{x}[y]",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "b, "
+            },
+            {
+              "type": "latex-fragment",
+              "value": "\\bar*",
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "c, path C:"
+            },
+            {
+              "type": "latex-fragment",
+              "value": "\\Users",
+              "postBlank": 0
+            },
+            {
+              "type": "latex-fragment",
+              "value": "\\me",
+              "postBlank": 0
+            },
+            {
+              "type": "text",
+              "value": ", lone \\5 d\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

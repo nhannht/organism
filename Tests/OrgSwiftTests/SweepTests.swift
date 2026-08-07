@@ -125,8 +125,40 @@ struct SweepTests {
             #expect(actual == testCase.expected, """
                 \(testCase.name): WRONG TREE. parseOrg produced a tree org does not produce. \
                 This is not an unimplemented construct -- an unimplemented construct throws. \
-                Fix it or revert; do not add the name to knownWrongTrees.
+                Fix it or revert; do not add the name to knownWrongTrees. \
+                First divergence: \(Self.firstDivergence(actual, testCase.expected, at: "root"))
                 """)
+        }
+    }
+
+    /// The path and local values of the first point where two trees disagree -- the printable
+    /// alternative to eyeballing two full-tree dumps, which is how the i6 family's paragraph
+    /// boundary bug nearly hid inside a 4KB assertion message.
+    static func firstDivergence(_ a: OrgJSON, _ b: OrgJSON, at path: String) -> String {
+        if a == b { return "\(path): (equal)" }
+        switch (a, b) {
+        case let (.object(ao), .object(bo)):
+            for key in Set(ao.keys).union(bo.keys).sorted() {
+                switch (ao[key], bo[key]) {
+                case let (av?, bv?):
+                    if av != bv { return firstDivergence(av, bv, at: "\(path).\(key)") }
+                case (nil, _?):
+                    return "\(path).\(key): missing in actual"
+                case (_?, nil):
+                    return "\(path).\(key): missing in expected"
+                case (nil, nil):
+                    continue
+                }
+            }
+            return "\(path): objects differ (unreachable)"
+        case let (.array(aa), .array(ba)):
+            for index in 0..<min(aa.count, ba.count) where aa[index] != ba[index] {
+                return firstDivergence(aa[index], ba[index], at: "\(path)[\(index)]")
+            }
+            return "\(path): array lengths \(aa.count) vs \(ba.count)"
+        default:
+            let short = { (v: OrgJSON) -> String in String("\(v)".prefix(160)) }
+            return "\(path): actual \(short(a)) vs expected \(short(b))"
         }
     }
 }

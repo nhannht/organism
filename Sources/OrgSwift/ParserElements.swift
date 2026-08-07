@@ -691,6 +691,27 @@ extension OrgParser {
         // openers became paragraphs. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }
+        // A latex-environment opener, `[ \t]*\\begin{[A-Za-z0-9*]+}` (the exact class from
+        // `org-element-paragraph-separate`). The TYPE is still oracle-unmapped, and without
+        // this refusal the entity/fragment machinery would lex `\begin{x}` as a command-form
+        // latex fragment inside a paragraph -- a wrong tree where org builds an element. The
+        // guard landed WITH the entity work, because entities are what un-refused `\`.
+        if first == "\\" {
+            let t = line.text
+            var j = line.contentStart + 1
+            for expected in "begin{".unicodeScalars {
+                guard j < t.count, t[j] == expected else { return false }
+                j += 1
+            }
+            let nameStart = j
+            while j < t.count,
+                  (t[j] >= "a" && t[j] <= "z") || (t[j] >= "A" && t[j] <= "Z")
+                  || (t[j] >= "0" && t[j] <= "9") || t[j] == "*" {
+                j += 1
+            }
+            if j > nameStart, j < t.count, t[j] == "}" { return true }
+            return false
+        }
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
         if first == "#", isSpaceOrTab(s + 1), line.text[s + 1] == "\t" { return true }
         // NOTE there is no list-item branch here any more. While lists were unimplemented this

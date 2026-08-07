@@ -711,6 +711,18 @@ form; each shape's own measurement lives in the inline comments below and in
            ((or 'code 'verbatim)
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('entity
+            ;; `:name' + `:use-brackets-p' fully determine the source bytes:
+            ;; `org-element-entity-interpreter' emits "\\", the name, and "{}"
+            ;; when bracketed -- nothing else. The six per-entity renderings
+            ;; (:latex, :latex-math-p, :html, :ascii, :latin1, :utf-8) are the
+            ;; `org-entities' table row for `:name', derivable by any consumer
+            ;; holding the same table, so they are deliberately NOT duplicated
+            ;; onto every node (SCHEMA.md, entity).
+            (org-swift--make-node schema-type
+                                  `(("name" . ,(org-swift--prop node :name))
+                                    ("useBrackets" . ,(org-swift--bool (org-swift--prop node :use-brackets-p))))))
+
            ('latex-fragment
             ;; A leaf object, same shape as code/verbatim: `:value' is the
             ;; fragment's own literal text, e.g. "$x^2$" or "\(x^2\)",

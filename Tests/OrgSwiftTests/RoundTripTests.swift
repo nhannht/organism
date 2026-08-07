@@ -91,6 +91,7 @@ struct RoundTripTests {
         "real/doomemacs-docs/index.org",
         "real/org-mode-samples/keywords.org",
         "real/org-mode-samples/pathological.org",
+        "real/org-mode-samples/text.org",
     ]
 
     /// The section 10 Reason-A losses that real vendored files actually hit, one normalizer

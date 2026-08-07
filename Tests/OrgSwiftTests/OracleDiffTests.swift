@@ -69,6 +69,10 @@ struct OracleDiffTests {
         // Joined when `_` took org's lexer order (underline before subscript) and a proven
         // script decline became text.
         "real/doomemacs-docs/appendix.org",
+        // Joined with entities, command-form latex fragments, the `^` candidate gate, and
+        // the bracket-target newline collapse.
+        "real/doomemacs-docs/getting_started.org",
+        "real/org-mode-samples/text.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

@@ -1,1 +1,1 @@
-{"type":"document","children":[{"type":"section","children":[{"type":"paragraph","children":[{"type":"text","value":"a "},{"type":"entity","children":[],"postBlank":1},{"type":"text","value":"b\n"}],"postBlank":0}],"postBlank":0}],"postBlank":0}
+{"type":"document","children":[{"type":"section","children":[{"type":"paragraph","children":[{"type":"text","value":"a "},{"type":"entity","name":"alpha","useBrackets":false,"postBlank":1},{"type":"text","value":"b\n"}],"postBlank":0}],"postBlank":0}],"postBlank":0}

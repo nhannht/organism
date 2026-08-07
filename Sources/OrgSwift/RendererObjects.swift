@@ -36,6 +36,10 @@ extension OrgRenderer {
             body = "~" + (try string(node, "value", type)) + "~"
         case "verbatim":
             body = "=" + (try string(node, "value", type)) + "="
+        case "entity":
+            // `org-element-entity-interpreter` verbatim: backslash, name, `{}` when bracketed.
+            body = "\\" + (try string(node, "name", type))
+                + ((try bool(node, "useBrackets", type)) ? "{}" : "")
         case "link":
             body = try renderLink(node)
         case "radio-target":

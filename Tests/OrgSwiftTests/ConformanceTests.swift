@@ -128,6 +128,11 @@ struct ConformanceTests {
         // non-space emphasis-PRE scalars both can match and underline wins. Plus the proven
         // script decline (`e_}`) staying text.
         "underline-vs-subscript",
+        // Entities: table lookup over the generated org-entities names (bare, {}-bracketed,
+        // whitespace-name, digit-bearing), and the command-form latex fragment that claims
+        // what the lookup rejects (\foo{x}[y], \bar*, Windows paths) while \5 stays text.
+        "entity-forms",
+        "latex-fragment-command",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a
