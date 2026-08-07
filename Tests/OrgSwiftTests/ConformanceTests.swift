@@ -68,6 +68,11 @@ struct ConformanceTests {
         // `#+TODO:` declares the runtime keyword set for the WHOLE file, including headlines
         // above the declaring line, which is why the parse is two-pass.
         "todo-runtime-custom",
+        // The long-armed trap: an example block whose `#+end_` sits beyond the next headline
+        // opens NOTHING (the closer search is limit-bounded), so the opener is a paragraph and
+        // the `#+TODO:` that LOOKED hidden inside it declares for real. Flipped when unpaired
+        // openers stopped throwing and became paragraphs, org's own fallback.
+        "todo-hidden-by-unterminated-example",
         // `#+STARTUP: odd` makes `level` and `trueLevel` genuinely diverge.
         "headline-odd-levels",
         // LITERAL blocks: contents carried as `value`, never parsed (SCHEMA.md rule 3). The

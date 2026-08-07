@@ -108,9 +108,15 @@ extension OrgParser {
     static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
+        //
+        // `#+begin_` and `#+end_` are deliberately ABSENT. A paired `#+begin_X` dispatches as a
+        // block before this gate is consulted; an UNPAIRED opener and a stray `#+end_X` are
+        // ordinary paragraph text in org -- every block parser falls back to
+        // org-element-paragraph-parser when its closer is missing within the limit, and `#+end_`
+        // matches nothing in `org-element-paragraph-separate` -- so claiming either here
+        // replaced org's paragraph with a refusal.
         let lower = OrgParser.asciiLowered(String(scalars: line.text[line.contentStart...]))
-        return lower.hasPrefix("#+begin_") || lower.hasPrefix("#+end_")
-            || lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
+        return lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
             || lower == "#+begin"
             || lower.hasPrefix("#+call:")
     }
@@ -412,14 +418,12 @@ extension OrgParser {
     ///   declaring line that named nothing" (an EMPTY set, recognize nothing). Collapsing those
     ///   two into `nil` would silently restore `TODO`/`DONE` and emit `todo: "TODO"`.
     ///
-    /// **This scan is only correct while blocks are unimplemented.** It reads any line that
-    /// parses as a `#+TODO:` keyword, wherever it sits, because today every line of a document
-    /// is either a headline, a blank, or an element at section level. Once blocks land, a
-    /// `#+TODO:` written INSIDE a `#+begin_example` is literal block content that must not
-    /// declare anything, and this scan would wrongly pick it up. Blocks currently throw
-    /// (`isUnimplementedHashPlusElement`), so no such document reaches a tree -- the same landmine
-    /// `isUnimplementedElementStart` documents from the element side, recorded here too because
-    /// this is the other place that has to change.
+    /// **A `#+TODO:` inside a LITERAL block body declares nothing.** `literalBodyLines` marks
+    /// those lines with the SAME pairing primitive the element dispatch uses, including its
+    /// headline-break rule -- so an opener whose closer sits beyond the next headline opens no
+    /// block, its would-be body stays live, and a `#+TODO:` there DOES declare. Pinned by
+    /// `conformance/todo-hidden-by-unterminated-example`, whose name records the trap: the
+    /// declaration LOOKS hidden inside an example block, and is not.
     static func scanTodoKeywords(in lines: [Line]) -> Set<String>? {
         var declared: Set<String> = []
         var sawDeclaration = false

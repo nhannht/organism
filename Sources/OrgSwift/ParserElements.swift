@@ -515,6 +515,12 @@ extension OrgParser {
                 // an org table. Invisible while `+` always threw; the strikethrough emission is
                 // what exposed it.
                 || OrgParser.isTableElRuleLine(candidate)
+                // `#+begin_X` separates ONLY when its block CLOSES within this range: org's
+                // paragraph parser double-checks the candidate and swallows an unterminated
+                // opener (org-element-paragraph-parser's BEGIN_ branch). A stray `#+end_X`
+                // matches nothing in `org-element-paragraph-separate`, so it never separates
+                // and needs no clause of its own.
+                || blockOpenerSeparates(at: i, in: range)
                 || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's
@@ -650,6 +656,14 @@ extension OrgParser {
     /// (SCHEMA.md section 10 item 10 says the same). Carrying that branch into the list
     /// implementation as "this is a list" would emit a `list` where org emits a `paragraph`. It
     /// is safe today only because it throws.
+    /// Whether the line at `i` opens a block that CLOSES inside `range` -- the only case in
+    /// which a `#+begin_X` line ends the paragraph before it. Same primitive as the element
+    /// dispatch, so the boundary and the dispatch cannot disagree about what a closed block is.
+    private func blockOpenerSeparates(at i: Int, in range: Range<Int>) -> Bool {
+        guard let (type, _) = OrgParser.blockBeginLine(lines[i]) else { return false }
+        return blockEndIndex(openedAt: i, type: type, in: range) != nil
+    }
+
     private func isUnimplementedElementStart(_ line: Line) -> Bool {
         // Indentation is NOT a rejection of its own any more. org's element regexes are written
         // `^[ \t]*...`, so an indented element is simply an element, and every question below is
@@ -673,7 +687,8 @@ extension OrgParser {
         // stood in for a decision this parser could not yet make. It can now: `parseDrawer`
         // returns nil for an unpaired opener, and control falls through to the paragraph path,
         // which is org's own answer for `:NOTADRAWER` and for a bare `:END:` alike.
-        // Blocks and dynamic blocks. A `#+` line that is neither this nor a keyword is
+        // Dynamic blocks and babel calls; `#+begin_`/`#+end_` left this gate when unpaired
+        // openers became paragraphs. A `#+` line that is neither this nor a keyword is
         // paragraph text, so there is deliberately no blanket `#+` branch here any more.
         if OrgParser.isUnimplementedHashPlusElement(line) { return true }
         // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
