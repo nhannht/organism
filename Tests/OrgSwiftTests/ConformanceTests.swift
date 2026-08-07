@@ -244,6 +244,11 @@ struct ConformanceTests {
         // B2: the `#+CALL:` element. Includes the empty-value form, which is still a
         // babel-call, and a `#+CALLX:` control that must stay an ordinary keyword.
         "babel-call-forms",
+        // B3 / ORG-11: the 15-star depth, pinned as ORDINARY headlines. Under `-Q` there
+        // is no `inlinetask` type to reach; requiring org-inlinetask would turn these
+        // exact bytes into one `inlinetask` node and silently re-parse every deep
+        // headline in the corpus. The fixture is what makes that fork visible.
+        "headline-inlinetask-depth",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

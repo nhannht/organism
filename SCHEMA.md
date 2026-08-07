@@ -561,6 +561,25 @@ matches.
 
 ## 9. Schema decisions and open questions (flagged to reviewer / main)
 
+- **RESOLVED: `inlinetask` is deliberately UNMAPPED, because under this oracle's configuration
+  it is unreachable.** `harness/oracle-dump.el` runs Emacs with `-Q`, and `org-inlinetask` is not
+  loaded there -- measured: `(featurep 'org-inlinetask)` is nil and `org-inlinetask-min-level` is
+  not even bound. So `*************** Task` parses as an ordinary `headline` with `level` 15, and
+  no input to this oracle can produce an `inlinetask` node at all.
+
+  **The alternative was rejected as a configuration fork, not a verification.** Requiring
+  `org-inlinetask` to "cover the type" changes the parse of the SAME bytes: the two 15-star
+  headlines collapse into one `inlinetask`, the `*************** END` line is consumed rather
+  than becoming a headline of its own, and every headline at or past `org-inlinetask-min-level`
+  in every existing fixture and real file silently re-parses. That is a different org, and every
+  answer already stored here was measured against this one.
+
+  So the type count reads **53 of 54 mapped plus one documented-unreachable, permanently** rather
+  than 54 of 54, and ORG-4's second closing condition is amended to say so rather than reported
+  as a miss. Pinned by `conformance/headline-inlinetask-depth`, which asserts the `-Q` answer --
+  two ordinary `level: 15` headlines around a paragraph -- so that a future change of oracle
+  configuration fails a test instead of quietly rewriting the corpus.
+
 - **RESOLVED: reference-faithful normalization, not fold-into-text.** The first live oracle run
   against 51 hand-authored `expected.json` fixtures surfaced two mismatches with no easy
   parser-side explanation: (A) some conformance fixtures assumed a node's own trailing `"\n"` was
