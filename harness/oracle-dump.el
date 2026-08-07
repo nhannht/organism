@@ -762,6 +762,59 @@ form; each shape's own measurement lives in the inline comments below and in
               `(("backEnd" . ,(org-swift--prop node :back-end))
                 ("value" . ,(org-swift--prop node :value)))))
 
+           ;; ---------------------------------------------------------------
+           ;; The three types below had NO branch here until 2026-08-07, and
+           ;; the omission was not visible as an omission. They fell through
+           ;; to the `_' fallback at the bottom of this pcase, which emits a
+           ;; bare `{"value": ...}' plus a WARNING on stderr - and both the
+           ;; sweep regenerator and the Swift oracle harness discarded stderr,
+           ;; so the degenerate trees were stored as org's answer and read
+           ;; back as ground truth. 9 sweep answers were wrong on disk that
+           ;; way; `inline-src-block' silently lost `:language' and
+           ;; `:parameters' on every one of them.
+           ;;
+           ;; The lesson generalizes past these three: a fallback that warns
+           ;; is only a fallback if SOMETHING reads the warning. Both readers
+           ;; are gated now (`HarnessSupport.runOracleDump' throws,
+           ;; `sweep/regen-expected.sh' refuses to write the file), so a
+           ;; fourth unmapped type cannot repeat this.
+           ;; ---------------------------------------------------------------
+
+           ('inline-src-block
+            ;; `src_LANG[PARAMS]{BODY}'. Unlike every other leaf here, this one
+            ;; needs THREE properties: `:value' is the BODY ALONE, so language
+            ;; and parameters are not recoverable from it. Measured:
+            ;;   src_python{1+1}         lang "python" params nil   value "1+1"
+            ;;   src_python[:x y]{1+1}   lang "python" params ":x y" value "1+1"
+            ;;   src_python{}            lang "python" params nil   value ""
+            ;; The empty body is why `value' carries no minLength in the schema,
+            ;; and the nil parameters is why it is `string | null' rather than
+            ;; omitted - a present-and-null slot distinguishes "no [..] was
+            ;; written" from "this dump forgot to look".
+            (org-swift--make-node schema-type
+              `(("language" . ,(org-swift--prop node :language))
+                ("parameters" . ,(org-swift--str-or-null (org-swift--prop node :parameters)))
+                ("value" . ,(org-swift--prop node :value)))))
+
+           ('inline-babel-call
+            ;; `call_NAME[INSIDE](ARGS)[END]'. A leaf, and here `:value' IS the
+            ;; entire source text -- measured: `call_foo[:a](b)[:c]' yields
+            ;; :value "call_foo[:a](b)[:c]", with :call "foo", :inside-header
+            ;; ":a", :arguments "b" and :end-header ":c" all being deterministic
+            ;; re-readings of those same bytes. Same derivability rule as
+            ;; `macro' above, so the four are not duplicated onto the node.
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
+           ('diary-sexp
+            ;; A column-0 `%%(SEXP)' line, an ELEMENT (so the shared tail below
+            ;; attaches affiliated keywords -- measured: `#+NAME: d' above one
+            ;; really does attach). `:value' is the WHOLE line including the
+            ;; `%%' marker, unlike `comment', which has its marker stripped.
+            ;; Not to be confused with a diary TIMESTAMP's `:diary-sexp'
+            ;; property, which is a different thing on a different node type
+            ;; (see `org-swift--dump-timestamp').
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
            ('entity
             ;; `:name' + `:use-brackets-p' fully determine the source bytes:
             ;; `org-element-entity-interpreter' emits "\\", the name, and "{}"

@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 
-/// Validates every `conformance/*/expected.json` against `schema/org-node.schema.json`.
+/// Validates every stored org answer -- `conformance/*/expected.json` AND `sweep/expected/*.json`
+/// -- against `schema/org-node.schema.json`.
 ///
 /// ## Why this suite exists
 ///
@@ -44,6 +45,18 @@ import Testing
 /// corpus. That is why this suite asserts on one exit code: the discrimination evidence is
 /// produced by the run itself rather than assumed by the reader.
 ///
+/// ## Both corpora, because checking one of two was how the rot survived
+///
+/// This gate shipped covering `conformance/` alone and reported 107/107 while `sweep/expected/`
+/// -- eleven times larger, and the same KIND of artifact, a stored org answer regenerable from
+/// the same oracle -- had never been schema-checked at all. It was holding 11 trees produced by
+/// `oracle-dump.el`'s unmapped-type fallback, 6 of them outright wrong: every `inline-src-block`
+/// answer had silently lost `:language` and `:parameters`. Nothing could see it, because the
+/// fallback warns on stderr and both readers of that oracle threw stderr away.
+///
+/// Covering one corpus and not the other was an accident of which script came first. A green
+/// number beside an unchecked corpus is the shape this whole repository keeps finding.
+///
 /// Skipped entirely (not failed) when `python3` or the `jsonschema` package is unavailable, the
 /// same graceful-skip contract the Emacs-gated suites use.
 @Suite(
@@ -52,7 +65,7 @@ import Testing
 )
 struct SchemaValidationTests {
 
-    @Test("every conformance expected.json validates against schema/org-node.schema.json")
+    @Test("every stored answer, conformance and sweep, validates against the published schema")
     func corpusValidatesAgainstPublishedSchema() throws {
         let result = try HarnessSupport.runSchemaValidation()
         #expect(

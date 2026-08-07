@@ -126,6 +126,11 @@ def comment(value="c"):
     return node("comment", value=value, postBlank=0)
 
 
+def paragraph_with_object(*objects):
+    """A document whose single paragraph holds `objects` -- the frame the object types need."""
+    return document(section(node("paragraph", children=list(objects), postBlank=0)))
+
+
 def paragraph_with_affiliated(affiliated):
     return document(
         section(
@@ -177,6 +182,50 @@ SELF_TESTS = [
         document(section(node("comment", value="c", postBlank=-1))),
         False,
     ),
+    # The three types added 2026-08-07. Each was previously produced by the oracle's unmapped
+    # fallback, so each arrives with a shape nothing had ever checked; a positive and a
+    # discriminating negative per type is what makes the new $defs entries evidence rather than
+    # assertion.
+    (
+        "positive control: inline-src-block with an EMPTY body, which org really does build "
+        "(src_python{}) -- so `value` must carry no minLength",
+        paragraph_with_object(
+            node("inline-src-block", language="python", parameters=None, value="", postBlank=0)
+        ),
+        True,
+    ),
+    (
+        "negative: inline-src-block missing `language`, which is exactly what the oracle's "
+        "unmapped fallback used to emit",
+        paragraph_with_object(node("inline-src-block", value="1+1", postBlank=0)),
+        False,
+    ),
+    (
+        "negative: inline-src-block OMITTING `parameters` rather than carrying null -- the "
+        "absent key and the null value must not both be legal, or the slot says nothing",
+        paragraph_with_object(
+            node("inline-src-block", language="python", value="1+1", postBlank=0)
+        ),
+        False,
+    ),
+    (
+        "negative: inline-babel-call carrying the derived `call` slot org-element computes from "
+        "`value`, which this schema deliberately does not duplicate",
+        paragraph_with_object(
+            node("inline-babel-call", value="call_foo()", call="foo", postBlank=0)
+        ),
+        False,
+    ),
+    (
+        "positive control: a diary-sexp element, whose `value` keeps its `%%` marker",
+        document(section(node("diary-sexp", value="%%(diary-float t 4 2)", postBlank=0))),
+        True,
+    ),
+    (
+        "negative: diary-sexp with a non-string `value`",
+        document(section(node("diary-sexp", value=["%%(x)"], postBlank=0))),
+        False,
+    ),
 ]
 
 print("== self-test: proving the validator discriminates before trusting its verdict ==")
@@ -203,43 +252,75 @@ if self_test_failures:
     )
     sys.exit(1)
 
-print()
-print("== validating every conformance case against schema/org-node.schema.json ==")
-
 pass_count = 0
 failed_cases = []
+
+
+def check(label, path, verbose):
+    """Validate one stored tree. `verbose` prints a PASS line; the sweep is too big for that."""
+    global pass_count
+    try:
+        tree = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"FAIL  {label} ({path.name} is not valid JSON: {exc})")
+        failed_cases.append(label)
+        return
+
+    error = first_error(tree)
+    if error is None:
+        if verbose:
+            print(f"PASS  {label}")
+        pass_count += 1
+    else:
+        location = "/".join(str(part) for part in error.absolute_path) or "(root)"
+        print(f"FAIL  {label} (does not validate against the published schema)")
+        print(f"      at {location}: {error.message}")
+        failed_cases.append(label)
+
+
+print()
+print("== validating every conformance case against schema/org-node.schema.json ==")
 
 # Sorted, stable order -- the same ordering verify-corpus.sh and CorpusLoader.conformanceCases()
 # use, so a failure here cross-references directly against a `swift test` run.
 for case_dir in sorted(p for p in conformance_dir.iterdir() if p.is_dir()):
-    case_name = case_dir.name
     expected_json = case_dir / "expected.json"
-
     if not expected_json.is_file():
-        print(f"FAIL  {case_name} (missing expected.json)")
-        failed_cases.append(case_name)
+        print(f"FAIL  {case_dir.name} (missing expected.json)")
+        failed_cases.append(case_dir.name)
         continue
+    check(case_dir.name, expected_json, verbose=True)
 
-    try:
-        tree = json.loads(expected_json.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"FAIL  {case_name} (expected.json is not valid JSON: {exc})")
-        failed_cases.append(case_name)
-        continue
+conformance_total = pass_count + len(failed_cases)
 
-    error = first_error(tree)
-    if error is None:
-        print(f"PASS  {case_name}")
-        pass_count += 1
-    else:
-        location = "/".join(str(part) for part in error.absolute_path) or "(root)"
-        print(f"FAIL  {case_name} (does not validate against the published schema)")
-        print(f"      at {location}: {error.message}")
-        failed_cases.append(case_name)
+# THE SWEEP CORPUS IS CHECKED TOO, AND IT IS THE HALF THAT WAS ROTTEN.
+#
+# This gate shipped covering `conformance/` alone, which reported 107/107 while `sweep/expected/`
+# held 11 trees the oracle's unmapped fallback had degraded and 6 that were outright wrong -- a
+# green gate beside an unchecked corpus of 1,208 answers eleven times its size. The two corpora
+# are the same KIND of artifact (a stored org answer, regenerable from the same oracle), so
+# checking one and not the other was an accident of which script came first, not a decision.
+#
+# Only failures print here: 1,208 PASS lines would bury the conformance section above.
+sweep_dir = conformance_dir.parent / "sweep" / "expected"
+sweep_total = 0
+if sweep_dir.is_dir():
+    print()
+    print("== validating every sweep answer (failures only; a silent run is a clean run) ==")
+    before = pass_count + len(failed_cases)
+    for answer in sorted(sweep_dir.glob("*.json")):
+        check(f"sweep/{answer.stem}", answer, verbose=False)
+    sweep_total = pass_count + len(failed_cases) - before
+else:
+    print()
+    print("NOTE: no sweep/expected/ directory -- only the conformance corpus was checked.")
 
 total = pass_count + len(failed_cases)
 print()
-print(f"== validate-schema.sh: {pass_count}/{total} valid, {len(failed_cases)} invalid ==")
+print(
+    f"== validate-schema.sh: {pass_count}/{total} valid, {len(failed_cases)} invalid "
+    f"({conformance_total} conformance + {sweep_total} sweep) =="
+)
 
 if failed_cases:
     print(f"Invalid cases: {' '.join(failed_cases)}")

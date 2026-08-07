@@ -311,6 +311,29 @@ Rules:
   `:use-brackets-p`: `false` for `a_b`, `true` for `a_{b}`. Without it the braced and unbraced
   source forms produce an identical tree. The field name drops the Lisp predicate `-p`, following
   `commented` from `:commentedp` on `headline`), `children`: object nodes.
+- `inline-src-block` -- object leaf, `src_LANG[PARAMS]{BODY}`. `language` (string, non-empty),
+  `parameters` (string or **null**), `value` (string, the BODY ALONE, and it **may be empty** --
+  `src_python{}` really is an inline-src-block). This is the one leaf here whose `value` is not
+  the whole construct, which is why it needs three fields where `macro` needs one: neither the
+  language nor the parameters is recoverable from the body. `parameters` is null rather than
+  absent when no `[..]` was written, so the slot distinguishes "nothing was written" from "the
+  producer never looked".
+- `inline-babel-call` -- object leaf, `call_NAME[INSIDE](ARGS)[END]`. `value`: string, the ENTIRE
+  source text. `org-element`'s `:call`, `:inside-header`, `:arguments` and `:end-header` are
+  deterministic re-readings of those same bytes and are deliberately not duplicated -- same rule
+  as `macro` above and the `entity` renderings.
+- `diary-sexp` -- ELEMENT leaf (so it may carry affiliated keywords; a `#+NAME:` above one really
+  does attach, measured). `value`: string, the whole column-0 `%%(SEXP)` line **including** the
+  `%%` marker -- unlike `comment`, whose marker is stripped. Not to be confused with a diary
+  TIMESTAMP's `diarySexp` field in section 4 Timestamps: different slot, different node type.
+
+  **These three types carried no `$defs` entry and no oracle branch until 2026-08-07**, and the
+  gap was invisible rather than open. `harness/oracle-dump.el` fell through to its unmapped-type
+  fallback, which emits a bare `{"value": ...}` and warns on stderr -- and both readers of that
+  oracle discarded stderr, so 11 degenerate trees were stored in `sweep/expected/` as org's own
+  answer. Six were wrong: every `inline-src-block` answer had lost `language` and `parameters`.
+  Both readers are gated now, and `harness/validate-schema.sh` covers the sweep corpus as well as
+  `conformance/`.
 
 ### Tables
 
