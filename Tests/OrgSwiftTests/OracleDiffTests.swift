@@ -103,4 +103,162 @@ struct OracleDiffTests {
             }
         }
     }
+
+    // MARK: The degenerate-tree guard (ORG-13)
+    //
+    // This suite's docstring above promises that a file whose content hits "an unmapped
+    // org-element type" skips gracefully. That promise was FALSE until 2026-08-07. `oracle-dump
+    // .el` handles an unmapped type by warning on stderr, emitting a node with every real
+    // property dropped, and exiting 0 -- so the tree decoded fine and was compared against
+    // `parseOrg` as ground truth. A non-zero exit skipped and a decode failure skipped; the one
+    // case named in the promise did not.
+    //
+    // The three tests below cover the guard at the three places it can rot: the matching logic,
+    // the string coupling to the elisp, and the end-to-end path.
+
+    @Test("the stderr warning matcher picks out oracle warnings and ignores unrelated noise")
+    func warningMatcherDiscriminates() {
+        // Both of oracle-dump.el's warning forms, verbatim from its source.
+        let unmappedType = "org-swift-dump: WARNING unmapped org-element type: citation"
+        let nonStringValue =
+            "org-swift-dump: WARNING unmapped type foo has a non-string, non-nil :value (cons)"
+            + " - omitting it rather than guessing at its shape"
+
+        #expect(HarnessSupport.oracleWarnings(inStderr: unmappedType) == [unmappedType])
+        #expect(HarnessSupport.oracleWarnings(inStderr: nonStringValue) == [nonStringValue])
+        #expect(
+            HarnessSupport.oracleWarnings(inStderr: "\(unmappedType)\n\(nonStringValue)\n").count == 2,
+            "both warnings on separate lines must be reported, not just the first"
+        )
+
+        // The negative half, and the reason this is not just `stderr.isEmpty`: Emacs writes
+        // unrelated chatter to stderr on plenty of installations (native-comp notices, package
+        // messages). Treating ANY stderr as a failure would skip every file on those machines
+        // and look exactly like a clean run of zero comparisons.
+        #expect(HarnessSupport.oracleWarnings(inStderr: "") == [])
+        #expect(HarnessSupport.oracleWarnings(inStderr: "Loading /path/to/thing.el (source)...\n") == [])
+        #expect(
+            HarnessSupport.oracleWarnings(inStderr: "Warning: something else entirely\n") == [],
+            "a generic Emacs warning is not an oracle-dump.el warning"
+        )
+        #expect(
+            HarnessSupport.oracleWarnings(
+                inStderr: "org-swift-dump: WARNING: table.el table is not represented by this schema"
+            ) == [],
+            """
+            the table.el warning is a deliberate scope boundary, not a degenerate tree -- see \
+            oracleWarningPartitionIsCorrect, which reads all three forms from the elisp itself
+            """
+        )
+    }
+
+    @Test("the guard fires on degenerate warnings and spares the deliberate table.el one")
+    func oracleWarningPartitionIsCorrect() throws {
+        // oracle-dump.el has THREE warning forms and they do not all mean the same thing. Two
+        // mean the tree is degenerate; the third is a documented scope boundary whose output is
+        // the intended answer and is pinned by `conformance/table-el-flavour`. Getting this
+        // partition wrong is not theoretical -- the first version of this guard matched the bare
+        // `WARNING` prefix and silently stopped that fixture being drift-checked, because
+        // `OracleConformanceCrossCheckTests` skips on any oracle error. All three strings below
+        // are read from the elisp rather than retyped, so a reworded message cannot make this
+        // test agree with a guard that no longer matches reality.
+        let elisp = try String(contentsOf: HarnessSupport.oracleDumpScript, encoding: .utf8)
+        let emitted = elisp
+            .split(separator: "\n")
+            .map(String.init)
+            .filter { $0.contains("(message \"org-swift-dump: WARNING") }
+
+        #expect(
+            emitted.count == 3,
+            """
+            oracle-dump.el emits \(emitted.count) warning forms, not the 3 this partition was \
+            built against. A new one must be classified as degenerate (tree unusable as ground \
+            truth) or deliberate (intended output) before this guard is trusted again.
+            """
+        )
+
+        let degenerate = emitted.filter { $0.contains("unmapped") }
+        let deliberate = emitted.filter { !$0.contains("unmapped") }
+        #expect(degenerate.count == 2, "expected exactly the two unmapped-type warnings")
+        #expect(deliberate.count == 1, "expected exactly the one table.el scope-boundary warning")
+
+        for line in degenerate {
+            #expect(
+                !HarnessSupport.oracleWarnings(inStderr: line).isEmpty,
+                "a degenerate-tree warning must trip the guard: \(line)"
+            )
+        }
+        for line in deliberate {
+            #expect(
+                HarnessSupport.oracleWarnings(inStderr: line).isEmpty,
+                """
+                the table.el warning is a deliberate scope boundary with a pinned fixture and \
+                must NOT trip the guard, or that fixture stops being checked: \(line)
+                """
+            )
+        }
+    }
+
+    @Test("the warning marker still matches what oracle-dump.el actually emits")
+    func warningMarkerHasNotDrifted() throws {
+        // The guard keys on a substring of a message defined in another language in another
+        // file. That coupling is invisible to the compiler, so it gets an explicit guard: if
+        // someone rewords the elisp message, this fails loudly here instead of the guard
+        // silently never firing again. This is the permanent coverage -- unlike the end-to-end
+        // test below, it does not depend on any construct remaining unmapped.
+        let elisp = try String(contentsOf: HarnessSupport.oracleDumpScript, encoding: .utf8)
+        #expect(
+            elisp.contains(HarnessSupport.oracleWarningMarker),
+            """
+            oracle-dump.el no longer contains the marker '\(HarnessSupport.oracleWarningMarker)'. \
+            Either the warning was reworded (update HarnessSupport.oracleWarningMarker to match) \
+            or warnings were removed entirely (then this guard and the degenerateOutput case can \
+            go). Until one of those is done, an unmapped type is silently ground truth again.
+            """
+        )
+    }
+
+    @Test("an unmapped construct is refused as ground truth rather than decoded")
+    func unmappedConstructThrowsRatherThanReturningADegenerateTree() throws {
+        // `citation` is unmapped today, so the oracle warns and emits a degenerate node.
+        //
+        // THIS TEST IS DELIBERATELY TEMPORARY, and it asserts normally rather than sitting in
+        // `withKnownIssue` because it PASSES today. Every type this project maps shrinks the set
+        // of inputs that can trigger the warning, and citation is scheduled to be mapped. When it
+        // is, the oracle stops warning, no error is thrown, and this test goes red -- which is
+        // the correct signal, not a bug. At that point either re-point it at a construct that is
+        // still unmapped, or delete it and rely on the two tests above, which do not decay. Do
+        // NOT "fix" it by loosening the assertion.
+        //
+        // No reachable construct stays unmapped forever: `inlinetask` is the one type that is
+        // permanently unmapped, and it cannot serve here because it is unreachable under the
+        // harness's own `emacs -Q` (ORG-11) -- it degrades to plain headlines and warns about
+        // nothing.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("org-swift-oracle-warning-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let probe = directory.appendingPathComponent("probe.org")
+        try "[cite:@key]\n".write(to: probe, atomically: true, encoding: .utf8)
+
+        var thrown: Error?
+        do {
+            _ = try HarnessSupport.runOracleDump(on: probe)
+        } catch {
+            thrown = error
+        }
+
+        guard case .some(HarnessSupport.OracleError.degenerateOutput(let warnings)) = thrown else {
+            Issue.record(
+                """
+                runOracleDump accepted a tree oracle-dump.el warned about, or failed some other \
+                way: \(String(describing: thrown)). A degenerate tree must never be returned as \
+                ground truth.
+                """
+            )
+            return
+        }
+        #expect(!warnings.isEmpty, "the thrown error must carry the warnings that caused it")
+    }
 }

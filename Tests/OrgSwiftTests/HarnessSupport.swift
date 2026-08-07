@@ -175,6 +175,7 @@ enum HarnessSupport {
         case processFailed(status: Int32, stderr: String)
         case emptyOutput
         case decodeFailed(Error)
+        case degenerateOutput(warnings: [String])
 
         var description: String {
             switch self {
@@ -186,8 +187,44 @@ enum HarnessSupport {
                 return "oracle-dump.el produced no stdout output"
             case .decodeFailed(let error):
                 return "failed to decode oracle JSON: \(error)"
+            case .degenerateOutput(let warnings):
+                return """
+                    oracle-dump.el warned while dumping, so its tree is degenerate and is NOT \
+                    ground truth: \(warnings.joined(separator: "; "))
+                    """
             }
         }
+    }
+
+    /// The marker identifying an oracle warning that means the emitted tree is DEGENERATE.
+    ///
+    /// `oracle-dump.el` has three warning forms and they do NOT all mean the same thing, which is
+    /// the whole reason this marker is `WARNING unmapped` and not the broader `WARNING`:
+    ///
+    ///   - `WARNING unmapped org-element type: X` - degenerate. Every real property is dropped.
+    ///   - `WARNING unmapped type X has a non-string, non-nil :value` - degenerate. Value omitted.
+    ///   - `WARNING: table.el table is not represented by this schema` - NOT degenerate. That is
+    ///     a deliberate, documented scope boundary: the schema covers org-style pipe tables only,
+    ///     and the raw `:value` emission is the intended answer, pinned by
+    ///     `conformance/table-el-flavour`.
+    ///
+    /// Matching the bare `WARNING` prefix was tried first and was wrong: it made the table.el
+    /// fixture silently stop being drift-checked by `OracleConformanceCrossCheckTests`, because
+    /// that suite skips on any oracle error. A guard against silent coverage loss must not itself
+    /// cause silent coverage loss. `oracleWarningPartitionIsCorrect` pins the split.
+    static let oracleWarningMarker = "org-swift-dump: WARNING unmapped"
+
+    /// Warning lines `oracle-dump.el` wrote to stderr, in order; empty when it dumped cleanly.
+    ///
+    /// Split out as a pure function so the guard itself is testable without needing an org
+    /// construct that happens to be unmapped today. That matters: every type this project maps
+    /// shrinks the set of inputs that could trigger the warning in an end-to-end test, so a guard
+    /// tested ONLY end-to-end would quietly lose its coverage as the parser matured.
+    static func oracleWarnings(inStderr stderr: String) -> [String] {
+        stderr
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.contains(oracleWarningMarker) }
     }
 
     /// Runs `harness/oracle-dump.el` (see that file's UNTESTED header) against `fileURL` and
@@ -222,6 +259,19 @@ enum HarnessSupport {
         }
         guard !stdoutData.isEmpty else {
             throw OracleError.emptyOutput
+        }
+        // An unmapped construct makes `oracle-dump.el` warn on stderr, emit a DEGENERATE node
+        // (every real property dropped, sometimes a fabricated empty `children` on what is a
+        // leaf), and exit 0. Without this guard that tree came back decodable and was compared
+        // against `parseOrg` AS GROUND TRUTH -- the exact inversion these suites exist to
+        // prevent, since a parser emitting an equally degenerate tree would PASS and a parser
+        // correctly refusing would look wrong. The non-zero exit and the decode failure below
+        // were already handled; this third failure mode is the one that was silent, and it is
+        // the one `OracleDiffTests`'s own docstring already promised was handled (ORG-13).
+        let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+        let warnings = oracleWarnings(inStderr: stderrText)
+        guard warnings.isEmpty else {
+            throw OracleError.degenerateOutput(warnings: warnings)
         }
         do {
             return try JSONDecoder().decode(OrgJSON.self, from: stdoutData)
