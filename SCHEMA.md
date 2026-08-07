@@ -147,6 +147,13 @@ Rules:
 - `quote-block` -- `children`: element nodes (a quote block is a *greater element*: it holds
   other elements like `paragraph`, not raw objects).
 - `center-block` -- `children`: element nodes.
+- `special-block` -- the catch-all for any `#+begin_X` whose `X` is not one of the seven
+  recognized block types: a greater element with `children` element nodes, exactly like
+  quote/center. `blockType` (string): the name token with its SOURCE case intact
+  (`#+begin_Warning` carries `"Warning"`, measured -- pairing with `#+end_` stays
+  case-folded). `parameters` (string or `null`): the rest of the opener line trimmed of
+  surrounding whitespace, `null` when nothing (or only whitespace) follows the name --
+  `#+begin_note` gives `null`, `#+begin_aside extra  ` gives `"extra"`, both probed live.
 - `verse-block` -- `children`: **object** nodes directly (not elements). Verse is unique among
   blocks: its contents are parsed as objects (text markup, links, timestamps, ...), matching the
   spec's "CONTENTS will contain Org objects" for verse blocks specifically. Note the two kinds of

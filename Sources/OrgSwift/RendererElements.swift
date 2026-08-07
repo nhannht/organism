@@ -64,6 +64,20 @@ extension OrgRenderer {
             body = try renderGreaterBlock(node, kind: "quote")
         case "center-block":
             body = try renderGreaterBlock(node, kind: "center")
+        case "special-block":
+            // `org-element-special-block-interpreter` verbatim: lowercase begin/end around the
+            // stored `blockType` (source case intact), parameters joined by one space when
+            // present. Contents are elements, same as quote/center.
+            let blockType = try string(node, "blockType", type)
+            var head = "#+begin_\(blockType)"
+            if let parameters = try stringOrNull(node, "parameters", type) {
+                head += " \(parameters)"
+            }
+            body = head + "\n"
+            for child in try array(node, "children", type) {
+                body += try renderElement(child)
+            }
+            body += "#+end_\(blockType)\n"
         case "verse-block":
             // Verse contents are OBJECTS, not elements (SCHEMA.md section 4), and the body's
             // final newline lives in the last text node.

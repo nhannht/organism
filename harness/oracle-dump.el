@@ -701,6 +701,18 @@ form; each shape's own measurement lives in the inline comments below and in
            ((or 'quote-block 'center-block)
             (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
 
+           ('special-block
+            ;; `#+begin_TYPE PARAMS' with a TYPE org does not recognize. :type
+            ;; keeps the SOURCE case of the name ("Warning" stays "Warning");
+            ;; :parameters is the rest of the opener line trimmed, nil when
+            ;; empty (probed live on 30.2: `#+begin_note' -> nil,
+            ;; `#+begin_aside extra  ' -> "extra"). Contents are elements,
+            ;; same as quote/center blocks.
+            (org-swift--make-node schema-type
+              `(("blockType" . ,(org-swift--prop node :type))
+                ("parameters" . ,(org-swift--str-or-null (org-swift--prop node :parameters)))
+                ("children" . ,(org-swift--dump-children node)))))
+
            ('verse-block (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))
 
            ('paragraph (org-swift--make-node schema-type `(("children" . ,(org-swift--dump-children node)))))

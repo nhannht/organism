@@ -4,14 +4,14 @@
 // `#+begin_` line alone, before any content is consumed. Three modes exist:
 //
 //     LITERAL   src, example, export, comment    `value`, never parsed
-//     ELEMENTS  quote, center                    `children`, element nodes
+//     ELEMENTS  quote, center, special-block     `children`, element nodes
 //     OBJECTS   verse                            `children`, object nodes
 //
-// This file implements the LITERAL four; the node shapes for the other three live at their
-// dispatch in ParserElements.swift, since quote and center re-enter the element layer and verse
-// re-enters the object layer rather than building a value here. Every other `#+begin_X` is a
-// `special-block` -- a type `schema/org-node.schema.json` does not map, so it must throw
-// permanently rather than be approximated.
+// This file implements the LITERAL four; the node shapes for the others live at their
+// dispatch in ParserElements.swift, since quote, center and special-block re-enter the
+// element layer and verse re-enters the object layer rather than building a value here.
+// `special-block` is the catch-all: every `#+begin_X` whose X is not one of the seven named
+// types above, keeping the name's source case as `blockType` (measured).
 //
 // The mode split is also what drives the pass-1 setting scan (`literalBodyLines`), because the
 // literal modes are exactly the ones whose contents yield no elements at all.
@@ -54,6 +54,19 @@ extension OrgParser {
         let type = OrgParser.asciiLowered(String(scalars: text[(start + prefix.count)..<typeEnd]))
         guard !type.isEmpty else { return nil }
         return (type, String(scalars: text[typeEnd...]))
+    }
+
+    /// The TYPE token of a `#+begin_TYPE` line with its SOURCE case intact. Only the
+    /// special-block node needs this: pairing and dispatch stay case-folded (so
+    /// `blockBeginLine` returns the lowercased type), but org keeps `:type`'s source case on
+    /// the unrecognized block types -- `#+begin_Warning` carries `blockType` "Warning",
+    /// measured. Callers must have already matched `blockBeginLine` on the same line.
+    static func blockBeginSourceType(_ line: Line) -> String {
+        let text = line.text
+        let typeStart = line.contentStart + "#+begin_".unicodeScalars.count
+        var typeEnd = typeStart
+        while typeEnd < text.count, text[typeEnd] != " ", text[typeEnd] != "\t" { typeEnd += 1 }
+        return String(scalars: text[typeStart..<typeEnd])
     }
 
     /// True when `line` is the `#+end_TYPE` that closes a block of `type`. Case-insensitive, and

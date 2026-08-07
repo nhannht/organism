@@ -1,0 +1,58 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "special-block",
+          "blockType": "note",
+          "parameters": null,
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "plain body\n"
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 1
+        },
+        {
+          "type": "special-block",
+          "blockType": "Warning",
+          "parameters": ":level high",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "bold",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "bold"
+                    }
+                  ],
+                  "postBlank": 1
+                },
+                {
+                  "type": "text",
+                  "value": "body\n"
+                }
+              ],
+              "postBlank": 0
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

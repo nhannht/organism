@@ -177,6 +177,7 @@ struct RendererConformanceTests {
         "skeleton-bare-paragraph",
         "skeleton-headline-with-section",
         "skeleton-nested-headline",
+        "special-block-simple",
         "statistics-cookie-fraction",
         "statistics-cookie-percent",
         "subscript-simple",

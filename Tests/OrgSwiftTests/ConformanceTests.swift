@@ -137,6 +137,9 @@ struct ConformanceTests {
         // Macros: value leaf, case intact; an unclosed arg group and a digit-first name
         // are proven text.
         "macro-forms",
+        // Special blocks: any unrecognized `#+begin_X` is a greater element -- blockType keeps
+        // the name's source case, parameters is the trimmed opener rest (null when empty).
+        "special-block-simple",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

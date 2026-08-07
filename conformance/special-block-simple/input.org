@@ -1,0 +1,7 @@
+#+begin_note
+plain body
+#+end_note
+
+#+begin_Warning :level high
+*bold* body
+#+end_Warning

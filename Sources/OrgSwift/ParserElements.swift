@@ -288,8 +288,8 @@ extension OrgParser {
            let end = blockEndIndex(openedAt: i, type: type, in: range) {
             // Content mode is decided from the `#+begin_` line alone, before any content is
             // consumed (SCHEMA.md rule 3). All three modes are implemented: LITERAL (src,
-            // example, export, comment), ELEMENTS (quote, center) and OBJECTS (verse). Every
-            // other type is an unmapped `special-block` and still throws.
+            // example, export, comment), ELEMENTS (quote, center, and every unrecognized
+            // type, which is a special-block) and OBJECTS (verse).
             if OrgParser.literalBlockTypes.contains(type) {
                 return (literalBlockNode(
                     type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
@@ -317,8 +317,18 @@ extension OrgParser {
                     "postBlank": .int(0),
                 ]), end + 1)
             default:
-                // Every other `#+begin_X` is a `special-block`, a type the schema does not map.
-                throw OrgError.unimplemented("special-block (#+begin_ with an unrecognized name)")
+                // Every other `#+begin_X` is a SPECIAL-BLOCK, a greater element like quote and
+                // center: its children are ELEMENT nodes. `blockType` keeps the SOURCE case of
+                // the name while pairing stays case-folded; `parameters` is the rest of the
+                // opener line trimmed, null when empty (`#+begin_note` -> null, measured).
+                let parameters = OrgParser.trimAsciiSpace(rest)
+                return (.object([
+                    "type": .string("special-block"),
+                    "blockType": .string(OrgParser.blockBeginSourceType(line)),
+                    "parameters": parameters.isEmpty ? .null : .string(parameters),
+                    "children": .array(try parseElementRun(in: (i + 1)..<end)),
+                    "postBlank": .int(0),
+                ]), end + 1)
             }
         }
 
