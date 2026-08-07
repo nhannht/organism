@@ -26,8 +26,10 @@
 # trips it is FAILED with its file removed rather than written. The narrow marker matters: the
 # oracle also warns, deliberately, that a table.el table is outside this schema, and that warning
 # is a scope boundary rather than a defect. `HarnessSupport.runOracleDump' on the Swift side
-# applies the identical marker; the two paths are the only readers of this oracle, and a gate on
-# one of two paths reports zero for the wrong reason.
+# applies the identical marker, and so does `harness/verify-corpus.sh'. Those THREE are the only
+# readers of this oracle, and a gate on some of three paths reports zero for the wrong reason --
+# this comment said "two paths" for a day while verify-corpus.sh was ungated, which is the same
+# error one layer up: a completeness claim nothing re-counted.
 #
 # Existing files are overwritten. Paths derive from this script's own location, so it works
 # from any working directory.

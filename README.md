@@ -26,9 +26,21 @@ over every org-element type its oracle can reach.
   `conformance/headline-inlinetask-depth`. Both facts are mechanised: one test reads org's live
   type list and fails if anything but `inlinetask` is unmapped, another fails if a mapped type
   has no fixture.
-- **Refusals that remain are narrow and named**, not whole constructs: an undecidable non-ASCII
-  scalar at four class boundaries, a CR byte in the source, and a handful of shapes with no
-  measured answer. Each throws rather than guessing.
+- **Refusals that remain are narrow and named**, not whole constructs, and the claim is counted
+  rather than asserted. There are **18 throw sites** in `Sources/OrgSwift` (`grep -rn
+  'OrgError.unimplemented(' Sources/OrgSwift/`): 7 are an undecidable non-ASCII scalar at a class
+  boundary (block name, citation style, inline `src_`/`call_` prefix, footnote label, superscript
+  marker, script body, entity name), 1 is a CR byte in the source, 1 is the `#+BEGIN:`
+  dynamic-block family, and the rest are single unmeasured shapes. Each throws rather than
+  guessing. Across the 1,312-case differential sweep **18 cases refuse**, in three groups: 9
+  dynamic blocks, 8 non-ASCII script bodies, 1 non-ASCII footnote label.
+
+  That second number used to be unknowable. The sweep accepts a refusal silently by design -- it
+  guards against wrong trees, and from inside a `catch` an over-throw looks exactly like a case
+  that was never exercised. ORG-30 is the worked example: five over-throws sat at 0 of 1,181 with
+  the suite green. So the 18 are now pinned by NAME in `SweepTests.knownRefusals`, which fails in
+  both directions: a nineteenth refusal is red, and a listed case that starts parsing is also
+  red. Widening a refusal is real work; it is not a list edit.
 - `swift test` reports green, and the reason still matters. 53 known issues remain and NONE of
   them is parser-shaped: 5 are the permanent renderer losses above, and 48 belong to the
   `org-element-interpret-data` suite, which measures org-mode's own round-trip behaviour on its

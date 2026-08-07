@@ -6,9 +6,9 @@ extension CorpusLoader.ConformanceCase: CustomTestStringConvertible {
 }
 
 /// Parser-comparison tests: `parseOrg(inputOrg)` must structurally equal `expected.json` for
-/// every Layer 1 conformance case (see SCHEMA.md). The parser is being implemented case-by-case,
-/// so this suite splits the corpus in two (same mechanism as `InterpretDataRoundTripTests
-/// .knownReformattingDivergences`, where a uniform blanket wrapper is equally wrong):
+/// every Layer 1 conformance case (see SCHEMA.md). The suite splits the corpus in two (same
+/// mechanism as `InterpretDataRoundTripTests.knownReformattingDivergences`, where a uniform
+/// blanket wrapper is equally wrong):
 ///
 ///   - Names in `implementedCases` assert normally: `parseOrg` must succeed and the tree must
 ///     match `expected.json`, or the suite goes red.
@@ -20,6 +20,20 @@ extension CorpusLoader.ConformanceCase: CustomTestStringConvertible {
 /// That failure is the intended forcing function. Once the parser is implemented for a given
 /// case, moving that case's name into `implementedCases` (nothing else -- no loosened assertion,
 /// no re-added wrapper) is the correct fix. Do NOT "fix" a withKnownIssue failure any other way.
+///
+/// **The second bucket is EMPTY, and that is a measured result rather than a starting state.**
+/// All 120 conformance cases are in `implementedCases`; the `withKnownIssue` branch below is
+/// currently unreachable. It stays because it is the landing pad for the next fixture, and
+/// because deleting a mechanism at the moment it reports success is how the success stops being
+/// checkable. The header above said "the parser is being implemented case-by-case" long after
+/// that stopped being the state, which is the smaller version of the same mistake.
+///
+/// An empty second bucket does change one thing, and `namesInImplementedCasesExist` below is the
+/// answer to it. While the bucket had members, a name that did not correspond to a real fixture
+/// was invisible: it simply never matched, and the case ran under the wrapper. Now that the
+/// wrapper is meant to be unreachable, a typo'd or renamed name silently drops exactly one case
+/// back into it -- green, and asserting nothing. The renderer suite has carried this guard since
+/// it split; the parser suite did not, and this is the gap closed.
 @Suite("Conformance (parser implemented case-by-case)")
 struct ConformanceTests {
 
@@ -277,6 +291,23 @@ struct ConformanceTests {
         "timestamp-no-dayname",
         "affiliated-caption-short-empty",
     ]
+
+    /// Every name in `implementedCases` names a fixture that exists on disk.
+    ///
+    /// Without this, renaming or deleting a fixture leaves its old name stranded in the set and
+    /// moves the new one into the `withKnownIssue` bucket, where a throw and a wrong tree read
+    /// identically. The failure is silent in the worst way: the suite reports one MORE known
+    /// issue and stays green.
+    @Test("implementedCases names only fixtures that exist")
+    func namesInImplementedCasesExist() throws {
+        let onDisk = Set(Self.cases.map(\.name))
+        let stranded = Self.implementedCases.subtracting(onDisk).sorted()
+        #expect(stranded.isEmpty, """
+            implementedCases names \(stranded.count) case(s) with no fixture on disk. A renamed \
+            fixture silently falls back into the withKnownIssue bucket, so fix the name rather \
+            than deleting it: \(stranded.joined(separator: ", "))
+            """)
+    }
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
     func parserMatchesExpectedTree(_ testCase: CorpusLoader.ConformanceCase) throws {

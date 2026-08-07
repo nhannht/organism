@@ -763,7 +763,18 @@ extension OrgParser {
     }
 
     private func throwIfUnimplementedElementStart(_ line: Line) throws {
-        if isUnimplementedElementStart(line) { throw OrgError.unimplemented("unimplemented element start (clock, diary sexp, unknown block, or #-tab comment)") }
+        // The reason string is a live enumeration of what still reaches here, not a historical
+        // note. It named `clock' and `diary sexp' until both landed, at which point the message
+        // described a refusal that could no longer happen -- and the only cost of a stale reason
+        // is paid by whoever debugs the throw. Two families remain:
+        //   `#+BEGIN:' / `#+BEGIN' / `#+BEGIN '   dynamic-block, unimplemented
+        //   `#\t...'                             a comment per spec; SCHEMA.md's strip
+        //                                        convention covers only `# '
+        // Measured against the sweep: 9 of 1312 cases reach this throw, all nine dynamic-block
+        // shapes. Re-derive the list from `isUnimplementedElementStart' before editing it.
+        if isUnimplementedElementStart(line) {
+            throw OrgError.unimplemented("unimplemented element start (dynamic block, or #-tab comment)")
+        }
     }
 
     /// Lines that open (or could open) an element type outside the implemented subset. Also used

@@ -166,15 +166,26 @@ This document does not repeat that list - an earlier draft did, naming roughly s
 README's grew to cover far more, and the two drifted. Read README directly before assuming a type
 or field is safe to skip.
 
-In short, so you know the SHAPE of the gap before reading further: 15 `org-element` types are not
-mapped at all yet (`clock`, `entity`, and `special-block` are the three most likely to show up in
-an ordinary file - README ranks all 15 by how likely your own files contain one). Of the types
-that ARE mapped, 14 carry no conformance fixture at all and rest solely on the one-time audit
-(`footnote-reference` and `footnote-definition` among them), and 6 further gaps sit inside
-otherwise-fixtured types - a variant or property the 79 fixtures never happen to exercise, such
-as `table.el`-flavour tables or the `diary` timestamp kind. None of this shows up as a Layer 1
-failure today, because nothing in this corpus asserts it either way - treat every item on
-README's list as "not yet checked," not "confirmed correct."
+In short, so you know the SHAPE of the gap before reading further. This paragraph has been wrong
+twice by standing still while the corpus moved, so it now states what is MECHANISED rather than a
+snapshot count:
+
+- **Type coverage is gated, not audited.** 55 of org's 56 element and object types are mapped and
+  all 55 carry a conformance fixture. Neither figure is maintained by hand: one test reads org's
+  live type list and fails if anything unexpected is unmapped, another fails if a mapped type has
+  no fixture. The single unmapped type is `inlinetask`, which is UNREACHABLE under the oracle's
+  own `emacs -Q` and is documented as permanently unmapped (SCHEMA.md section 9).
+- **The remaining gaps are VARIANT gaps, inside otherwise-fixtured types** - a property or flavour
+  the corpus never happens to exercise, such as `table.el`-flavour tables. These are the ones with
+  no gate, so they are the ones to distrust.
+- **Refusals are pinned by name.** `parseOrg` throws on 18 of the 1,312 differential-sweep cases,
+  and exactly which 18 is asserted by `SweepTests.knownRefusals`. A construct is either implemented
+  or it is on that list; there is no third state where it quietly returns something.
+
+An earlier version of this paragraph read "15 types are not mapped at all yet ... 14 carry no
+conformance fixture ... the 79 fixtures", every figure long dead. That is the drift this document
+warns about one paragraph up, committed by the warning itself. Read README directly for the
+current account, and prefer a gate's name to any number written in prose.
 
 One SCHEMA.md-specific gap is not about type coverage at all, so it is not in README's list
 either: property continuation (`:NAME+: value`, the spec's append-to-previous-value form,

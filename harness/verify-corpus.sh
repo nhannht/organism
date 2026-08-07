@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # verify-corpus.sh
 #
-# The honest, runnable reference adapter for Layer 1 (SCHEMA.md). orgswift's own
-# `parseOrg` still throws `OrgError.notImplemented` (see Sources/OrgSwift/Parser.swift), so it
-# cannot fill the "parse input.org, normalize, diff against expected.json" loop yet. Emacs itself
-# can, through harness/oracle-dump.el: it already parses a file with `org-element-parse-buffer`
-# and re-emits the exact JSON shape SCHEMA.md defines. This script runs that loop over every
-# conformance case and reports the real result -- it stands in for "your parser" so a reader can
-# see the whole check working end to end before a single line of orgswift's own parser exists.
+# The honest, runnable reference adapter for Layer 1 (SCHEMA.md), and the gate on the ANSWER KEY
+# rather than on any parser. It runs harness/oracle-dump.el over every conformance case and diffs
+# the answer live Emacs gives today against the checked-in expected.json, so a fixture that has
+# silently drifted from the oracle -- hand-edited, produced by an older org, or written by a
+# degenerate fallback -- fails here rather than becoming ground truth for everything downstream.
+#
+# It no longer stands in for `parseOrg`. An earlier header said orgswift "still throws
+# OrgError.notImplemented, so it cannot fill the loop yet"; `swift test` now parses all 120
+# conformance cases and matches. What this script still owns, and what no Swift test can own, is
+# the direction of the comparison: the Swift suites grade the parser AGAINST expected.json, and
+# this one grades expected.json against Emacs.
 #
 # A parser author in Rust, JS, Python, or Go implements the identical loop against their own
 # parseOrg equivalent: parse input.org, normalize to the schema/org-node.schema.json shape, diff
@@ -35,6 +39,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFORMANCE_DIR="$ROOT_DIR/conformance"
 ORACLE_SCRIPT="$ROOT_DIR/harness/oracle-dump.el"
+
+# Kept byte-identical across all three readers of the oracle: here, sweep/regen-expected.sh, and
+# HarnessSupport.oracleWarningMarker. See the branch that uses it in the case loop below.
+UNMAPPED_MARKER="org-swift-dump: WARNING unmapped"
 
 # --- Dependency checks: degrade with a clear message, never a silent pass. ---
 
@@ -101,6 +109,23 @@ for case_dir in "$CONFORMANCE_DIR"/*/; do
 
   if [ ! -s "$oracle_out" ]; then
     echo "FAIL  $case_name (oracle-dump.el produced no output)"
+    fail_count=$((fail_count + 1))
+    failed_cases+=("$case_name")
+    continue
+  fi
+
+  # An unmapped org-element type makes oracle-dump.el warn on stderr, emit a DEGENERATE node
+  # carrying only `type` plus whatever `:value` survived, and exit 0. Without this branch the
+  # degenerate tree is compared against a checked-in expected.json produced by the SAME
+  # degenerate path, so the two agree and the case reports PASS while asserting nothing.
+  #
+  # This is the third reader of the oracle, and the last one to get the gate. `sweep/
+  # regen-expected.sh` and `HarnessSupport.runOracleDump` grew it first; a gate on two of three
+  # paths reports zero for the wrong reason. The marker is the narrow `WARNING unmapped` rather
+  # than a bare `WARNING`: oracle-dump.el also warns, deliberately, that a `table.el` table is
+  # outside this schema, and that one is a scope boundary rather than a defect.
+  if grep -qF "$UNMAPPED_MARKER" "$oracle_err"; then
+    echo "FAIL  $case_name (oracle-dump.el hit an unmapped type -- see $oracle_err)"
     fail_count=$((fail_count + 1))
     failed_cases+=("$case_name")
     continue

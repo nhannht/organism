@@ -102,10 +102,90 @@ struct SweepTests {
     /// introduced, and the correct response is to fix it or revert.
     static let knownWrongTrees: Set<String> = []
 
+    /// Every sweep case `parseOrg` REFUSES, by name. The complement of `knownWrongTrees`, and the
+    /// half this suite was structurally blind to.
+    ///
+    /// `neverEmitsAWrongTree` returns early on a throw, deliberately: an over-throw costs a
+    /// construct, a wrong tree costs trust in every tree. The cost of that asymmetry is that
+    /// refusals are INVISIBLE to it. Add a refusal to a hot path and 300 cases can start throwing
+    /// without a single test going red, because "threw" and "was never exercised" are the same
+    /// observation from inside a `catch`.
+    ///
+    /// That is not hypothetical. ORG-30 measured five over-throws sitting at **0 of 1,181** with
+    /// the whole suite green, and the README claimed the remaining refusals were "narrow and
+    /// named" while nothing in the repository had ever counted them. This list is the count, kept
+    /// as an exact set rather than a number so it fails in both directions:
+    ///
+    ///     a NEW name here        a refusal was introduced -- an implemented construct regressed,
+    ///                            or a new guard is broader than intended
+    ///     a MISSING name here    a case that used to refuse now parses -- good news, and the
+    ///                            correct fix is to delete the name, never to keep the list loose
+    ///
+    /// The 18 fall in three groups, and each group is a decision rather than an accident:
+    ///
+    ///     i1-*   (9)   `#+BEGIN:` dynamic blocks and the malformed `#+BEGIN` shapes around them.
+    ///                  Unimplemented; see `isUnimplementedHashPlusElement`.
+    ///     i3-*   (8)   a non-ASCII scalar at a subscript/superscript body boundary.
+    ///     i4-*   (1)   a non-ASCII scalar at a footnote-label boundary.
+    ///
+    /// Both non-ASCII groups are the same deliberate policy: org's answer there depends on
+    /// character classes this project has not measured over the non-ASCII space, so it refuses
+    /// instead of guessing. Widening one is real work, not a list edit.
+    static let knownRefusals: Set<String> = [
+        "i1-bare",
+        "i1-bare-sp",
+        "i1-begin-sp",
+        "i1-begin-word",
+        "i1-dyn-unterm",
+        "i1-end-args",
+        "i1-end-under",
+        "i1-headline-brk",
+        "i1-nested",
+        "i3-accent",
+        "i3-cjk",
+        "i3-mix-digit",
+        "i3-mix-greek",
+        "i3-mix-mid",
+        "i3-mix-tail",
+        "i3-mix-tail2",
+        "i3-mix-tail3",
+        "i4-label-uni",
+    ]
+
     @Test("the corpus is present and loaded")
     func corpusLoads() throws {
         #expect(Self.cases.count > 1000,
                 "sweep corpus did not load: \(Self.cases.count) cases found under sweep/")
+    }
+
+    /// The refusal census. See `knownRefusals` for why a count that nothing re-runs is worthless.
+    @Test("exactly the named cases refuse, and no others")
+    func refusalsAreExactlyTheNamedSet() throws {
+        var refused: Set<String> = []
+        var reasons: [String: String] = [:]
+        for testCase in Self.cases {
+            do { _ = try parseOrg(testCase.inputOrg) }
+            catch {
+                refused.insert(testCase.name)
+                reasons[testCase.name] = "\(error)"
+            }
+        }
+
+        let added = refused.subtracting(Self.knownRefusals).sorted()
+        let gone = Self.knownRefusals.subtracting(refused).sorted()
+
+        #expect(added.isEmpty, """
+            \(added.count) sweep case(s) began REFUSING and are not in knownRefusals. A refusal is \
+            invisible to neverEmitsAWrongTree, so this is the only test that can see it. Fix the \
+            over-throw or, if the refusal is deliberate, add the name WITH its reason to the \
+            grouping comment on knownRefusals:
+            \(added.map { "  \($0): \(reasons[$0] ?? "?")" }.joined(separator: "\n"))
+            """)
+
+        #expect(gone.isEmpty, """
+            \(gone.count) case(s) in knownRefusals now PARSE. That is good news: delete the \
+            name(s), and drop the group from the comment if it emptied. \(gone.joined(separator: ", "))
+            """)
     }
 
     /// The ORG-23 grid: object restrictions inside a link DESCRIPTION.
