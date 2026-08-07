@@ -148,7 +148,7 @@ Add the package:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/nhannht/organism.git", from: "0.1.0")
+    .package(url: "https://github.com/nhannht/organism.git", from: "0.1.1")
 ],
 targets: [
     .target(name: "YourTarget", dependencies: [
@@ -174,9 +174,17 @@ if let doc = tree.objectValue,
    let children = doc["children"]?.arrayValue,
    let first = children.first?.objectValue,
    first["type"]?.stringValue == "headline" {
-    print(first["level"]?.intValue ?? 0)     // 1
+    print(first["level"]?.intValue ?? 0)          // 1
+    print(first["todo"]?.stringValue ?? "none")   // TODO
+    print(first["commented"]?.boolValue ?? false) // false
 }
 ```
+
+The accessors are `objectValue`, `arrayValue`, `stringValue`, `intValue`, `doubleValue`,
+`boolValue` and `isNull`. Each answers only for its own case and returns `nil` for every other -
+`intValue` will not widen a `.double`, because the schema never types a field as both and a
+silent truncation would hide a malformed tree. This exact example is compiled by
+`PublicAPITests`, so it cannot rot.
 
 That is deliberately the shape of the published cross-language contract rather than a Swift-native
 AST, so the tree you get in Swift is the same tree a Rust or Python adapter gets. A typed layer

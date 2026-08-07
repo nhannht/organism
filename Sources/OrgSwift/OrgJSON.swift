@@ -83,4 +83,48 @@ extension OrgJSON {
         if case .string(let value) = self { return value }
         return nil
     }
+
+    /// Convenience accessor for integer-valued nodes; `nil` for every other case.
+    ///
+    /// The schema uses `integer` for `level`, `trueLevel`, `postBlank`, `preBlank`, `rep.value`
+    /// and every `date` component, so without this a consumer cannot read a headline's level at
+    /// all. That was the state until v0.1.1, and it went unnoticed because nothing inside this
+    /// package reads the tree back through the public accessors -- the parser builds `OrgJSON`
+    /// and the renderer pattern-matches the cases directly. It surfaced the first time the
+    /// published package was installed into a fresh project and the README's own example failed
+    /// to compile.
+    ///
+    /// Deliberately does NOT widen `.double` to `Int`. The schema never types a field as both,
+    /// so a `.double` here means the tree is wrong, and returning a silently truncated integer
+    /// would hide that.
+    public var intValue: Int? {
+        if case .int(let value) = self { return value }
+        return nil
+    }
+
+    /// Convenience accessor for boolean-valued nodes; `nil` for every other case.
+    /// The schema uses `boolean` for `headline.commented`.
+    public var boolValue: Bool? {
+        if case .bool(let value) = self { return value }
+        return nil
+    }
+
+    /// Convenience accessor for double-valued nodes; `nil` for every other case.
+    ///
+    /// No mapped node type carries a `number` field today, so this exists for completeness of
+    /// the case coverage rather than for a field anyone reads. `.int` is deliberately NOT
+    /// promoted to `Double` here, for the same reason `intValue` refuses `.double`: the two
+    /// cases are distinguishable in the tree and conflating them hides a malformed one.
+    public var doubleValue: Double? {
+        if case .double(let value) = self { return value }
+        return nil
+    }
+
+    /// True when this node is JSON null. Distinguishes "the key is present and null" from "the
+    /// key is absent", which the schema treats as different things -- `todo` is required and
+    /// nullable on a headline, so `nil` from a subscript and `.null` are not the same answer.
+    public var isNull: Bool {
+        if case .null = self { return true }
+        return false
+    }
 }
