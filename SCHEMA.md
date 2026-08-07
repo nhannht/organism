@@ -679,7 +679,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 12 known instances,
+read (per-type properties outside this schema's curated field set). 13 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -689,7 +689,7 @@ substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:
 `:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
 read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
 `rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
-each pinned by a conformance fixture. What remains below is 10 items that no tree built on
+each pinned by a conformance fixture. What remains below is 11 items that no tree built on
 `org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
 recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
 and 10 below -- which is the ordinary result of actually checking, and they are listed here
@@ -788,6 +788,22 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    WITH-tags sibling of this byte class is item 3 (tag-column padding); this is what is lost
    when there is no tag group for item 3 to blame. Pinned by `conformance/headline-empty-title`
    in `RendererConformanceTests.schemaLossCases`.
+12. Inline-src-block header normalization -- `src_py[  p  ]{x}` re-emits as `src_py[p]{x}`, and
+   `src_py[]{x}` as `src_py{x}`. Reason A, and an unusually clean example of the "upstream
+   normalization" half of that definition: `org-element-inline-src-block-parser` stores
+   `(and (org-string-nw-p p) (replace-regexp-in-string "\n[ \t]*" " " (org-trim p)))`, so the
+   trim, the newline collapse, and the empty-to-nil conversion all happen inside org before this
+   schema sees anything. `:parameters` is the ONLY property carrying those bytes and it carries
+   the normalized form. Emacs's own interpreter emits exactly what `renderOrg` emits here, so
+   there is nothing to beat and nothing to recover. Note the asymmetry with the BODY, which is
+   not normalized at all: `src_py{ }` keeps its space. Pinned in the sweep by
+   `i30-param-spacing`, `i30-param-empty`, `i30-param-newline` and `i30-body-space`.
+
+   The sibling `inline-babel-call` has NO such loss, and the difference is which property org
+   chose to keep. Its `:value` is the whole source text, so `renderOrg` emits it verbatim and
+   round-trips byte-exact even where org's own interpreter -- which rebuilds from
+   `:call`/`:inside-header`/`:arguments`/`:end-header` -- would apply the identical
+   normalization and lose the bytes. Same relationship as `macro`, and for the same reason.
 
 12. Clock-line normalization, Reason A, four byte classes in one line shape (all probed live
    on Emacs 30.2, pinned by `conformance/clock-normalization` in

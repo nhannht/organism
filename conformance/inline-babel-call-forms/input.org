@@ -1,0 +1,6 @@
+Plain call_report() and full call_report[:results output](x=1)[:exports both] here.
+
+Args only call_sum(1, 2) and nested parens call_f(g(h)) and an inside header
+call_f[:var y=2]() on a wrapped line.
+
+Not one: CALL_f(), call_(), call_f[i], acall_f(), $call_f().

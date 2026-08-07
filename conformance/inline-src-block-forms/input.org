@@ -1,0 +1,7 @@
+Plain src_python{1+1} and headered src_python[:exports code]{1+1} here.
+
+Empty body src_ruby{} and nested braces src_js{f({a: 1})} and a hyphen
+language src_shell-script{ls} on a wrapped line.
+
+Not one: SRC_python{x}, src_{x}, src_python[p], asrc_python{x}, 1src_python{x},
+$src_python{x}, %src_python{x}.

@@ -54,6 +54,32 @@ extension OrgRenderer {
             // `org-element-export-snippet-interpreter` verbatim: both fields re-emit as-is.
             body = "@@" + (try string(node, "backEnd", type)) + ":"
                 + (try string(node, "value", type)) + "@@"
+        case "inline-src-block":
+            // `org-element-inline-src-block-interpreter` verbatim:
+            //     (format "src_%s%s{%s}" language (if arguments (format "[%s]" arguments) "") body)
+            // so a NULL `parameters` emits no brackets at all. That is exactly right and it is
+            // also where the round-trip loses: org normalizes the header on the way IN (trim,
+            // then collapse each newline and its indentation to one space) and an empty or
+            // all-whitespace header becomes nil. `src_py[  p  ]{x}` re-emits as `src_py[p]{x}`
+            // and `src_py[]{x}` as `src_py{x}`. Unrecoverable from the tree, so a Reason A entry
+            // in SCHEMA.md section 10 rather than something a renderer can fix.
+            let parameters = node.objectValue?["parameters"] ?? .null
+            let header: String
+            switch parameters {
+            case .string(let value): header = "[" + value + "]"
+            case .null: header = ""
+            default:
+                throw OrgError.malformedTree(
+                    "renderObject: inline-src-block `parameters` must be a string or null")
+            }
+            body = "src_" + (try string(node, "language", type)) + header
+                + "{" + (try string(node, "value", type)) + "}"
+        case "inline-babel-call":
+            // `value` is the whole source text, so emitting it verbatim beats org's own
+            // interpreter, which rebuilds from :call/:inside-header/:arguments/:end-header and
+            // therefore re-emits the SAME normalization loss inline-src-block has above. Same
+            // relationship as `macro`, and not a section 10 loss.
+            body = try string(node, "value", type)
         case "timestamp":
             body = try renderTimestamp(node)
         case "footnote-reference":

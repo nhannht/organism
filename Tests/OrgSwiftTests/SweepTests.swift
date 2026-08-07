@@ -151,6 +151,46 @@ struct SweepTests {
             """)
     }
 
+    /// Every `src_` / `call_` case, gated so that a REFUSAL fails.
+    ///
+    /// The main sweep accepts a throw, which is right for it and wrong for this family. ORG-30's
+    /// finding was precisely that a refusal is invisible: it measured 5 inputs that had parsed
+    /// correctly and began refusing after ORG-29, with corpus movement of 0 of 1,181, because
+    /// `withKnownIssue` records a throw and a wrong tree identically and the sweep records a
+    /// throw and a correct parse identically. Listing these by name is what makes an over-throw
+    /// cost something.
+    ///
+    /// Two groups, and the second is the reason this list is not just the 24 already staged:
+    ///
+    ///   - `i29*` -- the grammar. Case sensitivity, empty name, mandatory and optional brackets,
+    ///     nesting, balance. 24 cases, all three of org's outcomes: a dedicated node, a
+    ///     subscript, plain text.
+    ///   - `i30*` -- the WORD BOUNDARY, which the 24 do not gate. The four characters that make
+    ///     org's rule non-guessable are `$ % ' \`, and not one of them appears in the i29 set;
+    ///     its boundary cases are `a`, `x`, `-` and `(`, which any "letters and digits" reading
+    ///     gets right. A table can be fully enumerated and still completely ungated.
+    ///
+    /// `i30-underscore-before` is the control that has to come out DIFFERENT from the four:
+    /// `_` ALLOWS while `$` SUPPRESSES, so an implementation reading the rule as "not
+    /// alphanumeric" passes the four and fails this one. `i30-bold-*` pin the container case,
+    /// where the parser's region starts at index 0 but the buffer has a character there.
+    static let inlineCallableGrid: [String] = cases.map(\.name)
+        .filter { $0.hasPrefix("i29") || $0.hasPrefix("i30-") }
+        .sorted()
+
+    @Test("inline src blocks and babel calls match org exactly, with no refusal allowed",
+          arguments: inlineCallableGrid)
+    func inlineCallablesMatchOrg(_ name: String) throws {
+        guard let testCase = Self.cases.first(where: { $0.name == name }) else {
+            Issue.record("sweep case '\(name)' is missing -- the src_/call_ grid is not loaded")
+            return
+        }
+        let actual = try parseOrg(testCase.inputOrg)
+        #expect(actual == testCase.expected, """
+            \(name): does not match org. \(Self.firstDivergence(actual, testCase.expected, at: "root"))
+            """)
+    }
+
     @Test("parseOrg never emits a tree org does not produce", arguments: cases)
     func neverEmitsAWrongTree(_ testCase: SweepCase) throws {
         let actual: OrgJSON

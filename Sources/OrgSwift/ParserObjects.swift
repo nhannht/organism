@@ -826,18 +826,51 @@ extension OrgParser {
                     // claim; the transcription is what retired it.
                 }
             case "c", "s":
-                // `call_NAME(ARGS)` and `src_LANG{BODY}`. Both unimplemented and both OUTSIDE the
-                // schema, so this refuses rather than guessing -- see
-                // `inlineSrcOrCallCouldStart` for the measured grammar and for what the refusal
-                // is wider than.
+                // INLINE SRC BLOCK `src_LANG[PARAMS]{BODY}` and INLINE BABEL CALL
+                // `call_NAME[IH](ARGS)[EH]`. See `inlineCallableMatch` for the grammar, both
+                // parsers transcribed from org's own source.
                 //
                 // Container-gated, and the gate is load-bearing rather than decorative: a table
                 // cell and a radio target both REFUSE these two, and org builds an ordinary
                 // subscript there. Measured: the contents of `<<<src_a{b}>>>` are text `src`, a
                 // subscript, and text `{b}`.
+                //
+                // ORDER MATTERS between the two conditions below, and it is not cosmetic. The
+                // grammar runs FIRST and the word boundary second, because the boundary is the
+                // half that can throw: a non-ASCII scalar in front is undecidable here (see
+                // `inlineCallableSuppressed`). Asked first, it would refuse every `s` and `c`
+                // preceded by any non-ASCII scalar anywhere in the document -- `café settings`
+                // would stop the parse. Asked last, it throws only where everything else already
+                // says "this IS an inline-src-block", which is the whole reachable cost.
                 let inlineKind: ObjectKind = c == "s" ? .inlineSrcBlock : .inlineBabelCall
-                if container.permits(inlineKind), inlineSrcOrCallCouldStart(in: chars, at: i) {
-                    throw OrgError.unimplemented("inline src block or babel call")
+                if container.permits(inlineKind),
+                   let match = inlineCallableMatch(in: chars, at: i),
+                   try !OrgParser.inlineCallableSuppressed(before: i, in: chars) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    var fields: [String: OrgJSON] = [
+                        "type": .string(inlineKind.rawValue),
+                        "value": .string(match.value),
+                        "postBlank": .int(postBlank),
+                    ]
+                    if let language = match.language {
+                        // An inline-src-block is the one leaf here whose `value` is NOT the whole
+                        // construct, so language and parameters cannot be derived from it and
+                        // must be carried. An inline-babel-call's `value` IS the whole construct,
+                        // so its :call/:inside-header/:arguments/:end-header stay derived -- the
+                        // same rule `macro` already uses.
+                        fields["language"] = .string(language)
+                        fields["parameters"] = match.parameters.map { OrgJSON.string($0) } ?? .null
+                    }
+                    nodes.append(.object(fields))
+                    i = k
+                    textStart = k
+                    continue
                 }
             case "{":
                 // MACRO, a value leaf whose `value` is the whole `{{{...}}}` source text.
@@ -1107,79 +1140,226 @@ extension OrgParser {
         return nil
     }
 
-    /// True when org's own inline-src-block / inline-babel-call CANDIDATE test matches at `i` --
-    /// the guard that stops two constructs this parser will never build from silently becoming a
-    /// subscript.
+    /// A matched inline-src-block or inline-babel-call: where it ends and what it carries.
     ///
-    /// `org-element--object-regexp` carries `\(?:call\|src\)_` as its OWN alternative, tried
-    /// BEFORE the `?_` branch that reaches `org-element-subscript-parser`
-    /// (org-element.el:5309-5316). Without this, `x src_a{b} y` fell to `case "^", "_"`,
-    /// `scriptMatch` took the alnum body `a`, and the parser emitted text + SUBSCRIPT + text where
-    /// org emits an `inline-src-block` -- a plausible-looking tree, no throw, and nothing in the
-    /// repository able to see it: `grep -rlE 'src_|call_' conformance/ real/` matches no file at
-    /// all. Same shape as ORG-19 and ORG-21.
+    /// `language` is non-nil for `src_` and nil for `call_`, and it is the discriminator the
+    /// emission site uses -- an inline-src-block carries three properties, an inline-babel-call
+    /// one.
+    struct InlineCallableMatch {
+        let end: Int
+        let language: String?
+        let parameters: String?
+        let value: String
+    }
+
+    /// Matches org's inline-src-block or inline-babel-call at `i`, or nil when there is none.
     ///
-    /// Neither type is in this schema (`parseOrg`'s scope boundary names `inline-src-block` and
-    /// `babel-call` among the constructs that must throw permanently), so this is a REFUSAL, never
-    /// a step towards implementing them.
+    /// Both parsers transcribed from `org-element-inline-src-block-parser` (org-element.el:3697)
+    /// and `org-element-inline-babel-call-parser` (:3638), with `case-fold-search` bound to nil in
+    /// both, so `SRC_a{b}` and `Src_a{b}` are subscripts rather than nodes:
     ///
-    /// This is org's `looking-at` from the two parsers, matched with `case-fold-search` bound to
-    /// nil in both:
+    ///     \<src_\([^ \t\n[{]+\)[{[]     optional balanced [..], then a MANDATORY {..}
+    ///     \<call_\([^ \t\n[(]+\)[([]    optional balanced [..], a MANDATORY (..), optional [..]
     ///
-    ///     \<src_\([^ \t\n[{]+\)[{[]      then optional balanced [..], then a MANDATORY {..}
-    ///     \<call_\([^ \t\n[(]+\)[([]     then optional balanced [..], then a MANDATORY (..)
+    /// **The two `value`s are not the same kind of thing, and that asymmetry is org's.** An
+    /// inline-src-block's `:value` is the BODY ALONE, brace-stripped, so its language and
+    /// parameters are unrecoverable from it and must be carried separately. An inline-babel-call's
+    /// `:value` is the ENTIRE source text, and its :call, :inside-header, :arguments and
+    /// :end-header are re-readings of those same bytes -- derivable, so not duplicated, the same
+    /// rule `macro` uses.
     ///
-    /// so a decline HERE proves the candidate is absent, while a match only proves it might be
-    /// present -- the balanced-bracket half is deliberately not implemented, which makes this
-    /// wider than org and never narrower. All 28 shapes measured; the three that a hand-written
-    /// guard gets wrong are the reason each condition is spelled out:
+    /// The bracket scans are `org-element--parse-paired-brackets`, which runs `scan-lists` under a
+    /// char-table built as `(make-char-table 'syntax-table '(2))` with exactly ONE pair modified.
+    /// Every other character, `\` included, is a word constituent in that table. So there are no
+    /// escapes and no string quoting, only nesting depth -- which is what `balancedEnd` already
+    /// counts, and why `src_py{b\} c}` has the value `b\` rather than `b\} c`. Measured.
     ///
-    ///     src_a{b}  src_a{}  src_a[p]{b}  src_a{b{c}d}  -src_a{b}     org BUILDS one
-    ///     call_a()  call_a[i]()  call_a()[e]  call_a(b(c)d)           org BUILDS one
-    ///     SRC_a{b}  Src_a{b}     subscript -- the type name is CASE-SENSITIVE
-    ///     src_{b}   call_()      subscript -- the name part must be NON-EMPTY
-    ///     src_a[p]  call_a[i]    subscript -- the brace/paren is MANDATORY
-    ///     src_a{    src_a{b      subscript -- and both are over-thrown here, deliberately
+    /// A bracket group that fails to balance does NOT advance point in org, so the next scan sees
+    /// the unconsumed `[`. That is the whole reason `src_py[p{b} c` is a subscript even though a
+    /// `{..}` follows, and why `src_py[p][q]{x}` builds nothing at all: after `[p]` the curly scan
+    /// finds `[`, not `{`. Both measured before this was written.
     ///
-    /// **org's leading `\<` is deliberately NOT implemented, and that only widens this.** It needs
-    /// org-mode's word-constituent syntax table, which would be a fifth Emacs table pinned for one
-    /// condition; without it `asrc_a{b}` throws where org builds a subscript. Over-throwing is the
-    /// safe direction and it is suite-visible. Measured on the other side of that boundary too:
-    /// `-src_a{b}` really is an inline-src-block, so `-` must NOT suppress the guard.
-    private func inlineSrcOrCallCouldStart(in chars: [Unicode.Scalar], at i: Int) -> Bool {
-        /// `prefix`, a non-empty name run, an OPTIONAL balanced `[..]`, then the MANDATORY
-        /// balanced pair -- `{..}` for src, `(..)` for call.
-        func candidate(_ prefix: String, mandatory: (Unicode.Scalar, Unicode.Scalar)) -> Bool {
+    /// The shapes that discriminate, all measured against Emacs 30.2 / org 9.7.11:
+    ///
+    ///     src_a{b}  src_a{}  src_a[p]{b}  src_a{b{c}d}  -src_a{b}    an inline-src-block
+    ///     call_a()  call_a[i]()  call_a()[e]  call_a(b(c)d)          an inline-babel-call
+    ///     src_a{b<newline>c}    spans a newline; a BLANK line ends the paragraph, so it cannot
+    ///     SRC_a{b}  Src_a{b}    subscript -- the type name is CASE-SENSITIVE
+    ///     src_{b}   call_()     subscript -- the name part must be NON-EMPTY
+    ///     src_a[p]  call_a[i]   subscript -- the brace/paren is MANDATORY
+    ///     src_a{    src_a{b     subscript -- the mandatory pair must BALANCE
+    ///     src_a[p][q]{b}        NOTHING -- only one optional [..] is allowed before the {..}
+    ///     call_f()[e            an inline-babel-call whose value STOPS at `)`: the trailing
+    ///                           [..] is optional, so failing to balance costs only itself
+    private func inlineCallableMatch(
+        in chars: [Unicode.Scalar], at i: Int
+    ) -> InlineCallableMatch? {
+        /// Contents of a balanced pair at `j`, and the index just past it, or nil.
+        func paired(
+            _ j: Int, _ opener: Unicode.Scalar, _ closer: Unicode.Scalar
+        ) -> (contents: String, end: Int)? {
+            guard j < chars.count, chars[j] == opener,
+                  let past = balancedEnd(
+                      in: chars, openAt: j, opener: opener, closer: closer, maxDepth: Int.max)
+            else { return nil }
+            return (String(scalars: chars[(j + 1)..<(past - 1)]), past)
+        }
+
+        /// `prefix` then a non-empty name run, which stops on whitespace, `[`, or `open`.
+        /// Returns the name and the index of the character after it, which org's `looking-at`
+        /// requires to be `[` or `open`.
+        func head(_ prefix: String, open: Unicode.Scalar) -> (name: String, next: Int)? {
             let p = Array(prefix.unicodeScalars)
-            guard i + p.count < chars.count else { return false }
-            // Case-SENSITIVE: `SRC_a{b}` is a subscript in org, measured.
+            guard i + p.count < chars.count else { return nil }
             for (offset, expected) in p.enumerated() where chars[i + offset] != expected {
-                return false
+                return nil
             }
-            // The name run is `[^ \t\n[OPEN]+`, so it stops on whitespace or on either bracket.
             var j = i + p.count
             while j < chars.count, chars[j] != " ", chars[j] != "\t", chars[j] != "\n",
-                  chars[j] != "[", chars[j] != mandatory.0 {
+                  chars[j] != "[", chars[j] != open {
                 j += 1
             }
-            guard j > i + p.count, j < chars.count else { return false }
-            // The OPTIONAL `[..]` must BALANCE when present. An unbalanced one declines the whole
-            // construct rather than being skipped past: `a src_py[p{b} c` is a subscript in org,
-            // measured, even though a `{..}` follows.
-            if chars[j] == "[" {
-                guard let past = balancedEnd(
-                    in: chars, openAt: j, opener: "[", closer: "]", maxDepth: Int.max
-                ) else { return false }
-                j = past
-            }
-            guard j < chars.count, chars[j] == mandatory.0 else { return false }
-            return balancedEnd(
-                in: chars, openAt: j, opener: mandatory.0, closer: mandatory.1, maxDepth: Int.max
-            ) != nil
+            guard j > i + p.count, j < chars.count else { return nil }
+            guard chars[j] == "[" || chars[j] == open else { return nil }
+            return (String(scalars: chars[(i + p.count)..<j]), j)
         }
-        if chars[i] == "s" { return candidate("src_", mandatory: ("{", "}")) }
-        return candidate("call_", mandatory: ("(", ")"))
+
+        if chars[i] == "s" {
+            guard let (language, afterName) = head("src_", open: "{") else { return nil }
+            var j = afterName
+            var rawParameters: String?
+            if let group = paired(j, "[", "]") {
+                rawParameters = group.contents
+                j = group.end
+            }
+            guard let body = paired(j, "{", "}") else { return nil }
+            return InlineCallableMatch(
+                end: body.end,
+                language: language,
+                parameters: OrgParser.inlineHeaderValue(rawParameters),
+                value: body.contents)
+        }
+
+        guard let (_, afterName) = head("call_", open: "(") else { return nil }
+        var j = afterName
+        if let inside = paired(j, "[", "]") { j = inside.end }
+        guard let arguments = paired(j, "(", ")") else { return nil }
+        j = arguments.end
+        // The TRAILING [..] is optional AND independent: `call_f()[e` is still a call, its value
+        // ending at the `)`. Measured -- an unbalanced end-header costs only itself.
+        if let endHeader = paired(j, "[", "]") { j = endHeader.end }
+        return InlineCallableMatch(
+            end: j, language: nil, parameters: nil,
+            value: String(scalars: chars[i..<j]))
     }
+
+    /// org's normalization for an inline construct's bracketed header, or nil when there is none.
+    ///
+    /// Both parsers spell it identically:
+    ///
+    ///     (and (org-string-nw-p p)
+    ///          (replace-regexp-in-string "\n[ \t]*" " " (org-trim p)))
+    ///
+    /// Three steps, and each is load-bearing. `org-string-nw-p` rejects a group that is EMPTY or
+    /// all whitespace, so `src_py[]{x}` and `src_py[ ]{x}` both have NULL parameters rather than
+    /// `""` -- measured, and the reason the schema slot is `string | null`. `org-trim` then strips
+    /// leading and trailing ` \t\n\r`, so `src_py[  p  ]{x}` gives `"p"`. Finally each newline and
+    /// the indentation after it collapses to ONE space, which is what lets a header wrap across
+    /// lines without the wrap appearing in the value.
+    ///
+    /// The body of a `{..}` gets NONE of this: `src_py{ }` has the value `" "`, measured. Only the
+    /// bracketed header is normalized.
+    static func inlineHeaderValue(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let blank: Set<Unicode.Scalar> = [" ", "\t", "\n", "\r"]
+        var scalars = Array(raw.unicodeScalars)
+        guard scalars.contains(where: { !blank.contains($0) }) else { return nil }
+        while let first = scalars.first, blank.contains(first) { scalars.removeFirst() }
+        while let last = scalars.last, blank.contains(last) { scalars.removeLast() }
+        var out: [Unicode.Scalar] = []
+        var k = 0
+        while k < scalars.count {
+            if scalars[k] == "\n" {
+                out.append(" ")
+                k += 1
+                while k < scalars.count, scalars[k] == " " || scalars[k] == "\t" { k += 1 }
+            } else {
+                out.append(scalars[k])
+                k += 1
+            }
+        }
+        return String(scalars: out[...])
+    }
+
+    /// Whether the scalar immediately before `i` SUPPRESSES an inline `src_` / `call_` construct.
+    ///
+    /// This is org's leading `\<`, and it was declined twice before being pinned here (ORG-29,
+    /// ORG-30) on the grounds that it needs org-mode's word-constituent syntax table -- a fifth
+    /// Emacs table pinned for one condition. What changed is not the cost but the evidence: the
+    /// table below is not a transcription of a syntax table at all, it is a BEHAVIOURAL
+    /// enumeration over the whole printable ASCII range plus every control, space and DEL, done by
+    /// live parse, 94 characters one at a time. It is a measurement, so it is checkable, and
+    /// `PinnedTableDriftTests` re-runs it against live Emacs rather than trusting this comment.
+    ///
+    ///     SUPPRESS (66)   $ % ' \   0-9   A-Z   a-z
+    ///     ALLOW    (28)   ! " # & ( ) * + , - . / : ; < = > ? @ [ ] ^ _ ` { | } ~
+    ///                     plus all controls, space, DEL
+    ///
+    /// **`$ % ' \` are the four that make this non-guessable, and every summary of it has got them
+    /// wrong.** The rule reads like "not a word constituent", and on the nine characters anybody
+    /// checked it behaves like one -- letters and digits suppress, `-` `_` `(` allow. But `_`
+    /// ALLOWS while `$` SUPPRESSES, and neither is derivable from "is it alphanumeric". The
+    /// session handoff that specified this work stated the rule as letters-and-digits-only and was
+    /// wrong on exactly those four; implementing it as stated would have shipped four new silent
+    /// wrong trees. The pattern has its own name in this repository's record: the enumeration was
+    /// right and the generalisation drawn from it was wrong.
+    ///
+    /// org's REASON differs per character and is deliberately not modelled here. A leading `\`
+    /// suppresses because `\src` parses as a latex-fragment first, consuming the `src`; a leading
+    /// `$` suppresses through the latex machinery too. Only the OUTCOME for this construct is
+    /// pinned, because only the outcome is what the parser has to agree with.
+    ///
+    /// **Index 0 ALLOWS, and that is a measured answer rather than a fallback.** With no preceding
+    /// scalar there is nothing to suppress, and org agrees: `src_python{x} b` at buffer start is an
+    /// inline-src-block. Inside a container the region also starts at 0 while the BUFFER has a
+    /// character there -- but every delimiter that can immediately precede a container's contents
+    /// (`*` `/` `_` `+` `=` `~` `[` `{` `<` `(` `:` `|` and space) is in the ALLOW set, so the two
+    /// readings cannot disagree. Pinned both ways: `*src_python{x}*` builds one, `*asrc_python{x}*`
+    /// does not.
+    ///
+    /// A NON-ASCII preceding scalar THROWS. The enumeration covers ASCII only, so the honest
+    /// answer above it is "not measured" -- and this parser's standing rule is that an undecidable
+    /// case refuses rather than guesses. Same shape as the dynamic-block name, the footnote label
+    /// and the sub/superscript body; all of them narrow together the day the class is enumerated
+    /// over Unicode. The cost is bounded to inputs that are already a grammatical match, because
+    /// the caller asks the grammar first.
+    static func inlineCallableSuppressed(before i: Int, in chars: [Unicode.Scalar]) throws -> Bool {
+        guard i > 0 else { return false }
+        let s = chars[i - 1]
+        guard s.isASCII else {
+            throw OrgError.unimplemented(
+                "non-ASCII scalar before an inline src block or babel call")
+        }
+        return inlineCallableSuppressingASCII.contains(s)
+    }
+
+    /// The 66 SUPPRESS scalars of the table in `inlineCallableSuppressed`, and nothing else.
+    ///
+    /// Written as the four irregulars plus three ranges rather than a literal list of 66, so that
+    /// the irregular half -- the only half anybody gets wrong -- is impossible to skim past.
+    static let inlineCallableSuppressingASCII: Set<Unicode.Scalar> = {
+        var set: Set<Unicode.Scalar> = ["$", "%", "'", "\\"]
+        for value in UInt32(UnicodeScalar("0").value)...UInt32(UnicodeScalar("9").value) {
+            set.insert(Unicode.Scalar(value)!)
+        }
+        for value in UInt32(UnicodeScalar("A").value)...UInt32(UnicodeScalar("Z").value) {
+            set.insert(Unicode.Scalar(value)!)
+        }
+        for value in UInt32(UnicodeScalar("a").value)...UInt32(UnicodeScalar("z").value) {
+            set.insert(Unicode.Scalar(value)!)
+        }
+        return set
+    }()
 
     /// A matched `[fn:` construct: where it ends, its label, and its inline body when it has one.
     ///

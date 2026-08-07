@@ -206,6 +206,13 @@ struct RendererConformanceTests {
         "todo-default-unrecognized",
         "todo-hidden-by-unterminated-example",
         "todo-runtime-custom",
+        // B1: the two inline callables. Their sweep grid (`i29*`, `i30*`, 36 cases,
+        // refusals NOT accepted) is the real gate; these two fixtures are the
+        // per-type coverage ORG-4 condition 3 counts, and each carries its own
+        // negatives -- case, empty name, missing bracket, and the four boundary
+        // characters that suppress the construct.
+        "inline-src-block-forms",
+        "inline-babel-call-forms",
     ]
 
     /// PERMANENT. Not "pending" -- the tree provably cannot carry these bytes, so no amount of

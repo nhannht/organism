@@ -234,6 +234,13 @@ struct ConformanceTests {
         // The two together are what make the rule positional rather than name-keyed.
         "property-drawer-document-start",
         "property-drawer-positional-fallback",
+        // B1: the two inline callables. Their sweep grid (`i29*`, `i30*`, 36 cases,
+        // refusals NOT accepted) is the real gate; these two fixtures are the
+        // per-type coverage ORG-4 condition 3 counts, and each carries its own
+        // negatives -- case, empty name, missing bracket, and the four boundary
+        // characters that suppress the construct.
+        "inline-src-block-forms",
+        "inline-babel-call-forms",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)
