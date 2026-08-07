@@ -1,7 +1,14 @@
 # organism
 
-A language-agnostic conformance suite for Emacs org-mode, graded against `org-element`
-(org-mode's own reference parser), plus one reference implementation of it in Swift.
+An Emacs org-mode parser for Swift, and the language-agnostic conformance suite it is graded by.
+
+Both live here on purpose. The suite grades any parser in any language against `org-element`,
+org-mode's own reference parser; `OrgSwift` is one implementation that passes it. If you came for
+the Swift package, jump to [Using the Swift library](#using-the-swift-library).
+
+```swift
+.package(url: "https://github.com/nhannht/organism.git", from: "0.2.0")
+```
 
 ## Current state (read this first)
 

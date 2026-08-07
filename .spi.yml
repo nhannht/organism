@@ -1,0 +1,15 @@
+# Swift Package Index build manifest.
+#
+# Opts this package into SPI's auto-generated, auto-hosted, auto-updating DocC documentation.
+# SPI builds it from the target's symbol graph on every release, so the doc comments already in
+# `Sources/OrgSwift` become browsable API docs with no DocC catalog to maintain here.
+#
+# `OrgSwift` is the only library target. `OrgAST.generated.swift` is part of it, so the 55
+# generated node types and their doc comments are documented alongside the hand-written API --
+# which is the point of generating them with comments rather than bare.
+#
+# Docs: https://swiftpackageindex.com/swiftpackageindex/spimanifest/documentation/spimanifest
+version: 1
+builder:
+  configs:
+    - documentation_targets: [OrgSwift]
