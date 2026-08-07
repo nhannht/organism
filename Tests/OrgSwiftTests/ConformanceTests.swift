@@ -173,6 +173,11 @@ struct ConformanceTests {
         "keyword-name-attaches-to-table",
         "affiliated-caption-forms",
         "affiliated-header-results-attr-plot",
+        // A hyphenated ATTR backend, which org's own affiliated regexp allows and the published
+        // JSON schema used to reject (ORG-15). Nothing about the PARSER was ever wrong here --
+        // this case asserts on arrival. It is a fixture because the schema class it exercises had
+        // no corpus reach at all, which is how the schema drifted from org unnoticed.
+        "affiliated-attr-hyphenated-backend",
         // Pins the ordered-array grouping semantics (SCHEMA.md section 5): a key repeated with
         // another key between its occurrences groups at its FIRST occurrence position, values in
         // source order -- `HEADER a` / `NAME x` / `HEADER b` gives entries HEADER ["a","b"],

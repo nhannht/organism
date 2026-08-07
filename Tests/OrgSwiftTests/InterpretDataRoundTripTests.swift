@@ -140,6 +140,14 @@ struct InterpretDataRoundTripTests {
         "conformance/affiliated-caption-forms", "conformance/dynamic-block-simple",
         "real/doomemacs-docs/contributing.org", "real/doomemacs-docs/getting_started.org",
         "real/doomemacs-docs/index.org", "real/org-mode-samples/keywords.org",
+        // The SAME case-folding convention on an affiliated ATTR key, and nothing else. Full
+        // before/after text inspected on Emacs 30.2 (35 bytes in, 35 out, first difference at
+        // offset 2): `#+ATTR_MY-BACKEND: :width 100` re-emits as `#+attr_my-backend: :width 100`
+        // and `para` is untouched. Listed separately because the HYPHEN surviving the fold is
+        // this fixture's whole point -- it pins the schema key class the published schema used to
+        // forbid (ORG-15), so a future divergence that mangled the hyphen rather than the case
+        // must not be absorbed silently into the group entry above.
+        "conformance/affiliated-attr-hyphenated-backend",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

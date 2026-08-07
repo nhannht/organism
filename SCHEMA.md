@@ -392,6 +392,16 @@ family an **array of strings**, one per line, in source order; `RESULTS` an obje
 an **array of `{"long", "short"}` entries**, one per line, `long` an array of parsed
 object-nodes, `short` a string or null.
 
+The `ATTR_*` family's key class is `ATTR_[-_A-Z0-9]+`, and both halves of that are measured
+rather than assumed. org's own `org-element--affiliated-re` allows `ATTR_[-_A-Za-z0-9]+`, so a
+**hyphen is legal in a backend name** and ordinary in real usage (`#+ATTR_MY-BACKEND:`). The
+lowercase half of org's class is unreachable through this schema, because `org-element` upcases
+affiliated keys before any tree is built: measured on Emacs 30.2, `#+attr_lower-case:` arrives as
+key `ATTR_LOWER-CASE`, hyphen intact. The published JSON schema forbade the hyphen until
+2026-08-07, which made an ordinary org file produce a tree correct by the oracle and invalid by
+this repository's own contract; `conformance/affiliated-attr-hyphenated-backend` pins it now and
+`harness/validate-schema.sh` is the gate that would have caught it.
+
 A keyword whose name is **not** one of the recognized affiliated-keyword names (e.g. `TITLE`,
 `TODO`, `STARTUP`, `AUTHOR`, ...) never attaches, even when immediately followed by an element --
 it is always its own standalone `keyword` node.

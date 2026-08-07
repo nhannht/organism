@@ -33,6 +33,15 @@ enum HarnessSupport {
     /// normalizer, unlike `OracleConformanceCrossCheckTests`.
     static let interpretDataCheckScript = repoRoot.appendingPathComponent("harness/interpret-data-check.el")
 
+    /// `harness/validate-schema.sh` - validates every `conformance/*/expected.json` against
+    /// `schema/org-node.schema.json`, the contract SCHEMA.md tells other implementations to
+    /// satisfy. The script is the primary artifact (a Rust or JS implementer runs it directly,
+    /// and it holds its own self-test); this Swift seam exists so `swift test`, the command
+    /// actually run on every change, carries the gate too. Until 2026-08-07 nothing validated
+    /// against that schema at all and it had drifted from org unnoticed -- see ORG-15 and the
+    /// script's header.
+    static let validateSchemaScript = repoRoot.appendingPathComponent("harness/validate-schema.sh")
+
     /// The on-disk path to a Layer 1 conformance case's `input.org`, given its case name --
     /// `conformance/<name>/input.org`, the fixed layout SCHEMA.md documents and
     /// `CorpusLoader.conformanceCases()` reads from. Used to cross-check the hand-authored
@@ -89,6 +98,58 @@ enum HarnessSupport {
         }
         return nil
     }()
+
+    /// Absolute path to the first executable named `name` on `PATH`, or `nil` if none is.
+    static func executablePath(named name: String) -> String? {
+        guard let pathVariable = ProcessInfo.processInfo.environment["PATH"] else { return nil }
+        for directory in pathVariable.split(separator: ":") {
+            let candidate = "\(directory)/\(name)"
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// Whether `harness/validate-schema.sh` can actually run: `bash` and `python3` on `PATH`, and
+    /// the `jsonschema` package importable. Gates `SchemaValidationTests` via `.enabled(if:)`, so
+    /// a clean clone without the Python dependency stays green rather than failing -- the same
+    /// graceful-skip contract `emacsAvailable` gives the Emacs-backed suites, and the same one
+    /// the script itself applies when run directly.
+    static let schemaValidatorAvailable: Bool = {
+        guard executablePath(named: "bash") != nil,
+              let python3Path = executablePath(named: "python3") else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: python3Path)
+        process.arguments = ["-c", "import jsonschema"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }()
+
+    /// Runs `harness/validate-schema.sh` and returns its exit status with its combined output.
+    /// The script owns the verdict (including its own self-test); this only reports it.
+    static func runSchemaValidation() throws -> (status: Int32, output: String) {
+        guard let bashPath = executablePath(named: "bash") else {
+            throw OracleError.emacsUnavailable
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: bashPath)
+        process.arguments = [validateSchemaScript.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
 
     /// Whether a usable `emacs` (27+, native `json-serialize`) is reachable on `PATH`. Checked
     /// once per test run and cached -- gates the whole `OracleDiffTests` suite via

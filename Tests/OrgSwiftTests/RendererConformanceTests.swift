@@ -103,6 +103,7 @@ struct RendererConformanceTests {
     /// wrapper and no normalizer. Add a name here ONLY when `renderOrg` genuinely emits the input
     /// bytes for it.
     static let implementedCases: Set<String> = [
+        "affiliated-attr-hyphenated-backend",
         "affiliated-caption-forms",
         "affiliated-header-results-attr-plot",
         "block-center-parsed",
