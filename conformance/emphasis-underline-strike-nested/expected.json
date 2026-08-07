@@ -1,0 +1,73 @@
+{
+  "type": "document",
+  "children": [
+    {
+      "type": "section",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "a "
+            },
+            {
+              "type": "underline",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "one "
+                },
+                {
+                  "type": "bold",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "two"
+                    }
+                  ],
+                  "postBlank": 1
+                },
+                {
+                  "type": "text",
+                  "value": "three"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "and "
+            },
+            {
+              "type": "strikethrough",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "four "
+                },
+                {
+                  "type": "code",
+                  "value": "five",
+                  "postBlank": 1
+                },
+                {
+                  "type": "text",
+                  "value": "six"
+                }
+              ],
+              "postBlank": 1
+            },
+            {
+              "type": "text",
+              "value": "done\n"
+            }
+          ],
+          "postBlank": 0
+        }
+      ],
+      "postBlank": 0
+    }
+  ],
+  "postBlank": 0
+}

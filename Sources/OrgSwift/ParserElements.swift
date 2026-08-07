@@ -508,6 +508,13 @@ extension OrgParser {
                 // Both are measured: `text` then `| a |` is a paragraph AND a table, never one
                 // paragraph, and the same holds for `text` then `: a`.
                 || OrgParser.isTableLine(candidate)
+                // A full table.el RULE line separates paragraphs UNCONDITIONALLY -- it sits in
+                // `org-element-paragraph-separate` with no double-check -- even when it opens no
+                // grid and will itself become a paragraph holding a strikethrough. Measured
+                // (sweep i6 family): `+---+` / `+---+` / `| a |` is TWO one-line paragraphs and
+                // an org table. Invisible while `+` always threw; the strikethrough emission is
+                // what exposed it.
+                || OrgParser.isTableElRuleLine(candidate)
                 || OrgParser.isFixedWidthLine(candidate)
                 // Lists join that set for the same reason, and this is the line that makes
                 // nesting work at all: inside an item body, `  - nested` must END the item's

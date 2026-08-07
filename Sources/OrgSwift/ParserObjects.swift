@@ -747,14 +747,14 @@ extension OrgParser {
                     throw OrgError.unimplemented("unrecognized sub/superscript form")
                 }
                 // A `_` preceded by whitespace cannot open a script, but it can still open an
-                // UNDERLINE, which is unimplemented.
-                if c == "_", emphasisMatch(in: chars, at: i) != nil {
-                    throw OrgError.unimplemented("underline emphasis")
-                }
-            case "+":
-                // A full border-rule match here would be strikethrough.
-                if emphasisMatch(in: chars, at: i) != nil {
-                    throw OrgError.unimplemented("strikethrough emphasis")
+                // UNDERLINE, under the same border rule as the other three container emphases.
+                if c == "_", let match = emphasisMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    nodes.append(try emphasisContainerNode(
+                        "underline", .underline, match, in: chars, openedAt: i))
+                    i = match.closer + 1 + match.postBlank
+                    textStart = i
+                    continue
                 }
             case "c", "s":
                 // `call_NAME(ARGS)` and `src_LANG{BODY}`. Both unimplemented and both OUTSIDE the
@@ -778,29 +778,30 @@ extension OrgParser {
                 if i + 1 < chars.count, chars[i + 1] == "@" {
                     throw OrgError.unimplemented("export snippet")
                 }
-            case "*", "/", "=", "~":
+            case "*", "/", "+", "=", "~":
                 if let match = emphasisMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let contents = String(scalars: chars[(i + 1)..<match.closer])
                     let objectNode: OrgJSON
                     switch c {
-                    case "*", "/":
+                    case "*", "/", "+":
                         // Containers: contents re-scanned for nested objects as their own
                         // narrowed region (see this function's doc comment), and as their OWN
                         // container -- a bold's contents are lexed under `bold`'s restrictions,
                         // never under those of whatever holds the bold. See `ObjectContainer`
                         // for the four measured inputs that discriminate the two models.
-                        objectNode = .object([
-                            "type": .string(c == "*" ? "bold" : "italic"),
-                            "children": .array(try parseObjects(contents, in: c == "*" ? .bold : .italic)),
-                            "postBlank": .int(match.postBlank),
-                        ])
+                        let (type, container): (String, ObjectContainer) = switch c {
+                        case "*": ("bold", .bold)
+                        case "/": ("italic", .italic)
+                        default: ("strikethrough", .strikeThrough)
+                        }
+                        objectNode = try emphasisContainerNode(
+                            type, container, match, in: chars, openedAt: i)
                     default:
                         // Leaves: value stays completely literal, never re-parsed (SCHEMA.md
                         // section 7, rule 10).
                         objectNode = .object([
                             "type": .string(c == "~" ? "code" : "verbatim"),
-                            "value": .string(contents),
+                            "value": .string(String(scalars: chars[(i + 1)..<match.closer])),
                             "postBlank": .int(match.postBlank),
                         ])
                     }
@@ -817,6 +818,22 @@ extension OrgParser {
 
         flushText(upTo: chars.count)
         return nodes
+    }
+
+    /// The one emission shape for all four CONTAINER emphases -- bold, italic, underline,
+    /// strikethrough. Their contents are re-scanned for nested objects as their own narrowed
+    /// region and as their OWN container; keeping a single constructor means the four markers
+    /// cannot drift apart in shape, only in which `ObjectContainer` row restricts them.
+    private func emphasisContainerNode(
+        _ type: String, _ container: ObjectContainer, _ match: EmphasisMatch,
+        in chars: [Unicode.Scalar], openedAt i: Int
+    ) throws -> OrgJSON {
+        let contents = String(scalars: chars[(i + 1)..<match.closer])
+        return .object([
+            "type": .string(type),
+            "children": .array(try parseObjects(contents, in: container)),
+            "postBlank": .int(match.postBlank),
+        ])
     }
 
     /// Index just past a `<<<target>>>` at `i`, and the range of its contents, or nil.

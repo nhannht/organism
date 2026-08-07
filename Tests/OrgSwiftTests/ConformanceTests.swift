@@ -40,8 +40,11 @@ struct ConformanceTests {
         // Simple inline emphasis objects.
         "emphasis-bold-simple",
         "emphasis-italic-simple",
+        "emphasis-underline-simple",
+        "emphasis-strikethrough-simple",
         "emphasis-code-simple",
         "emphasis-verbatim-simple",
+        "emphasis-underline-strike-nested",
         // Emphasis border rules (SCHEMA.md section 7).
         "emphasis-border-reject-midword",
         "emphasis-border-reject-verbatim-adjacent",
