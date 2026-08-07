@@ -20,9 +20,13 @@ fix and the corpus regeneration that followed it - and its numbers are the numbe
 52 fixtures. They are left at 52 deliberately, because rewriting them to today's count would make
 a true historical record into a false one.
 
-The corpus is now **79 fixtures**, all still **79/79 valid, 0 invalid** against this schema. The
-27 cases added since exercise several things the text below correctly reported as unexercised AT
-THE TIME. Four statements no longer describe the current corpus:
+The corpus is now **82 fixtures**, all still **82/82 valid, 0 invalid** against this schema. The
+cases added since exercise several things the text below correctly reported as unexercised AT
+THE TIME. One SHAPE also changed after the text below was written: `affiliated` is an ordered
+ARRAY of `{"key", "value"}` entries now (SCHEMA.md section 5), so historical examples below that
+show it as a JSON object (`"affiliated": {"NAME": "t4"}`) are the shape of that moment, not
+today's - the current def in `org-node.schema.json` is the authority. Four statements no longer
+describe the current corpus:
 
 | Statement below | Still true? |
 |---|---|

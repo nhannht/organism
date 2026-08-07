@@ -77,9 +77,11 @@ on a first reading of `SCHEMA.md` or easy to get backwards.
     timestamps), not elements - the one block type whose children skip the element layer
     entirely.
 11. **Affiliated keywords attach to the very next element with no blank line between them**, and
-    become an extra `"affiliated"` key on that element instead of their own standalone `keyword`
-    node. A keyword whose name is not a recognized affiliated-keyword name (`TITLE`, `TODO`,
-    `AUTHOR`, and so on) never attaches, no matter how close it sits to the next element.
+    become an extra `"affiliated"` key on that element - an ordered array of `{"key", "value"}`
+    entries in source first-occurrence order (SCHEMA.md section 5) - instead of their own
+    standalone `keyword` nodes. A keyword whose name is not a recognized affiliated-keyword name
+    (`TITLE`, `TODO`, `AUTHOR`, and so on) never attaches, no matter how close it sits to the
+    next element.
 12. **List item boundaries are indentation-relative, not blank-line-relative alone.** A new item
     starts at the same-or-lesser indentation as an existing item's bullet; the item ends at a
     less-indented non-continuation line, two consecutive blank lines, a heading, or end of file.
@@ -286,7 +288,7 @@ exactly:
             }
           ],
           "postBlank": 0,
-          "affiliated": { "NAME": "mytable" }
+          "affiliated": [{ "key": "NAME", "value": "mytable" }]
         }
       ],
       "postBlank": 0
@@ -297,6 +299,7 @@ exactly:
 ```
 
 If your parser's output for this file differs from the above only in the `"affiliated"` key,
-re-read rule 11 above and `SCHEMA.md` section 5 - this is the single case in the whole corpus
-that exercises affiliated-keyword attachment, so it is worth getting exactly right before moving
-on to the rest of the corpus.
+re-read rule 11 above and `SCHEMA.md` section 5 - this is the simplest of the corpus cases
+exercising affiliated-keyword attachment (`affiliated-caption-forms`,
+`affiliated-header-results-attr-plot`, and `affiliated-interleaved-repeat` are the others), so
+it is worth getting exactly right before moving on to the rest of the corpus.
