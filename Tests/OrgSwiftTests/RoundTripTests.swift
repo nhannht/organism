@@ -44,13 +44,14 @@ extension CorpusLoader.RealFile: CustomTestStringConvertible {
 /// and 10), never from loosening the contract to fit an implementation. Expect it to grow again
 /// if someone audits an area nobody has looked at yet.
 ///
-/// `parseOrg`/`renderOrg` both throw `OrgError.notImplemented` today, so every case is wrapped
-/// in `withKnownIssue`, exactly like ConformanceTests.swift -- see SCHEMA.md section 8 for why,
-/// and for the rule that removing the wrapper (nothing else) is the only correct fix once a
-/// case starts passing for real. The `#expect` comparison below is still literal `==`, a
-/// placeholder: encoding "byte-exact modulo the SCHEMA.md section 10 losses" as a real
-/// comparison is deferred to whoever implements the parser/renderer, not done as part of this
-/// docstring correction.
+/// The suite splits on `implementedFiles` (below), the same mechanism as
+/// `ConformanceTests.implementedCases` -- see SCHEMA.md section 8 for why, and for the rule
+/// that moving a file into the set (nothing else) is the only correct fix once its wrapper
+/// fails by passing. The `#expect` comparison is still literal `==`: right for every file in
+/// `implementedFiles` (none may hit a section 10 loss), and encoding "byte-exact modulo the
+/// SCHEMA.md section 10 losses" as a real comparison -- which the loss-hitting files below
+/// need before they can ever convert -- is still deferred, now to the Layer 2 comparator
+/// increment.
 ///
 /// Normalization caveat, corrected here after an earlier draft got it wrong: it is NOT true
 /// that none of the vendored files exercise the Reason-A exceptions, or the dimensions
@@ -71,6 +72,16 @@ struct RoundTripTests {
 
     static let realFiles: [CorpusLoader.RealFile] = CorpusLoader.realFiles()
 
+    /// Files whose full `renderOrg(parseOrg(text)) == text` round-trip is byte-exact TODAY --
+    /// these assert normally, everything else stays wrapped, same split mechanism as
+    /// `ConformanceTests.implementedCases` (SCHEMA.md section 8). A file enters this set only
+    /// when the wrapper's own failure announces it, and only with plain `==`: none of the
+    /// files here may hit a section 10 loss (a file that does needs the loss-annotated
+    /// comparator this suite's docstring defers, which is still unbuilt).
+    static let implementedFiles: Set<String> = [
+        "real/org-mode-samples/pathological.org",
+    ]
+
     /// Deliberately NOT wrapped in `withKnownIssue`: this checks that the corpus is wired up at
     /// all, not that the (pending) parser works. If `CorpusLoader.realFiles()` ever silently
     /// returns `[]` -- a resource-path regression, a directory-walk bug -- this must fail loudly
@@ -83,10 +94,17 @@ struct RoundTripTests {
 
     @Test("renderOrg(parseOrg(text)) == text, byte-exact except the SCHEMA.md section 10 losses", arguments: realFiles)
     func roundTrips(_ file: CorpusLoader.RealFile) throws {
-        withKnownIssue("parser/renderer not yet implemented: \(file.name)") {
+        let assertion = {
             let tree = try parseOrg(file.text)
             let rendered = try renderOrg(tree)
             #expect(rendered == file.text, "\(file.name): round-trip did not match the Rule D contract (SCHEMA.md section 10, and this suite's docstring)")
+        }
+        if Self.implementedFiles.contains(file.name) {
+            try assertion()
+        } else {
+            withKnownIssue("parser/renderer does not round-trip this file yet: \(file.name)") {
+                try assertion()
+            }
         }
     }
 }
