@@ -266,12 +266,20 @@ extension OrgRenderer {
 
     // MARK: - Greater blocks
 
-    static func renderGreaterBlock(_ node: OrgJSON, kind: String) throws -> String {
-        var body = "#+begin_\(kind)\n"
+    /// `linePrefix` indents the DELIMITER lines only, exactly as `renderLiteralBlock` does, and
+    /// for the same measured reason: a child element inside the block already carries its own
+    /// absolute source indentation in its text. `- x` then an indented `#+begin_quote` around
+    /// `  q` parses to a paragraph whose text is `"  q\n"`, so prefixing the children too would
+    /// double it. Measured on quote, center and verse alike, and on a `1. ` bullet as well as a
+    /// `- ` one -- the prefix width is the item's own bullet width, nothing cleverer.
+    static func renderGreaterBlock(
+        _ node: OrgJSON, kind: String, linePrefix: String = ""
+    ) throws -> String {
+        var body = linePrefix + "#+begin_\(kind)\n"
         for child in try array(node, "children", "\(kind)-block") {
             body += try renderElement(child)
         }
-        body += "#+end_\(kind)\n"
+        body += linePrefix + "#+end_\(kind)\n"
         return body
     }
 
@@ -288,22 +296,68 @@ extension OrgRenderer {
             }
             return body
         }
+        let rows = try array(node, "children", type)
+
+        // Every standard row's cells, rendered once. A RULE row's dash widths come from these
+        // and from nothing else, so they are computed before any row is emitted.
+        var renderedRows: [Int: [String]] = [:]
+        for (index, row) in rows.enumerated()
+        where try string(row, "kind", "table-row") == "standard" {
+            renderedRows[index] = try array(row, "children", "table-row").map { cell in
+                try renderObjects(try array(cell, "children", "table-cell"))
+                    + String(repeating: " ", count: try postBlank(cell, "table-cell"))
+            }
+        }
+
+        // Column widths, the widest rendered cell per column across every standard row.
+        //
+        // A table's ALIGNMENT is not in the tree: measured, `| a  | bb |` gives its first cell
+        // the text `a` and `postBlank` 0, so the extra space survives in no property. That looked
+        // like a blocker for rule rows and is not, because org's own interpreter does not
+        // preserve alignment either -- it RECOMPUTES it, padding every cell to its column width
+        // and emitting a rule run of width PLUS 2 (the two spaces a standard row writes around
+        // its cell). Measured on both halves:
+        //
+        //     | a | bb |   over  |-|-|   re-emits the rule as |---+----|
+        //     | a | bb | / | c | d |     re-emits the second row as | c | d  |
+        //
+        // So this renderer adopts org's convention rather than inventing one. An ALIGNED source
+        // table -- which is what org-mode writes, and what every real file in the corpus
+        // contains -- round-trips byte-exact; an unaligned one normalizes to aligned, the same
+        // answer Emacs gives, and that normalization is SCHEMA.md section 10 item 14.
+        var columnWidths: [Int] = []
+        for cells in renderedRows.values {
+            for (column, text) in cells.enumerated() {
+                let width = text.count
+                if column < columnWidths.count {
+                    columnWidths[column] = max(columnWidths[column], width)
+                } else {
+                    columnWidths.append(width)
+                }
+            }
+        }
+
         var body = ""
-        for row in try array(node, "children", type) {
+        for (index, row) in rows.enumerated() {
             let kind = try string(row, "kind", "table-row")
             switch kind {
             case "standard":
-                let cells = try array(row, "children", "table-row").map { cell -> String in
-                    try renderObjects(try array(cell, "children", "table-cell"))
-                        + String(repeating: " ", count: try postBlank(cell, "table-cell"))
+                let padded = (renderedRows[index] ?? []).enumerated().map { column, text in
+                    text + String(repeating: " ",
+                                  count: max(0, (column < columnWidths.count ? columnWidths[column] : 0) - text.count))
                 }
-                body += "| " + cells.joined(separator: " | ") + " |\n"
+                body += "| " + padded.joined(separator: " | ") + " |\n"
             case "rule":
-                // The dash run per column is not in the tree (`children` is `[]` for a rule
-                // row) -- nothing to reconstruct the widths from. No corpus case reaches this;
-                // an honest throw beats a guessed width. Layer 2 work, recorded in the
-                // renderer-conformance docstring.
-                throw OrgError.malformedTree("table: rule rows are not renderable yet (dash widths are not in the tree)")
+                // A table of rule rows ONLY has no cells to measure, so the column count is not
+                // in the tree either. No corpus case reaches it and a guessed width is worse
+                // than an honest refusal, so this stays a throw -- narrowed from the blanket one
+                // that used to cover every rule row.
+                guard !columnWidths.isEmpty else {
+                    throw OrgError.malformedTree(
+                        "table: a rule row in a table with no standard row has no width to compute")
+                }
+                body += "|" + columnWidths.map { String(repeating: "-", count: $0 + 2) }
+                    .joined(separator: "+") + "|\n"
             default:
                 throw OrgError.malformedTree("table-row: unknown kind '\(kind)'")
             }
@@ -371,15 +425,40 @@ extension OrgRenderer {
             }
             out += try renderObjects(tagObjects) + " :: "
         }
-        // No corpus case pins where a nonzero item `preBlank` puts its blank lines (a bullet
-        // line with blanks before its own content is not in the corpus), so guessing is not an
-        // option -- throw honestly until a fixture pins it.
-        guard try int(node, "preBlank", type) == 0 else {
-            throw OrgError.malformedTree("item: nonzero preBlank is not renderable yet (no fixture pins its placement)")
-        }
+        // ORG-24's renderer half. `preBlank` counts the NEWLINES between the bullet and the
+        // item's first content, and needs no indentation reconstruction at all -- measured, a
+        // first paragraph that does not sit on the bullet line carries its own leading spaces in
+        // its text (`-` then `   a` gives the text `"   a\n"`). org also drops the bullet's
+        // trailing space in exactly this case, so `bullet` is `"-"` rather than `"- "` and the
+        // separator is entirely `preBlank`'s newlines. Same shape as `footnote-definition`.
+        //
+        //     - a          bullet "- "  preBlank 0
+        //     -<nl>  a     bullet "-"   preBlank 1
+        //     -<nl><nl>  a bullet "-"   preBlank 2
+        //
+        // A separator space is only correct when content follows ON THE SAME LINE. The bullet,
+        // the counter, the checkbox and the ` :: ` after a tag are all written with one, so
+        // whenever the content does NOT follow -- `preBlank` moved it to a later line, or there
+        // is no content at all -- the trailing run is trimmed before anything else is emitted.
+        // Measured on the shape that found it, which is common in real files:
+        //
+        //     - tag ::<nl>  body     tag item, preBlank 1, and NO space after `::`
+        //
+        // 21 lines of `faq.org` and `getting_started.org` are exactly that.
+        let preBlank = try int(node, "preBlank", type)
         let children = try array(node, "children", type)
-        guard !children.isEmpty else {
-            throw OrgError.malformedTree("item: empty item is not renderable yet (no fixture pins its line ending)")
+        if preBlank > 0 || children.isEmpty {
+            while out.hasSuffix(" ") { out.removeLast() }
+        }
+        out += String(repeating: "\n", count: preBlank)
+
+        if children.isEmpty {
+            // An EMPTY item accounts its own line ending to `postBlank`, which the caller
+            // appends -- the same convention `fixed-width` uses, and measured the same way:
+            // `- a` / `-` / `- b` with no blank line anywhere gives the middle item postBlank 1.
+            // So nothing more is emitted here.
+            //
+            return out
         }
         for (index, child) in children.enumerated() {
             switch try nodeType(child) {
@@ -406,6 +485,32 @@ extension OrgRenderer {
                 out += try renderLiteralBlock(child, try nodeType(child),
                                               linePrefix: indent + String(repeating: " ", count: bullet.count))
                 out += String(repeating: "\n", count: try postBlank(child, "literal block"))
+            case "quote-block", "center-block":
+                // GREATER blocks inside an item, ORG-24's other renderer blocker. Same
+                // accounting as the two branches above -- rendered directly so the delimiter
+                // lines get the item's continuation indent, with postBlank explicit and
+                // affiliated refused rather than dropped.
+                let blockType = try nodeType(child)
+                guard try fields(child, blockType)["affiliated"] == nil else {
+                    throw OrgError.malformedTree("item: a greater block carrying affiliated keywords inside an item is not renderable yet")
+                }
+                out += try renderGreaterBlock(
+                    child, kind: String(blockType.dropLast("-block".count)),
+                    linePrefix: indent + String(repeating: " ", count: bullet.count))
+                out += String(repeating: "\n", count: try postBlank(child, blockType))
+            case "verse-block":
+                // Verse is a greater block whose CONTENTS are objects, not elements (SCHEMA.md
+                // section 4), so it cannot go through `renderGreaterBlock` -- that would hand a
+                // `text` node to `renderElement`. Its body text carries its own indentation
+                // exactly as the other two do; only the delimiters need the prefix.
+                guard try fields(child, "verse-block")["affiliated"] == nil else {
+                    throw OrgError.malformedTree("item: a greater block carrying affiliated keywords inside an item is not renderable yet")
+                }
+                let versePrefix = indent + String(repeating: " ", count: bullet.count)
+                out += versePrefix + "#+begin_verse\n"
+                out += try renderObjects(try array(child, "children", "verse-block"))
+                out += versePrefix + "#+end_verse\n"
+                out += String(repeating: "\n", count: try postBlank(child, "verse-block"))
             default:
                 // Any other element's line indentation inside an item is not in the tree and
                 // has no pinning fixture; wrong bytes are worse than an honest refusal.

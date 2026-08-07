@@ -757,7 +757,7 @@ source bytes.
 
 **The contract:** `renderOrg(parseOrg(text)) == text` byte-exact, EXCEPT bytes recoverable only
 from `org-element` bookkeeping this schema deliberately strips (buffer positions) or does not
-read (per-type properties outside this schema's curated field set). 14 known instances,
+read (per-type properties outside this schema's curated field set). 19 known instances,
 confirmed either by direct `org-element` sexp inspection or by the property-mapping audit
 described in section 9's first entry, not assumed -- and they split into two DIFFERENT reasons,
 not one uniform "genuine loss" bucket.
@@ -767,8 +767,8 @@ substance of this section's current shape: `:switches`, `:tblfm`, `:counter`, `:
 `:range-type`, the radio link's `:type`, `:true-level`, and the `\\` of a hard line break are all
 read now, each carried by a named schema field (`switches`, `tblfm`, `counter`, `useBrackets`,
 `rangeType`, `pathType`, `trueLevel`, and a dedicated `line-break` node type respectively) and
-each pinned by a conformance fixture. What remains below is 12 items that no tree built on
-`org-element` can recover, plus 2 that are reachable and deliberately declined, with the reason
+each pinned by a conformance fixture. What remains below is 16 items that no tree built on
+`org-element` can recover, plus 3 that are reachable and deliberately declined, with the reason
 recorded. Closing those eight also surfaced two NEW losses that nobody had looked for -- items 7
 and 10 below -- which is the ordinary result of actually checking, and they are listed here
 rather than quietly omitted. (Item 8 is newer still: it surfaced when `affiliated` became an
@@ -814,6 +814,32 @@ tree carries the byte):**
    per-key value order -- and the interleaving is the one ordering fact org-element itself never
    had. Pinned by `conformance/affiliated-interleaved-repeat`, the permanent resident of
    `RendererConformanceTests.schemaLossCases`.
+14. Table ALIGNMENT -- `| a  | bb |` re-emits with the padding recomputed rather than preserved.
+   Measured: that first cell's text is `a` with `postBlank` 0, so the extra space survives in no
+   property. This looked like a blocker for rendering a RULE row, whose dash runs are likewise
+   absent from the tree, and it is not, because org's own interpreter does not preserve alignment
+   either -- it recomputes it, padding every cell to its column width and emitting a rule run of
+   that width plus 2. `renderOrg` adopts org's convention rather than inventing one, so an
+   ALIGNED table (what org-mode writes, and what every real file here contains) round-trips
+   byte-exact and an unaligned one normalizes to aligned. Pinned by `conformance/table-rule-widths`.
+15. Block DELIMITER case, both families -- `#+BEGIN_SRC` re-emits as `#+begin_src`, and the
+   dynamic block's `#+BEGIN:` as written by this renderer. org-element keeps a block's
+   `:language`, `:switches` and `:parameters` but not the case of the delimiter words themselves.
+   Distinct from item 1, which is `#+KEY:` keyword lines. Annotated on
+   `real/doomemacs-docs/getting_started.org` (126 lines) and `real/org-mode-samples/blocks.org`.
+16. A newline inside a bracket link's PATH -- `[[https://x/y<newline>][d]]` re-emits with a single
+   space where the newline was. Reason A of the upstream-normalization kind: org replaces the
+   newline and any following indentation before this schema sees anything, measured as
+   `:raw-link "https://x/y "`, and its own interpreter emits the space too. One occurrence in
+   `getting_started.org`.
+17. Leading indentation on a greater block's DELIMITER lines at top level -- `  #+begin_quote`
+   re-emits flush left. org-element records no column for it. `renderOrg` is already strictly
+   better than Emacs here: it keeps the BODY's indentation, which rides the child paragraph's own
+   text, and loses only the two delimiter lines, where org's interpreter drops both. Three
+   occurrences in `blocks.org`.
+19. A top-level fixed-width area's indentation -- `  : x` re-emits as `: x`. Measured to be
+   Reason A rather than B, unlike item 18 below: `:value` is `"x"` and `:structure` is NIL, so no
+   property carries the two spaces.
 
 **Reason B -- a CHOSEN non-capture (the byte IS present in the tree, just not in a property this
 schema reads). Both remaining entries are the same family: the plain-list `:structure` vector.**
@@ -856,6 +882,13 @@ schema reads). Both remaining entries are the same family: the plain-list `:stru
    reason: a second permanently-redundant field for a second single input form. (Note the example
    deliberately uses a NUMERIC bullet. `a. [@c]` produces no `item` node at all, because
    alphabetical bullets require `org-list-allow-alphabetical`, which is `nil` by default.)
+18. A top-level list's own BULLET-LINE indentation -- `  - a` re-emits as `- a`. THIRD member of
+   the `:structure` family, and it is Reason B rather than A for a measured reason: `  - a` keeps
+   the column in org-element's structure vector, `((1 2 "- " nil nil nil 7))`, so the byte is in
+   org's tree and this schema declines to read it. Declined on the same ground as items 9 and 10
+   -- a permanent field for one input form -- and org's own interpreter drops it too. Nesting
+   indentation IS reconstructible and is emitted (parent bullet width per level, pinned by
+   `conformance/list-nested-by-indent`); only the OUTERMOST list's own indent is lost.
 
 11. Headline-line trailing whitespace, the NO-tags case -- `**  ` re-emits as `** `, and
    `* x  ` as `* x`. Reason A, numbered after the Reason-B block only because it surfaced

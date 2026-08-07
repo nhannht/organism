@@ -199,6 +199,28 @@ struct InterpretDataRoundTripTests {
         // objects, the same nil "no bracket" produces.
         "conformance/affiliated-caption-short-markup",
         "conformance/affiliated-caption-short-empty",
+        // ORG-24's three renderer fixtures. All three diverge because org's own item
+        // interpreter REBUILDS the bullet line rather than re-emitting it, and in each case
+        // renderOrg reproduces the input byte-exact where interpret-data does not. Full
+        // before/after inspected on Emacs 30.2, every changed line reproduced.
+        //
+        // `-preblank` (67 in, 69 out, first difference at offset 1): both empty bullet lines
+        // gain a trailing space, `-` -> `- `. org appends a separator it has no content to
+        // separate; the tree records the bullet as `"-"`, without it.
+        //
+        // `-empty` (16 in, 20 out, first difference at offset 5): the same trailing space on
+        // BOTH empty items (`-` -> `- `, `- [ ]` -> `- [ ] `) PLUS a fabricated blank line after
+        // each of them. The blank line is org spending the empty item's postBlank twice -- it
+        // already emitted the item's own line ending.
+        //
+        // `-greater-block` (120 in, 116 out, first difference at offset 38): org RENUMBERS the
+        // list, rewriting the `1. y` item as `- y` and re-indenting its center block from three
+        // spaces to two. That is the counter-renumbering convention this suite's docstring
+        // already names as NOT a loss -- the bullet is a literal string in the tree, so renderOrg
+        // both can and must reproduce it.
+        "conformance/list-item-preblank",
+        "conformance/list-item-empty",
+        "conformance/list-item-greater-block",
         // Same case-folding convention, measured: `#+STARTUP:` re-emits as `#+startup:`,
         // diverging at offset 2. The odd-levels behaviour under test is unaffected -- the
         // keyword still takes effect, only its printed case changes.

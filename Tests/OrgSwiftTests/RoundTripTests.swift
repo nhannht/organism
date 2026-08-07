@@ -117,6 +117,46 @@ struct RoundTripTests {
         /// `checkbox: null` with the box gone from the text, and no renderer can re-emit it.
         /// Strips the box from the source side to mirror the loss.
         case malformedCheckboxDropped
+        /// Item 15: block DELIMITER case, BOTH families -- `#+BEGIN_SRC` against `#+begin_src`
+        /// and the dynamic block's `#+BEGIN:` against `#+begin:`. org-element keeps a
+        /// block's `:language`, `:switches` and `:parameters` but not the case of the
+        /// `#+begin_`/`#+end_` words themselves, so a file written in uppercase re-emits
+        /// lowercase. Distinct from item 1, which is about `#+KEY:` KEYWORD lines -- these are
+        /// block delimiters and are normalized the other way (org's own interpreter emits
+        /// lowercase; `renderOrg` follows it). Lowercases both sides.
+        case blockDelimiterCase
+        /// Item 17: leading indentation on a greater block's DELIMITER lines at top level.
+        /// org-element records no column for `#+begin_quote`, and org's own interpreter drops
+        /// the indentation from the delimiters AND the body -- measured, an indented quote
+        /// block re-emits flush left in full. `renderOrg` keeps the BODY's indentation (it
+        /// rides the child paragraph's own text) and loses only the two delimiter lines, so it
+        /// is already strictly better than Emacs here. Strips the indent from delimiter lines
+        /// on both sides.
+        ///
+        /// Applying this to a file does weaken the check for a block nested inside an ITEM,
+        /// where the indent IS reconstructible and this renderer emits it. That is not left
+        /// unguarded: `getting_started.org` carries item-nested blocks and is annotated with
+        /// `blockDelimiterCase` only, so their indentation is asserted there.
+        case blockDelimiterIndent
+        /// Item 18: a top-level list's own BULLET-LINE indentation. Reason B, not A, and the
+        /// difference was measured rather than assumed: `  - a` keeps the column in
+        /// org-element's `:structure` vector (`((1 2 "- " nil nil nil 7))`, the 2 being the
+        /// indent), so the byte IS in org's tree and this schema declines to read it -- the same
+        /// declined slot as items 9 and 10. org's own interpreter drops it too, re-emitting
+        /// `- a`. Strips the indent from bullet lines on both sides.
+        ///
+        /// This also flattens NESTED bullet indentation in an annotated file, so nesting is not
+        /// gated there; `conformance/list-nested-by-indent` gates it instead.
+        case listBulletIndent
+        /// Item 19: a top-level fixed-width area's indentation. Reason A, unlike item 18 above,
+        /// and again measured: `  : x` gives `:value "x"` and a NIL `:structure`, so no property
+        /// anywhere carries the two spaces. org's interpreter emits `: x`.
+        case fixedWidthIndent
+        /// Item 16: a newline inside a bracket link's PATH. org replaces the newline and any
+        /// following indentation with a single SPACE before this schema sees anything --
+        /// measured, `[[https://x/y<nl>][d]]` gives `:raw-link "https://x/y "`, and org's own
+        /// interpreter emits the space too. Collapses the same shape on the source side.
+        case bracketLinkPathNewline
         /// Item 11: trailing whitespace on a HEADLINE line (no tag group) -- the title region
         /// is trimmed into the tree, so `**  ` and `* x  ` re-emit without the trailing run.
         /// Strips it from both sides, the stars' own separator included when the title is
@@ -142,6 +182,28 @@ struct RoundTripTests {
             case .headlineTrailingWhitespace:
                 return Self.replacingMatches(
                     in: text, pattern: #"^(\*+[^\n]*?)[ \t]+$"#, template: "$1")
+            case .blockDelimiterCase:
+                return Self.replacingMatches(
+                    in: text,
+                    pattern: #"^[ \t]*#\+(?:BEGIN|END|begin|end)[_:][A-Za-z0-9_-]*"#) { $0.lowercased() }
+            case .blockDelimiterIndent:
+                return Self.replacingMatches(
+                    in: text, pattern: #"^[ \t]+(#\+(?:BEGIN|END|begin|end)[_:])"#, template: "$1")
+            case .listBulletIndent:
+                return Self.replacingMatches(
+                    in: text, pattern: #"^[ \t]+((?:[-+*]|[0-9]+[.)])[ \t])"#, template: "$1")
+            case .fixedWidthIndent:
+                // `: text` or a bare `:`. Anchored so a drawer line (`:PROPERTIES:`) and a
+                // property row (`:ID: x`) cannot match -- both have a second colon before any
+                // space.
+                return Self.replacingMatches(
+                    in: text, pattern: #"^[ \t]+(:(?:[ \t]|$))"#, template: "$1")
+            case .bracketLinkPathNewline:
+                // The link's own bracket run, with a newline plus any indentation inside the
+                // PATH half collapsed to one space. Anchored to `[[` so an ordinary newline in
+                // prose is untouched.
+                return Self.replacingMatches(
+                    in: text, pattern: #"(\[\[[^\]\n]*)\n[ \t]*"#, template: "$1 ")
             }
         }
 
@@ -187,6 +249,27 @@ struct RoundTripTests {
         // `- [x] not a checkbox?`: the box is consumed with a null state (item 9), exactly
         // the Reason-B case the reviewer's raw-sexp audit predicted for this file.
         "real/org-mode-samples/lists.org": [.malformedCheckboxDropped],
+        // The same `:ID:` alignment and lowercase `#+title:` pair as examples.org above --
+        // three doomemacs files share one header template, so they share one annotation.
+        // appendix.org adds one line of pure trailing whitespace (item 5) to the shared header
+        // template's two losses.
+        "real/doomemacs-docs/appendix.org": [
+            .keywordNameCase, .keywordValuePadding, .blankLineTrailingWhitespace,
+        ],
+        "real/doomemacs-docs/faq.org": [.keywordNameCase, .keywordValuePadding],
+        // 126 uppercase block delimiters (`#+BEGIN_SRC bash` and friends), plus ONE bracket
+        // link whose path is split across two source lines. Both are org's own normalization,
+        // applied before this schema sees the buffer: measured, `[[https://x/y<nl>][d]]` gives
+        // `:raw-link "https://x/y "`.
+        "real/doomemacs-docs/getting_started.org": [
+            .blockDelimiterCase, .bracketLinkPathNewline,
+        ],
+        // Three indented `#+begin_quote`/`#+end_quote` pairs at top level (item 17) and three
+        // UPPERCASE ones (item 15) -- the file exists to exercise block spelling, so it carries
+        // both. The BODY lines keep their indentation on both sides; only the delimiters move.
+        "real/org-mode-samples/blocks.org": [
+            .blockDelimiterIndent, .blockDelimiterCase, .listBulletIndent, .fixedWidthIndent,
+        ],
         // Separator lines carrying a single trailing space (item 5) and the `**  `
         // empty-title headline with two (item 11).
         "real/org-mode-samples/headings.org": [

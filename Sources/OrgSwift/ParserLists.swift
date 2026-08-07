@@ -216,11 +216,36 @@ extension OrgParser {
         while i < range.upperBound,
               let b = OrgParser.bulletMatch(of: lines[i]), b.indent == indent {
             // The body runs while lines are blank or indented DEEPER than the bullet. A non-blank
-            // line back at or left of the bullet ends the item.
+            // line back at or left of the bullet ends the item -- and so do TWO CONSECUTIVE
+            // BLANK LINES, wherever they fall.
+            //
+            // That second terminator is org's `org-list-end-re` and it is what the ORG-24
+            // parser half deliberately left out, because without it consuming an item's leading
+            // blanks would trade an over-throw for a WRONG TREE. Measured on the pair that
+            // discriminates:
+            //
+            //     -<nl><nl>  a        item preBlank 2, `  a` is the item's OWN paragraph
+            //     -<nl><nl><nl>  a    item preBlank 0, `  a` is a SIBLING paragraph, list ended
+            //
+            // A body scan that only looks at indentation swallows the second `  a` into the
+            // item. With the terminator here, the leading blanks can be consumed into
+            // `preBlank` safely, which is the whole of ORG-24's remaining parser half.
             var next = i + 1
-            while next < range.upperBound,
-                  lines[next].isBlank || lines[next].contentStart > indent {
-                next += 1
+            var listEnded = false
+            scan: while next < range.upperBound {
+                if lines[next].isBlank {
+                    var runEnd = next
+                    while runEnd < range.upperBound, lines[runEnd].isBlank { runEnd += 1 }
+                    // Two or more consecutive blanks end the whole LIST, not just this item, and
+                    // the blank run becomes the list's own postBlank. Measured: `- a` / blank /
+                    // blank / `- b` is TWO lists, the first with postBlank 2 -- not one list with
+                    // a gap.
+                    if runEnd - next >= 2 { next = runEnd; listEnded = true; break scan }
+                    next = runEnd
+                    continue scan
+                }
+                if lines[next].contentStart > indent { next += 1; continue scan }
+                break scan
             }
             var bodyEnd = next
             var blanks = 0
@@ -234,7 +259,7 @@ extension OrgParser {
             // Where the trailing blanks land depends on whether the LIST continues. Between two
             // items they are the finished item's postBlank; after the last item they are the
             // list's own. Both measured.
-            let listContinues = next < range.upperBound
+            let listContinues = !listEnded && next < range.upperBound
                 && OrgParser.bulletMatch(of: lines[next]).map { $0.indent == indent } == true
             if listContinues {
                 items.append(item.withPostBlank(base + blanks))
@@ -243,6 +268,7 @@ extension OrgParser {
                 listPostBlank = blanks
             }
             i = next
+            if listEnded { break }
         }
 
         return (.object([
@@ -301,14 +327,21 @@ extension OrgParser {
         // `postBlank` instead.
         let (contentFrom, blanksBefore) = OrgParser.contentsStart(in: lines, of: bodyFrom..<bodyEnd)
         let preBlank = firstRest.isEmpty && contentFrom < bodyEnd ? blanksBefore + 1 : 0
-        // The leading blanks are NOT consumed here, deliberately. Handing them to the element run
-        // keeps `-` then a blank then `  a` THROWING, which is where it already was. Consuming
-        // them makes that shape parse -- and the shape one blank further on, `-` then two blanks
-        // then `  a`, parse WRONGLY: two blank lines END an item body in org, so `  a` is a
-        // sibling paragraph, and this parser would swallow it into the item. That terminator is
-        // the list parser's to own, not `preBlank`'s, so ORG-24 fixes the count and leaves the
-        // over-throw standing rather than trading it for a wrong tree.
-        for k in bodyFrom..<bodyEnd { bodyLines.append(lines[k]) }
+        // The leading blanks ARE consumed now, and only because `parseList` owns the two-blank
+        // terminator above. They used to be handed to the element run, which threw
+        // ("leading blank line inside a greater-block body") -- an honest over-throw kept on
+        // purpose, because consuming them without that terminator turns `-` / blank / blank /
+        // `  a` into a wrong tree instead. With the terminator in place the blanks belong to
+        // `preBlank` and nothing else, which is what org says they are.
+        //
+        // The skip applies ONLY when the bullet line is empty, which is exactly when `preBlank`
+        // is nonzero. When the bullet line DOES carry content, a following blank line is not a
+        // leading blank at all -- it is the separator between the item's first paragraph and its
+        // second, and it lives in that paragraph's `postBlank`. Skipping it there dropped a blank
+        // line out of `examples.org`, `appendix.org` and `faq.org` at once, which is how this
+        // condition came to be measured rather than assumed.
+        let bodyStart = firstRest.isEmpty ? contentFrom : bodyFrom
+        for k in bodyStart..<bodyEnd { bodyLines.append(lines[k]) }
 
         let children = bodyLines.isEmpty ? [] : try OrgParser(
             lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,

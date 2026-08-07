@@ -234,6 +234,15 @@ struct RendererConformanceTests {
         // citations -- no colon, no key, a wrong prefix word, and a bracket with text but
         // no `@`.
         "citation-forms",
+        // E / ORG-24: the three renderer blockers inside an item, each with a fixture that
+        // pins the placement the refusals said was unpinned.
+        "list-item-preblank",
+        "list-item-empty",
+        "list-item-greater-block",
+        // E: table rule rows. The dash run per column is the widest rendered cell plus 2,
+        // and it is reconstructible only because a cell's alignment padding rides its
+        // postBlank. Two tables with different column widths, so a hardcoded run fails.
+        "table-rule-widths",
     ]
 
     /// PERMANENT. Not "pending" -- the tree provably cannot carry these bytes, so no amount of
