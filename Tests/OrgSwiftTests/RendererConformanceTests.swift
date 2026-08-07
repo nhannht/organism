@@ -142,6 +142,7 @@ struct RendererConformanceTests {
         "fixed-width-simple",
         "footnote-definition-preblank",
         "latex-fragment-command",
+        "macro-forms",
         "latex-fragment-dollar-closer-class",
         "latex-fragment-dollar-display",
         "latex-fragment-dollar-rejects",

@@ -46,6 +46,10 @@ extension OrgRenderer {
             body = "<<<" + (try renderObjects(try array(node, "children", type))) + ">>>"
         case "target":
             body = "<<" + (try string(node, "value", type)) + ">>"
+        case "macro":
+            // `value` is the whole source text, case intact -- emitting it verbatim is what
+            // beats org's own interpreter, which rebuilds from the downcased :key.
+            body = try string(node, "value", type)
         case "timestamp":
             body = try renderTimestamp(node)
         case "footnote-reference":

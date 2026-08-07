@@ -193,6 +193,10 @@ struct InterpretDataRoundTripTests {
         // `**  ` re-emits as `** `: headline-line trailing whitespace survives in no property
         // (SCHEMA.md section 10 item 11, and `RendererConformanceTests.schemaLossCases`).
         "conformance/headline-empty-title",
+    // interpret-data rebuilds a macro from the DOWNCASED :key ({{{Args...}}} re-emits as
+        // {{{args...}}}), while the tree's `value` keeps the case -- renderOrg is strictly
+        // better here, same relationship as block reindentation (SCHEMA.md, macro).
+        "conformance/macro-forms",
     ]
 
     @Test("org-element-interpret-data(org-element-parse-buffer(file)) == file's own bytes", arguments: files)

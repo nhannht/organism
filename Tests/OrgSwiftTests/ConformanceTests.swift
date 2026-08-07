@@ -134,6 +134,9 @@ struct ConformanceTests {
         "latex-fragment-command",
         // Dedicated targets: <<anchor>> is a value leaf; an unclosed << stays text.
         "target-simple",
+        // Macros: value leaf, case intact; an unclosed arg group and a digit-first name
+        // are proven text.
+        "macro-forms",
         // table.el grids: a LEAF with `value` and no `children`, unlike the pipe table above.
         // Detection needs the whole contiguous RUN, not one line: org parses a lone `+---+` as a
         // paragraph containing a STRIKE-THROUGH, so a single-line detector would replace a

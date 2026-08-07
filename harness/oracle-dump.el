@@ -716,6 +716,15 @@ form; each shape's own measurement lives in the inline comments below and in
             ;; interpreter re-emits exactly `<<value>>'.
             (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
 
+           ('macro
+            ;; A leaf: `:value' is the ENTIRE source text `{{{...}}}', case intact.
+            ;; `:key' (downcased) and `:args' are deterministic functions of it
+            ;; (org-element-macro-parser's own downcase + org-macro-extract-arguments),
+            ;; so they are not duplicated -- same rule as the entity renderings.
+            ;; NOTE org's own interpreter REBUILDS from :key and loses the name's
+            ;; case; `renderOrg' emits `value' verbatim and must beat it.
+            (org-swift--make-node schema-type `(("value" . ,(org-swift--prop node :value)))))
+
            ('entity
             ;; `:name' + `:use-brackets-p' fully determine the source bytes:
             ;; `org-element-entity-interpreter' emits "\\", the name, and "{}"

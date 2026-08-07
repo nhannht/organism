@@ -840,8 +840,25 @@ extension OrgParser {
                     throw OrgError.unimplemented("inline src block or babel call")
                 }
             case "{":
-                if i + 2 < chars.count, chars[i + 1] == "{", chars[i + 2] == "{" {
-                    throw OrgError.unimplemented("macro")
+                // MACRO, a value leaf whose `value` is the whole `{{{...}}}` source text.
+                // The matcher is org-element-macro-parser's regexp transcribed, so a `{{{`
+                // that opens no macro is proven text.
+                if container.permits(.macro), let end = macroEnd(in: chars, at: i) {
+                    flushText(upTo: i)
+                    var postBlank = 0
+                    var k = end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+                        postBlank += 1
+                        k += 1
+                    }
+                    nodes.append(.object([
+                        "type": .string("macro"),
+                        "value": .string(String(scalars: chars[i..<end])),
+                        "postBlank": .int(postBlank),
+                    ]))
+                    i = k
+                    textStart = k
+                    continue
                 }
             case "@":
                 if i + 1 < chars.count, chars[i + 1] == "@" {
@@ -1454,6 +1471,44 @@ extension OrgParser {
             j = k + 1
         }
         return j
+    }
+
+    /// Index just past a `{{{name(args)}}}` macro at `i`, or nil -- org-element-macro-parser's
+    /// regexp transcribed:
+    ///
+    ///     {{{\([a-zA-Z][-a-zA-Z0-9_]*\)\((\(\(?:.\|\n\)*?\))\)?}}}
+    ///
+    /// The name starts with an ASCII letter and continues with letters, digits, `-`, `_`.
+    /// The optional argument group is `(` + a NON-GREEDY run (newlines included) + `)`, and
+    /// must be followed immediately by `}}}` -- so the args close at the FIRST `)}}}`. A
+    /// present-but-never-closed group fails the whole match (the optional path would need
+    /// `}}}` at the `(` itself), so `{{{a(b}}}` is plain text, and so is `{{{9x}}}` (digit
+    /// first). `{{{a}}}}` is a macro followed by one literal `}`.
+    private func macroEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+        guard i + 2 < chars.count, chars[i + 1] == "{", chars[i + 2] == "{" else { return nil }
+        var j = i + 3
+        guard j < chars.count,
+              (chars[j] >= "a" && chars[j] <= "z") || (chars[j] >= "A" && chars[j] <= "Z")
+        else { return nil }
+        j += 1
+        while j < chars.count,
+              (chars[j] >= "a" && chars[j] <= "z") || (chars[j] >= "A" && chars[j] <= "Z")
+              || (chars[j] >= "0" && chars[j] <= "9") || chars[j] == "-" || chars[j] == "_" {
+            j += 1
+        }
+        if j < chars.count, chars[j] == "(" {
+            var k = j + 1
+            while k + 3 < chars.count {
+                if chars[k] == ")", chars[k + 1] == "}", chars[k + 2] == "}", chars[k + 3] == "}" {
+                    return k + 4
+                }
+                k += 1
+            }
+            return nil
+        }
+        guard j + 2 < chars.count, chars[j] == "}", chars[j + 1] == "}", chars[j + 2] == "}"
+        else { return nil }
+        return j + 3
     }
 
     /// A `$...$` or `$$...$$` latex fragment opening at `i`, or nil when this `$` opens none.

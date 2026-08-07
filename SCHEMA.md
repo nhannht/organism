@@ -260,6 +260,13 @@ Rules:
   node terminates.
 - `fixed-width` -- `value`: string (a `: ...` line).
 - `statistics-cookie` -- leaf. `value`: string, e.g. `"[1/3]"` or `"[50%]"`.
+- `macro` -- leaf. `value`: string, the ENTIRE `{{{name(args)}}}` source text, case intact.
+  `org-element`'s `:key` (the downcased name) and `:args` (org-macro-extract-arguments over the
+  normalized group) are deterministic functions of `value` and are deliberately not duplicated,
+  same rule as the entity renderings. Emacs's own interpreter REBUILDS the text from `:key` and
+  loses the name's case (`{{{Title}}}` re-emits as `{{{title}}}`); `renderOrg` emits `value`
+  verbatim, so its round-trip is strictly better than `interpret-data` here -- the same
+  relationship as block reindentation, and NOT a section 10 loss.
 - `target` -- leaf. `value`: string, the text between `<<` and `>>`; Emacs's own interpreter
   re-emits exactly `<<value>>`. The dedicated-target anchor a radio target generalizes; its
   contents are NOT lexed (unlike `radio-target`, whose contents are objects).
