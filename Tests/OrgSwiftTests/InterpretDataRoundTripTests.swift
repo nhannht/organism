@@ -128,6 +128,14 @@ struct InterpretDataRoundTripTests {
         "conformance/block-src-literal", "conformance/block-src-with-params",
         "conformance/property-drawer-after-planning", "conformance/property-drawer-simple",
         "real/org-mode-samples/blocks.org",
+        // Property VALUE alignment, which is SCHEMA.md section 10 item 2 rather than the
+        // reindentation convention above, so it is called out separately. Full before/after text
+        // inspected on Emacs 30.2 (39 bytes in, 45 out, first difference at offset 18):
+        // `:ID: doc-wide` re-emits as `:ID:       doc-wide`, padded to org's property column.
+        // Nothing else in the file moves -- the drawer delimiters, the blank line and `para` are
+        // byte-identical. The fixture exists for the POSITION rule (ORG-28); the padding is
+        // incidental to it and is org's own serializer, not ours.
+        "conformance/property-drawer-document-start",
         // Same reindentation convention, measured on the two `:switches` cases: the body gains
         // two leading spaces (`block-src-switches` diverges at offset 24, `block-example-switches`
         // at offset 19). The `-n -r` / `-n` switches themselves survive the re-emit intact.

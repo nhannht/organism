@@ -58,7 +58,13 @@ extension OrgParser {
         var zeroStart = 0
         while zeroStart < zeroEnd, lines[zeroStart].isBlank { zeroStart += 1 }
         if zeroStart < zeroEnd {
-            documentChildren.append(try parseSection(in: zeroStart..<zeroEnd))
+            // `.topComment` is org's mode for the document's own zeroth section, and it is what
+            // makes a `:PROPERTIES:` opening the buffer a document-wide PROPERTY-drawer rather
+            // than an ordinary one (ORG-28). Leading blanks are already stripped above, which is
+            // exactly the "blanks back to beginning of buffer" half of org's own guard.
+            documentChildren.append(try parseSection(
+                in: zeroStart..<zeroEnd,
+                propertyDrawerMode: .topComment))
         }
 
         // Headlines, attached by level via a stack.
@@ -98,7 +104,11 @@ extension OrgParser {
                 // paragraph instead.
                 builder.children.append(try parseSection(
                     in: contentStart..<region.upperBound,
-                    mayOpenWithPlanning: leadingBlanks == 0))
+                    mayOpenWithPlanning: leadingBlanks == 0,
+                    // Same condition, same reason: org's `planning` mode permits a
+                    // property-drawer only when the previous line is the headline itself, and
+                    // `leadingBlanks == 0` is exactly that test.
+                    propertyDrawerMode: leadingBlanks == 0 ? .planning : .none))
             } else if position + 1 < headlineIndices.count,
                       headlineIndices[position + 1].level > entry.level {
                 // No section, next headline is a CHILD: blanks before it are this headline's

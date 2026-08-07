@@ -76,28 +76,29 @@ struct SweepTests {
     /// names: a thirty-first wrong tree fails the run, and a listed case that starts matching ALSO
     /// fails the run, which is what forces the name back out again when the defect is fixed.
     ///
-    /// All 30 are **ORG-28**: `parseDrawer` dispatches `:PROPERTIES:` on the drawer NAME alone,
-    /// with no position rule, so every paired `:PROPERTIES:` becomes a `property-drawer` in every
-    /// container at every position. Org makes it one only as the first element of a section --
-    /// zeroth or a headline's own -- optionally after planning, and with the whole block matching
-    /// `org-property-drawer-re`. The rule is enumerated on that issue; two earlier attempts at it
-    /// were both wrong, in opposite directions.
+    /// **This list is EMPTY, and that is a measured result rather than a starting state.** It held
+    /// 30 names, every one of them ORG-28, until 2026-08-07. Leaving the empty set here with its
+    /// history is deliberate: the mechanism is what stops the next wrong tree, and an empty list
+    /// with a live assertion is the strongest form the suite takes.
+    ///
+    /// What those 30 were: `parseDrawer` dispatched `:PROPERTIES:` on the drawer NAME alone, with
+    /// no position rule, so every paired `:PROPERTIES:` became a `property-drawer` in every
+    /// container at every position. org makes it one only where its parsing MODE allows, which
+    /// turned out to be three conditions rather than the one the issue named -- see
+    /// `PropertyDrawerMode` for the rule, transcribed from `org-element--current-element` and
+    /// checked against live parses.
+    ///
+    /// ORG-28's own statement of the rule was wrong in BOTH directions, which is why the three
+    /// conditions are written down where the code is rather than only on the issue:
+    ///   - it said top level always yields an ordinary drawer; a `:PROPERTIES:` opening the
+    ///     BUFFER is a property-drawer (org's document-wide one), so the filed rule would have
+    ///     traded 29 wrong trees for a new one;
+    ///   - it did not mention affiliated keywords at all, and four of the 30 (`i28-a0*`,
+    ///     `i28-h07`) are exactly that case.
     ///
     /// Do not add a name here to make a red run green. A new entry means a wrong tree was
     /// introduced, and the correct response is to fix it or revert.
-    static let knownWrongTrees: Set<String> = [
-        "i28-a01-name-before", "i28-a02-caption-before", "i28-a03-zeroth-name-before",
-        "i28-h03-after-blank", "i28-h04-planning-blank", "i28-h05-after-para",
-        "i28-h06-after-comment", "i28-h07-after-keyword", "i28-h08-after-drawer",
-        "i28-h11-after-para-blank", "i28-h12-second-propdrw", "i28-h13-after-list",
-        "i28-n01-item-own-line", "i28-n02-item-first", "i28-n03-fndef-own-line",
-        "i28-n04-fndef-after-para", "i28-n05-quote-first", "i28-n06-center-first",
-        "i28-n09-quote-in-headline", "i28-n10-item-in-headline-first",
-        "i28-t12-comment-drw-drw", "i28-z04-after-keyword", "i28-z05-after-para",
-        "i28-z07-comment-blank", "i28-z08-comment-blank-comment", "i28-z09-after-para-blank",
-        "i28-z10-after-drawer", "i28-z12-after-comment-para", "i28-z13-second-propdrw",
-        "i4t-propdrw",
-    ]
+    static let knownWrongTrees: Set<String> = []
 
     @Test("the corpus is present and loaded")
     func corpusLoads() throws {

@@ -464,9 +464,28 @@ coverage (`#+NAME:` attaching to a table) without conflating it with a standalon
    at the same-or-lesser indentation as an existing item's bullet; the item ends at a
    less-indented non-continuation line, two consecutive blank lines, a heading, or EOF.
 6. **Planning lines** (`SCHEDULED:`/`DEADLINE:`/`CLOSED:`) must directly follow the headline
-   line with no blank line, and precede the property drawer if both are present.
-7. **Property drawers** are position-locked: immediately after the headline line (or after
-   planning, if present), before any other content.
+   line with no blank line. For a planning line AND a property drawer to both be present as
+   their own node types, planning comes first: written the other way round, `:PROPERTIES:`
+   still opens a property drawer but the `SCHEDULED:` line after it is an ordinary PARAGRAPH,
+   not a `planning` node (measured).
+7. **Property drawers** are position-locked, and the lock has THREE conditions, all of which
+   must hold or the same bytes are an ordinary `drawer` named PROPERTIES whose body is a
+   paragraph rather than `node-property` rows:
+   - **Name**: the drawer is called `PROPERTIES`.
+   - **Position**: the first element of a section, which means immediately after the headline
+     line, or after that headline's planning line. **A section here includes the document's
+     own zeroth section**, so a `:PROPERTIES:` opening the buffer is org's document-wide
+     property drawer - preceded only by blank lines, or by a leading comment, still counts. It
+     is NOT position-locked to headlines alone, and it is never one inside an item, a
+     footnote definition, a quote or center block, or after any ordinary content.
+     A preceding affiliated keyword (`#+NAME:`, `#+CAPTION:`) also disqualifies it: org tests
+     the position with point on the element's first line, which is then the keyword line.
+   - **Block shape**: every row between the delimiters is a property line. One row that is not
+     (plain text, or a blank line) makes the whole thing an ordinary drawer.
+
+   All three are measured against Emacs 30.2 / org 9.7.11 and transcribed in
+   `Sources/OrgSwift/ParserDrawers.swift`'s `PropertyDrawerMode`, which carries the full
+   case table.
 8. **Links and word boundaries**: `[[path][description]]`, `[[path]]` (no description), angle
    `<https://...>`, and bare/plain `https://...` are all distinct `linkType`s; plain links are
    recognized by their own (Unicode-aware) terminator rules, not brackets.

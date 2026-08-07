@@ -178,6 +178,8 @@ struct RendererConformanceTests {
         "planning-scheduled-and-deadline",
         "planning-scheduled-hugs-headline",
         "property-drawer-after-planning",
+        "property-drawer-document-start",
+        "property-drawer-positional-fallback",
         "property-drawer-simple",
         "skeleton-bare-paragraph",
         "skeleton-headline-with-section",

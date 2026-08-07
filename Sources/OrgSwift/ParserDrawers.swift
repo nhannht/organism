@@ -96,6 +96,68 @@ extension OrgParser {
         ])
     }
 
+    /// Whether a `:PROPERTIES:` line at the current position opens a `property-drawer` or an
+    /// ordinary `drawer`. This is org's own parsing MODE, narrowed to the four states that
+    /// change the answer, and it is threaded through `parseElementRun` rather than derived
+    /// locally because the answer depends on what came BEFORE, which a drawer parser cannot see.
+    ///
+    /// Transcribed from `org-element--current-element`'s property-drawer branch and
+    /// `org-element--next-mode` (Emacs 30.2 / org 9.7.11), then checked against live parses --
+    /// the source gives the rule, the probes confirm the reading:
+    ///
+    ///     * H / :PROPERTIES:                    property-drawer   mode planning, prev line is `*`
+    ///     * H / SCHEDULED: / :PROPERTIES:       property-drawer   mode property-drawer
+    ///     * H / :PROPERTIES: / SCHEDULED:       property-drawer   the drawer may PRECEDE planning
+    ///     * H / <blank> / :PROPERTIES:          drawer            prev line is blank
+    ///     * H / text / :PROPERTIES:             drawer
+    ///     * H / # c / :PROPERTIES:              drawer            top-comment is document-only
+    ///     :PROPERTIES: at buffer start          property-drawer   mode top-comment, at bob
+    ///     <blank> / :PROPERTIES:                property-drawer   blanks back to bob still count
+    ///     # c / :PROPERTIES:                    property-drawer   mode top-comment, then comment
+    ///     # c / <blank> / :PROPERTIES:          drawer            prev line blank, not bob
+    ///     #+TITLE: x / :PROPERTIES:             drawer            keyword does not continue the mode
+    ///     text / :PROPERTIES:                   drawer
+    ///     item / quote / footnote bodies        drawer            mode is never one of these
+    ///     :PROPERTIES: twice under one headline property-drawer, then drawer
+    ///
+    /// **The document-start case is why this is a mode and not "is it under a headline".** ORG-28
+    /// filed the rule as "a property-drawer only on the line after a headline or its planning
+    /// line", and listed top level among the positions that should produce an ordinary drawer.
+    /// That is wrong in the other direction: a `:PROPERTIES:` opening the buffer IS a
+    /// property-drawer (org's `top-comment` mode, the document-wide property drawer). Building
+    /// the filed rule would have fixed 29 wrong trees and introduced a new one.
+    enum PropertyDrawerMode {
+        /// First element of a headline's section, with the headline on the previous line.
+        case planning
+        /// Immediately after a planning line, or after the zeroth section's opening comment.
+        case propertyDrawer
+        /// First element of the document's own zeroth section.
+        case topComment
+        /// Everywhere else. `:PROPERTIES:` here is an ordinary drawer.
+        case none
+
+        var permitsPropertyDrawer: Bool {
+            switch self {
+            case .planning, .propertyDrawer, .topComment: return true
+            case .none: return false
+            }
+        }
+
+        /// The mode for the position AFTER an element of type `elementType`.
+        ///
+        /// Only two transitions continue the chain; everything else ends it. A blank run ends it
+        /// too (org's guard requires the previous line to be non-blank), which the caller handles
+        /// by moving to `.none` -- leading blanks cannot reach that path, because both section
+        /// call sites strip them before the range begins, which is also what keeps the
+        /// blanks-back-to-beginning-of-buffer half of org's guard satisfied by construction.
+        func afterElement(ofType elementType: String?) -> PropertyDrawerMode {
+            switch self {
+            case .topComment where elementType == "comment": return .propertyDrawer
+            default: return .none
+            }
+        }
+    }
+
     /// Parses the drawer opened at `i`, or returns nil when it is unpaired (an unpaired opener is
     /// paragraph text in EVERY position, which the caller's paragraph path then handles).
     /// Index of the `:END:` closing a drawer opened at `i`, or nil when no drawer opens there.
@@ -111,7 +173,11 @@ extension OrgParser {
         }
     }
 
-    func parseDrawer(at i: Int, in range: Range<Int>) throws -> (node: OrgJSON, next: Int)? {
+    func parseDrawer(
+        at i: Int,
+        in range: Range<Int>,
+        propertyDrawerAllowed: Bool
+    ) throws -> (node: OrgJSON, next: Int)? {
         guard let name = OrgParser.drawerName(of: lines[i]) else { return nil }
         guard let end = drawerCloseIndex(openedAt: i, in: range) else { return nil }
 
@@ -120,19 +186,40 @@ extension OrgParser {
         // `:PROPERTIES:` is the one name whose body is NOT elements. Its rows are `node-property`
         // and nothing else, so a row that does not parse as one makes the whole thing refuse
         // rather than silently degrade to a plain drawer with element children.
-        if OrgParser.asciiLowered(name) == "properties" {
+        //
+        // ORG-28: the name is NOT sufficient. `:PROPERTIES:` opens a property-drawer only where
+        // org's parsing MODE permits one; everywhere else it is an ordinary drawer that happens
+        // to be called PROPERTIES, with a paragraph body rather than node-property rows. The
+        // caller owns that question because it is positional -- see `PropertyDrawerMode`.
+        if propertyDrawerAllowed, OrgParser.asciiLowered(name) == "properties" {
+            // The BLOCK SHAPE is the third condition, after the name and the position. org's
+            // guard is `(looking-at-p org-property-drawer-re)`, and that regexp requires every
+            // row between the delimiters to be a property line -- so one row that is not makes
+            // the whole thing an ordinary drawer, not an error. Measured:
+            //
+            //     * H / :PROPERTIES: / :K: v / :END:        property-drawer, node-property
+            //     * H / :PROPERTIES: / plain text / :END:   drawer, paragraph
+            //     * H / :PROPERTIES: / :K: v / <blank> / :END:  drawer, paragraph
+            //     * H / :PROPERTIES: / :K: / :END:          property-drawer (empty value is fine)
+            //
+            // This used to throw. Falling through is not a loosened refusal: org has a defined
+            // answer for these, and emitting it is strictly more faithful than refusing.
             var properties: [OrgJSON] = []
+            var everyRowIsAProperty = true
             for row in body {
                 guard let property = OrgParser.nodePropertyNode(of: lines[row]) else {
-                    throw OrgError.unimplemented("PROPERTIES drawer row is not a node-property")
+                    everyRowIsAProperty = false
+                    break
                 }
                 properties.append(property)
             }
-            return (.object([
-                "type": .string("property-drawer"),
-                "children": .array(properties),
-                "postBlank": .int(0),
-            ]), end + 1)
+            if everyRowIsAProperty {
+                return (.object([
+                    "type": .string("property-drawer"),
+                    "children": .array(properties),
+                    "postBlank": .int(0),
+                ]), end + 1)
+            }
         }
 
         return (.object([

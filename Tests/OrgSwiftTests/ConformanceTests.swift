@@ -227,6 +227,13 @@ struct ConformanceTests {
         "drawer-fused-name",
         "property-drawer-simple",
         "property-drawer-after-planning",
+        // ORG-28's two positional cases. `document-start` is the one the issue got backwards: a
+        // `:PROPERTIES:` opening the BUFFER is org's document-wide property-drawer, not an
+        // ordinary drawer. `positional-fallback` is the other half -- the same bytes after a
+        // paragraph are an ordinary drawer whose body is a PARAGRAPH, not node-property rows.
+        // The two together are what make the rule positional rather than name-keyed.
+        "property-drawer-document-start",
+        "property-drawer-positional-fallback",
     ]
 
     @Test("parser matches the normalized JSON tree", arguments: cases)

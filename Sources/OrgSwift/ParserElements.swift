@@ -106,10 +106,20 @@ extension OrgParser {
     ///
     ///   so the document's own zeroth section passes `false` and only the headline call site
     ///   passes `true`.
-    func parseSection(in range: Range<Int>, mayOpenWithPlanning: Bool = false) throws -> OrgJSON {
+    /// - Parameter propertyDrawerMode: whether this section opens in a position where
+    ///   `:PROPERTIES:` is a property-drawer rather than an ordinary drawer (ORG-28). Like
+    ///   `mayOpenWithPlanning` it defaults to refusal, so a new caller opts in deliberately.
+    func parseSection(
+        in range: Range<Int>,
+        mayOpenWithPlanning: Bool = false,
+        propertyDrawerMode: PropertyDrawerMode = .none
+    ) throws -> OrgJSON {
         .object([
             "type": .string("section"),
-            "children": .array(try parseElementRun(in: range, mayOpenWithPlanning: mayOpenWithPlanning)),
+            "children": .array(try parseElementRun(
+                in: range,
+                mayOpenWithPlanning: mayOpenWithPlanning,
+                propertyDrawerMode: propertyDrawerMode)),
             "postBlank": .int(0),
         ])
     }
@@ -123,9 +133,20 @@ extension OrgParser {
     /// themselves directly. Duplicating the loop for them would be the two-paths-kept-in-sync
     /// shape this parser has already been bitten by once (the block end-line search, before the
     /// pairing collapse).
-    func parseElementRun(in range: Range<Int>, mayOpenWithPlanning: Bool = false) throws -> [OrgJSON] {
+    func parseElementRun(
+        in range: Range<Int>,
+        mayOpenWithPlanning: Bool = false,
+        propertyDrawerMode initialPropertyDrawerMode: PropertyDrawerMode = .none
+    ) throws -> [OrgJSON] {
         var elements: [OrgJSON] = []
         var i = range.lowerBound
+
+        // ORG-28. `:PROPERTIES:` is a property-drawer only where org's parsing MODE allows one,
+        // and that depends on what precedes it, so the run carries the mode as it goes. Defaults
+        // to `.none`, which is the right answer for every nested body (drawer, quote, center,
+        // item, footnote): only the document's zeroth section and a headline's section can open
+        // in a permitting mode, and only those two call sites pass one.
+        var propertyDrawerMode = initialPropertyDrawerMode
 
         // The planning line, if there is one, is consumed here rather than prepended by the
         // caller, so that blank lines after it attach to it as `postBlank` through the ordinary
@@ -134,6 +155,9 @@ extension OrgParser {
         if mayOpenWithPlanning, i < range.upperBound, let planning = planningLineNode(lines[i]) {
             elements.append(planning)
             i += 1
+            // org's `planning` mode plus a planning element gives `property-drawer` mode, which
+            // is what makes `* H / SCHEDULED: / :PROPERTIES:` a property-drawer.
+            propertyDrawerMode = .propertyDrawer
         }
 
         while i < range.upperBound {
@@ -157,6 +181,10 @@ extension OrgParser {
                 }
                 last["postBlank"] = .int(existing + count)
                 elements.append(.object(last))
+                // A blank line ends the chain: org's guard requires the previous line to be
+                // non-blank. Measured both ways -- `# c / <blank> / :PROPERTIES:` is an ordinary
+                // drawer, and so is `* H / SCHEDULED: / <blank> / :PROPERTIES:`.
+                propertyDrawerMode = .none
                 continue
             }
 
@@ -198,16 +226,37 @@ extension OrgParser {
             // at all, so `#+NAME: n` before `CLOCK: [ts]` stands alone as a keyword, measured.
             if !affiliated.isEmpty, runEnd < range.upperBound, !lines[runEnd].isBlank,
                !isCommentLine(lines[runEnd]), !OrgParser.isClockLine(lines[runEnd]) {
-                let (node, next) = try parseOneElement(at: runEnd, in: range)
+                // An element carrying affiliated keywords is NEVER a property-drawer, whatever
+                // the mode. org checks its property-drawer branch with point still on the
+                // element's FIRST line, which here is the `#+NAME:` line, so
+                // `org-property-drawer-re` does not match and the branch never fires; by the
+                // time the affiliated run is consumed and point reaches `:PROPERTIES:`, the
+                // ordinary drawer parser is what handles it -- and unlike the property-drawer
+                // parser, that one takes affiliated keywords at all. Measured, all four shapes:
+                //
+                //     * H / #+NAME: n / :PROPERTIES:      drawer carrying affiliated NAME
+                //     * H / #+CAPTION: c / :PROPERTIES:   drawer carrying affiliated CAPTION
+                //     #+NAME: n / :PROPERTIES:            same, in the zeroth section
+                //
+                // The mode is still `.planning` or `.topComment` at this point, so consulting it
+                // here would produce a property-drawer and be wrong in all four.
+                let (node, next) = try parseOneElement(
+                    at: runEnd, in: range, propertyDrawerAllowed: false)
                 guard var fields = node.objectValue else { throw OrgError.unimplemented("affiliated keywords attach to a non-object element") }
                 fields["affiliated"] = try affiliatedValue(from: affiliated)
                 elements.append(.object(fields))
+                propertyDrawerMode = propertyDrawerMode.afterElement(
+                    ofType: fields["type"]?.stringValue)
                 i = next
                 continue
             }
 
-            let (node, next) = try parseOneElement(at: i, in: range)
+            let (node, next) = try parseOneElement(
+                at: i, in: range,
+                propertyDrawerAllowed: propertyDrawerMode.permitsPropertyDrawer)
             elements.append(node)
+            propertyDrawerMode = propertyDrawerMode.afterElement(
+                ofType: node.objectValue?["type"]?.stringValue)
             i = next
         }
 
@@ -227,7 +276,11 @@ extension OrgParser {
     /// Blank-line handling deliberately stays in `parseSection`: blanks are attributed to the
     /// PRECEDING element's `postBlank`, so they belong to the loop that knows what came before,
     /// not to a function that parses one element in isolation.
-    private func parseOneElement(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+    private func parseOneElement(
+        at start: Int,
+        in range: Range<Int>,
+        propertyDrawerAllowed: Bool
+    ) throws -> (OrgJSON, Int) {
         var i = start
         let line = lines[i]
 
@@ -473,7 +526,7 @@ extension OrgParser {
         // gives: both can open with `:`, and `isFixedWidthLine` would claim `:PROPERTIES:` first.
         // An UNPAIRED opener returns nil rather than throwing, because it is paragraph text in
         // every position, so control falls through to the paragraph path below.
-        if let drawer = try parseDrawer(at: i, in: range) {
+        if let drawer = try parseDrawer(at: i, in: range, propertyDrawerAllowed: propertyDrawerAllowed) {
             return (drawer.node, drawer.next)
         }
 
