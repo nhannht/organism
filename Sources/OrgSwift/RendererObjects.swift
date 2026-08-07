@@ -54,6 +54,31 @@ extension OrgRenderer {
             // `org-element-export-snippet-interpreter` verbatim: both fields re-emit as-is.
             body = "@@" + (try string(node, "backEnd", type)) + ":"
                 + (try string(node, "value", type)) + "@@"
+        case "citation":
+            // `org-element-citation-interpreter` verbatim, and the `;` bookkeeping is its whole
+            // subtlety. Every citation-reference emits a TRAILING `;` of its own; org then
+            // either appends the common suffix after them (keeping the last `;` as the suffix
+            // separator) or, with no suffix, STRIPS one character to drop the spurious final
+            // one. Reproduced exactly rather than reasoned about.
+            var head = "[cite"
+            if let style = try stringOrNull(node, "style", type) { head += "/" + style }
+            head += ":"
+            if let prefix = try secondaryOrNull(node, "prefix", type) {
+                head += (try renderObjects(prefix)) + ";"
+            }
+            let references = try renderObjects(try array(node, "children", type))
+            if let suffix = try secondaryOrNull(node, "suffix", type) {
+                head += references + (try renderObjects(suffix))
+            } else {
+                head += String(references.dropLast())
+            }
+            body = head + "]"
+        case "citation-reference":
+            // Always emits its own trailing `;`; the citation above owns removing the last one.
+            body = (try secondaryOrNull(node, "prefix", type).map(renderObjects) ?? "")
+                + "@" + (try string(node, "key", type))
+                + (try secondaryOrNull(node, "suffix", type).map(renderObjects) ?? "")
+                + ";"
         case "inline-src-block":
             // `org-element-inline-src-block-interpreter` verbatim:
             //     (format "src_%s%s{%s}" language (if arguments (format "[%s]" arguments) "") body)

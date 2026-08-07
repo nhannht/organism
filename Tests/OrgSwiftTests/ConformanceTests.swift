@@ -258,6 +258,10 @@ struct ConformanceTests {
         // parent) and silently truncated the second to `a `. The third is the control:
         // an empty bracket really is null, not an empty array.
         "affiliated-caption-short-markup",
+        // C1: citations. Carries all four regions plus the four negatives that must NOT be
+        // citations -- no colon, no key, a wrong prefix word, and a bracket with text but
+        // no `@`.
+        "citation-forms",
         "affiliated-caption-short-empty",
     ]
 

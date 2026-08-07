@@ -1,0 +1,7 @@
+Plain [cite:@key] and styled [cite/t:@k1;@k2] here.
+
+Full [cite:see @k1 p. 7; and @k2; extra] and a *marked up* [cite:@k /it/] one.
+
+Common prefix only [cite:before; @k] and common suffix only [cite:@k; after].
+
+Not one: [cite], [cite:], [citex:@k], [cite:no key here].

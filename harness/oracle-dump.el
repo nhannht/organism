@@ -794,6 +794,26 @@ form; each shape's own measurement lives in the inline comments below and in
            ;; fourth unmapped type cannot repeat this.
            ;; ---------------------------------------------------------------
 
+           ('citation
+            ;; `[cite/STYLE: PREFIX; @k SUFFIX; COMMON-SUFFIX]'. A CONTAINER whose children are
+            ;; citation-reference nodes, plus two SECONDARY STRINGS of its own -- the same
+            ;; two-kinds-of-field shape `headline' has with `:title' beside its children.
+            ;; `:style' is nil when the plain `[cite:' form was used.
+            (org-swift--make-node schema-type
+              `(("style" . ,(org-swift--str-or-null (org-swift--prop node :style)))
+                ("prefix" . ,(org-swift--dump-secondary-or-null (org-swift--prop node :prefix)))
+                ("suffix" . ,(org-swift--dump-secondary-or-null (org-swift--prop node :suffix)))
+                ("children" . ,(org-swift--dump-children node)))))
+
+           ('citation-reference
+            ;; One `@key' inside a citation, with its own optional prefix and suffix secondary
+            ;; strings. No children: everything it carries is in those two slots plus the key.
+            ;; org hardcodes `:post-blank' to 0 here, so the shared tail below always writes 0.
+            (org-swift--make-node schema-type
+              `(("key" . ,(org-swift--prop node :key))
+                ("prefix" . ,(org-swift--dump-secondary-or-null (org-swift--prop node :prefix)))
+                ("suffix" . ,(org-swift--dump-secondary-or-null (org-swift--prop node :suffix))))))
+
            ('inline-src-block
             ;; `src_LANG[PARAMS]{BODY}'. Unlike every other leaf here, this one
             ;; needs THREE properties: `:value' is the BODY ALONE, so language

@@ -59,6 +59,21 @@ enum OrgRenderer {
         return s
     }
 
+    /// A key whose schema type is `[object-nodes] or null` -- a SECONDARY STRING slot. Same
+    /// present-but-null vs missing distinction as `stringOrNull`: a caption's `short`, a
+    /// citation's `prefix`/`suffix` and a citation-reference's are all "always present, sometimes
+    /// null", so an absent key is a malformed tree rather than "none".
+    static func secondaryOrNull(_ node: OrgJSON, _ key: String, _ type: String) throws -> [OrgJSON]? {
+        guard let v = try fields(node, type)[key] else {
+            throw OrgError.malformedTree("\(type): missing '\(key)' (null is legal, absent is not)")
+        }
+        if case .null = v { return nil }
+        guard let array = v.arrayValue else {
+            throw OrgError.malformedTree("\(type): '\(key)' is neither an object array nor null")
+        }
+        return array
+    }
+
     static func int(_ node: OrgJSON, _ key: String, _ type: String) throws -> Int {
         guard case .int(let v)? = try fields(node, type)[key] else {
             throw OrgError.malformedTree("\(type): missing or non-integer '\(key)'")

@@ -212,6 +212,28 @@ enum HarnessSupport {
     /// fixture silently stop being drift-checked by `OracleConformanceCrossCheckTests`, because
     /// that suite skips on any oracle error. A guard against silent coverage loss must not itself
     /// cause silent coverage loss. `oracleWarningPartitionIsCorrect` pins the split.
+    /// Every node type `schema/org-node.schema.json` dispatches on, read from the schema FILE.
+    ///
+    /// The union is an if/then/else CHAIN rather than a flat list -- see the schema's own `node`
+    /// description for the performance reason -- so the types have to be walked out of it. Read
+    /// from the file rather than from a Swift constant on purpose: a hand-kept list of the types
+    /// the schema supports is a second copy of the schema, and the whole point of the caller is
+    /// to compare the published contract against live Emacs.
+    static func schemaNodeTypes() throws -> Set<String> {
+        let data = try Data(contentsOf: repoRoot
+            .appendingPathComponent("schema/org-node.schema.json"))
+        let tree = try JSONDecoder().decode(OrgJSON.self, from: data)
+        var level = tree.objectValue?["$defs"]?.objectValue?["node"]
+        var types: Set<String> = []
+        while let current = level?.objectValue {
+            guard let const = current["if"]?.objectValue?["properties"]?
+                .objectValue?["type"]?.objectValue?["const"]?.stringValue else { break }
+            types.insert(const)
+            level = current["else"]
+        }
+        return types
+    }
+
     static let oracleWarningMarker = "org-swift-dump: WARNING unmapped"
 
     /// Warning lines `oracle-dump.el` wrote to stderr, in order; empty when it dumped cleanly.

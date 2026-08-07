@@ -191,6 +191,35 @@ struct SweepTests {
             """)
     }
 
+    /// The citation grid, gated so a REFUSAL fails, same as the inline-callable grid above.
+    ///
+    /// The case this exists for is `i16-cite-two-keys`, `[cite:@a;@b]`. org finds the last `;`
+    /// after the first key and would call ` @b` a common SUFFIX -- except it then searches
+    /// FORWARD from that `;` for another key, finds `@b`, and concludes the `;` was a reference
+    /// separator instead. Drop that re-check and the parser builds one reference plus a suffix
+    /// where org builds two references: a wrong tree, and a plausible-looking one.
+    /// `i16-cite-suffix-has-key` is its partner, and `i16-cite-all-four` the control where the
+    /// suffix is real.
+    ///
+    /// The rest are the declines, which matter as much: an unbalanced bracket, a bracket with no
+    /// key at all, and `[cite/:@k]` whose style is EMPTY are all plain TEXT in org, not
+    /// citations and not refusals.
+    static let citationGrid: [String] = cases.map(\.name)
+        .filter { $0.hasPrefix("i16-cite") }
+        .sorted()
+
+    @Test("citations match org exactly, with no refusal allowed", arguments: citationGrid)
+    func citationsMatchOrg(_ name: String) throws {
+        guard let testCase = Self.cases.first(where: { $0.name == name }) else {
+            Issue.record("sweep case '\(name)' is missing -- the citation grid is not loaded")
+            return
+        }
+        let actual = try parseOrg(testCase.inputOrg)
+        #expect(actual == testCase.expected, """
+            \(name): does not match org. \(Self.firstDivergence(actual, testCase.expected, at: "root"))
+            """)
+    }
+
     @Test("parseOrg never emits a tree org does not produce", arguments: cases)
     func neverEmitsAWrongTree(_ testCase: SweepCase) throws {
         let actual: OrgJSON

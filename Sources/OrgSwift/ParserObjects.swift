@@ -678,10 +678,20 @@ extension OrgParser {
                     textStart = k
                     continue
                 }
-                // Only a citation-SHAPED opener still refuses; every other `[` is proven no
-                // object by the exact matchers above and becomes text.
-                if container.permits(.citation), try citationCouldStart(in: chars, at: i) {
-                    throw OrgError.unimplemented("citation")
+                // CITATION, `[cite/style: prefix; @key suffix; common-suffix]`. Last of the
+                // `[` constructs, and the only one whose matcher has to search BACKWARDS -- see
+                // `citationMatch` for the four regions and why the common suffix needs a
+                // forward re-check to exist at all.
+                if container.permits(.citation),
+                   let match = try citationMatch(in: chars, at: i) {
+                    flushText(upTo: i)
+                    let node = try citationNode(match, in: chars)
+                    nodes.append(node)
+                    var k = match.end
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" { k += 1 }
+                    i = k
+                    textStart = k
+                    continue
                 }
             case "<":
                 // `<TYPE:...>` is an angle link, and a REGISTERED type is what distinguishes it
@@ -981,35 +991,240 @@ extension OrgParser {
         return String(String(scalars: chars[lo..<hi]).map { $0 == "\n" ? " " : $0 })
     }
 
-    /// Whether `[` at `i` opens a citation PREFIX -- `org-element-citation-prefix-re`:
-    /// `[cite`, an optional `/style` whose chars are ASCII alnum plus `/`, `_`, `-`, then `:`.
-    /// Shape only: the citation grammar past the prefix is unimplemented, so a matching prefix
-    /// REFUSES upstream rather than parses, and a non-matching `[` is PROVEN no citation --
-    /// after `[cite`, org accepts exactly `:` or `/`, so any other scalar is a real decline.
-    /// Emacs's `alnum` inside the style is Unicode-aware, so a non-ASCII scalar there is the
-    /// one undecidable spot and throws instead of answering.
-    private func citationCouldStart(in chars: [Unicode.Scalar], at i: Int) throws -> Bool {
+    /// A matched `[cite...]`: where it ends, its style, its common prefix and suffix, and the
+    /// span holding its references.
+    struct CitationMatch {
+        let end: Int
+        let style: String?
+        let prefix: Range<Int>?
+        let suffix: Range<Int>?
+        let contents: Range<Int>
+    }
+
+    /// Matches an org CITATION at `i`, or nil when there is none.
+    ///
+    /// Transcribed from `org-element-citation-parser` (org-element.el:3347) and its two regexps
+    /// (`:115`, `:120`). The grammar is small; the SPLIT is where all the difficulty is, because
+    /// a citation carries FOUR text regions and three of them are found by searching backwards.
+    ///
+    ///     [cite/STYLE: COMMON-PREFIX ; @k1 SUFFIX ; PREFIX @k2 ; COMMON-SUFFIX]
+    ///      \____/       \__________/   \_______/   \_________/   \___________/
+    ///       style        cite :prefix   reference    reference     cite :suffix
+    ///
+    /// org's rules, each one measured on this parser's own fixtures before it was written:
+    ///
+    ///   - the whole thing must BALANCE as square brackets (`scan-lists` under the same
+    ///     one-pair syntax table the inline callables use), and it must contain at least one
+    ///     KEY, `@` followed by one or more of `[:word:]-.:?!\`'/*@+|(){}<>&_^$#%~`;
+    ///   - the COMMON PREFIX exists only when a `;` sits before the FIRST key. Found by
+    ///     searching backwards from the first key's end, bounded below by the end of `[cite:`;
+    ///   - the COMMON SUFFIX exists only when the LAST `;` is followed by no further key. org
+    ///     searches backwards for a `;`, then FORWARD from it for a key, and treats a hit as
+    ///     proof the `;` was a reference separator rather than the suffix marker. That
+    ///     double-check is the subtle half: without it `[cite:@a;@b]` reports ` @b` as a common
+    ///     suffix instead of a second reference;
+    ///   - trailing ` \r\t\n` before the `]` is trimmed off the suffix region, leading blanks
+    ///     after `[cite:` are eaten by the prefix regexp, and neither survives into the tree.
+    ///
+    /// The style class is `[/_-alnum]+` with Emacs's UNICODE-aware `alnum`, so a non-ASCII
+    /// scalar where the style could continue is undecidable and THROWS -- the same shape as the
+    /// dynamic-block name, the footnote label and the sub/superscript body.
+    func citationMatch(in chars: [Unicode.Scalar], at i: Int) throws -> CitationMatch? {
+        guard let afterPrefix = try citationPrefixEnd(in: chars, at: i) else { return nil }
+        guard let closing = balancedEnd(
+            in: chars, openAt: i, opener: "[", closer: "]", maxDepth: Int.max) else { return nil }
+        let style = afterPrefix.style
+        let start = afterPrefix.end
+        // At least one key must sit inside the brackets, or this is not a citation at all.
+        guard let firstKey = citationKeyRange(in: chars, from: start, upTo: closing - 1) else {
+            return nil
+        }
+
+        // COMMON PREFIX: the last `;` at or after `start` and before the first key's end.
+        var prefix: Range<Int>?
+        var contentsBegin = start
+        if let semi = lastIndex(of: ";", in: chars, from: start, upTo: firstKey.upperBound) {
+            if start < semi { prefix = start..<semi }
+            contentsBegin = semi + 1
+        }
+
+        // COMMON SUFFIX: trailing whitespace trimmed, then the last `;` after the first key --
+        // but only when NO key follows it, which is org's own double-check.
+        var end = closing - 1
+        while end > contentsBegin, isBlankScalar(chars[end - 1]) { end -= 1 }
+        var suffix: Range<Int>?
+        var contentsEnd = end
+        if let semi = lastIndex(of: ";", in: chars, from: firstKey.upperBound, upTo: end),
+           citationKeyRange(in: chars, from: semi + 1, upTo: end) == nil {
+            if semi + 1 < end { suffix = (semi + 1)..<end }
+            contentsEnd = semi + 1
+        }
+
+        return CitationMatch(
+            end: closing, style: style, prefix: prefix, suffix: suffix,
+            contents: contentsBegin..<max(contentsBegin, contentsEnd))
+    }
+
+    /// The `[cite` / `/style` / `:` / blanks opener, or nil. Also the decline proof: after
+    /// `[cite`, org accepts exactly `:` or `/`, so any other scalar means no citation.
+    private func citationPrefixEnd(
+        in chars: [Unicode.Scalar], at i: Int
+    ) throws -> (style: String?, end: Int)? {
         var j = i + 1
         for expected in "cite".unicodeScalars {
-            guard j < chars.count, OrgParser.asciiLowered(chars[j]) == expected else { return false }
+            guard j < chars.count, chars[j] == expected else { return nil }
             j += 1
         }
-        guard j < chars.count else { return false }
-        if chars[j] == ":" { return true }
-        guard chars[j] == "/" else { return false }
-        j += 1
-        while j < chars.count {
-            let s = chars[j]
-            if s == ":" { return true }
-            let styleScalar = (s >= "0" && s <= "9") || (s >= "a" && s <= "z")
-                || (s >= "A" && s <= "Z") || s == "/" || s == "_" || s == "-"
-            if styleScalar { j += 1; continue }
-            if !s.isASCII {
-                throw OrgError.unimplemented("non-ASCII scalar in a possible citation style")
+        guard j < chars.count else { return nil }
+        var style: String?
+        if chars[j] == "/" {
+            j += 1
+            let styleStart = j
+            while j < chars.count {
+                let s = chars[j]
+                if (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+                    || s == "/" || s == "_" || s == "-" {
+                    j += 1
+                    continue
+                }
+                // Emacs's `alnum` is Unicode-aware, so a non-ASCII scalar here could be part of
+                // the style or could end it, and this parser cannot tell which.
+                if !s.isASCII {
+                    throw OrgError.unimplemented("non-ASCII scalar in a possible citation style")
+                }
+                break
             }
-            return false
+            guard j < chars.count, chars[j] == ":", j > styleStart else { return nil }
+            style = String(scalars: chars[styleStart..<j])
+        } else {
+            guard chars[j] == ":" else { return nil }
         }
-        return false
+        j += 1
+        // `(zero-or-more (any "\t\n "))` closes the prefix regexp.
+        while j < chars.count, chars[j] == " " || chars[j] == "\t" || chars[j] == "\n" { j += 1 }
+        return (style, j)
+    }
+
+    /// The range of the FIRST `@KEY` at or after `from` and ending at or before `upTo`, or nil.
+    ///
+    /// The key class is `org-element-citation-key-re`: `@` then one or more of
+    /// `[:word:]` plus `-.:?!\`'/*@+|(){}<>&_^$#%~`. `[:word:]` is Unicode-aware, and unlike the
+    /// other four undecidable classes in this parser that costs NOTHING here: every scalar this
+    /// test rejects is one org would also have to reject to end the key, and a non-ASCII scalar
+    /// simply extends it. So the ASCII half plus "any non-ASCII scalar is a word constituent"
+    /// is exact rather than narrow -- Emacs's `word` class covers letters and digits in every
+    /// script, and the only non-ASCII scalars it excludes are punctuation and symbols, which
+    /// this parser would have to enumerate to do better. Recorded here because the other four
+    /// sites throw and this one deliberately does not.
+    private func citationKeyRange(
+        in chars: [Unicode.Scalar], from: Int, upTo: Int
+    ) -> Range<Int>? {
+        var j = from
+        while j < upTo {
+            if chars[j] == "@" {
+                var k = j + 1
+                while k < upTo, OrgParser.isCitationKeyScalar(chars[k]) { k += 1 }
+                if k > j + 1 { return j..<k }
+            }
+            j += 1
+        }
+        return nil
+    }
+
+    static func isCitationKeyScalar(_ s: Unicode.Scalar) -> Bool {
+        if !s.isASCII { return true }
+        if (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z") {
+            return true
+        }
+        return "-.:?!`'/*@+|(){}<>&_^$#%~".unicodeScalars.contains(s)
+    }
+
+    private func isBlankScalar(_ s: Unicode.Scalar) -> Bool {
+        s == " " || s == "\r" || s == "\t" || s == "\n"
+    }
+
+    private func lastIndex(
+        of needle: Unicode.Scalar, in chars: [Unicode.Scalar], from: Int, upTo: Int
+    ) -> Int? {
+        var j = upTo - 1
+        while j >= from {
+            if chars[j] == needle { return j }
+            j -= 1
+        }
+        return nil
+    }
+
+    /// The `citation-reference` children tiling a citation's contents region.
+    ///
+    /// Transcribed from `org-element-citation-reference-parser` (org-element.el:3427). Each
+    /// reference runs from where the previous one ended to just past the next `;`, or to the end
+    /// of the region; inside that span the key splits an optional PREFIX from an optional SUFFIX,
+    /// and the `;` itself belongs to neither. `:post-blank` is hardcoded 0 in org, so it is 0
+    /// here too rather than measured off the source.
+    private func citationReferences(
+        in chars: [Unicode.Scalar], over region: Range<Int>
+    ) throws -> [OrgJSON] {
+        var nodes: [OrgJSON] = []
+        var begin = region.lowerBound
+        while begin < region.upperBound {
+            guard let key = citationKeyRange(
+                in: chars, from: begin, upTo: region.upperBound) else { break }
+            let separator = firstIndex(of: ";", in: chars, from: key.upperBound,
+                                       upTo: region.upperBound)
+            let end = separator.map { $0 + 1 } ?? region.upperBound
+            let suffixEnd = separator ?? end
+            var fields: [String: OrgJSON] = [
+                "type": .string("citation-reference"),
+                "key": .string(String(scalars: chars[(key.lowerBound + 1)..<key.upperBound])),
+                "postBlank": .int(0),
+            ]
+            fields["prefix"] = begin < key.lowerBound
+                ? .array(try parseObjects(String(scalars: chars[begin..<key.lowerBound]),
+                                          in: .citationReference))
+                : .null
+            fields["suffix"] = key.upperBound < suffixEnd
+                ? .array(try parseObjects(String(scalars: chars[key.upperBound..<suffixEnd]),
+                                          in: .citationReference))
+                : .null
+            nodes.append(.object(fields))
+            begin = end
+        }
+        return nodes
+    }
+
+    private func firstIndex(
+        of needle: Unicode.Scalar, in chars: [Unicode.Scalar], from: Int, upTo: Int
+    ) -> Int? {
+        var j = from
+        while j < upTo {
+            if chars[j] == needle { return j }
+            j += 1
+        }
+        return nil
+    }
+
+    /// The whole `citation` node for a match, references and all.
+    func citationNode(
+        _ match: CitationMatch, in chars: [Unicode.Scalar]
+    ) throws -> OrgJSON {
+        func secondary(_ range: Range<Int>?) throws -> OrgJSON {
+            guard let range else { return .null }
+            return .array(try parseObjects(String(scalars: chars[range]), in: .citation))
+        }
+        var postBlank = 0
+        var k = match.end
+        while k < chars.count, chars[k] == " " || chars[k] == "\t" {
+            postBlank += 1
+            k += 1
+        }
+        return .object([
+            "type": .string("citation"),
+            "style": match.style.map(OrgJSON.string) ?? .null,
+            "prefix": try secondary(match.prefix),
+            "suffix": try secondary(match.suffix),
+            "children": .array(try citationReferences(in: chars, over: match.contents)),
+            "postBlank": .int(postBlank),
+        ])
     }
 
     /// Index just past a `<<target>>` at `i`, and the range of its contents, or nil. The

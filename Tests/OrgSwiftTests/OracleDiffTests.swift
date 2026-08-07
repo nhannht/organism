@@ -218,47 +218,68 @@ struct OracleDiffTests {
         )
     }
 
-    @Test("an unmapped construct is refused as ground truth rather than decoded")
-    func unmappedConstructThrowsRatherThanReturningADegenerateTree() throws {
-        // `citation` is unmapped today, so the oracle warns and emits a degenerate node.
+    @Test("no REACHABLE org-element type is unmapped, so the guard has nothing left to catch")
+    func everyReachableTypeIsMapped() throws {
+        // This test REPLACES the end-to-end one that used to live here, and the replacement is
+        // the strongest possible reason for a test to go: its probe construct was `[cite:@key]`,
+        // chosen because citation was unmapped, and its own comment said it was deliberately
+        // temporary and would go red the day citation landed. Citation landed. There is now no
+        // input to `oracle-dump.el` that can make it warn at all -- `inlinetask` is the single
+        // unmapped type and it is unreachable under the harness's own `emacs -Q` (ORG-11), where
+        // it degrades to ordinary headlines and warns about nothing.
         //
-        // THIS TEST IS DELIBERATELY TEMPORARY, and it asserts normally rather than sitting in
-        // `withKnownIssue` because it PASSES today. Every type this project maps shrinks the set
-        // of inputs that can trigger the warning, and citation is scheduled to be mapped. When it
-        // is, the oracle stops warning, no error is thrown, and this test goes red -- which is
-        // the correct signal, not a bug. At that point either re-point it at a construct that is
-        // still unmapped, or delete it and rely on the two tests above, which do not decay. Do
-        // NOT "fix" it by loosening the assertion.
+        // Deleting the coverage would have been wrong; so would re-pointing it at a construct
+        // that does not exist. What replaces it asserts the FACT that retired it, measured
+        // against live Emacs rather than against this comment -- and it decays in the useful
+        // direction: a future Emacs that adds an element type fails HERE, naming the type, which
+        // is exactly when someone needs to know.
         //
-        // No reachable construct stays unmapped forever: `inlinetask` is the one type that is
-        // permanently unmapped, and it cannot serve here because it is unreachable under the
-        // harness's own `emacs -Q` (ORG-11) -- it degrades to plain headlines and warns about
-        // nothing.
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("org-swift-oracle-warning-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // The two tests above are the guard's permanent coverage and neither depends on any
+        // construct being unmapped: one proves the marker discriminates, the other proves it
+        // partitions the elisp's three warning forms correctly.
+        let listTypes = """
+            (progn (require 'org-element)
+                   (princ (mapconcat #'symbol-name
+                                     (append org-element-all-elements
+                                             org-element-all-objects
+                                             (list 'org-data 'plain-text))
+                                     "\n")))
+            """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["emacs", "--batch", "-Q", "--eval", listTypes]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
 
-        let probe = directory.appendingPathComponent("probe.org")
-        try "[cite:@key]\n".write(to: probe, atomically: true, encoding: .utf8)
+        let orgTypes = Set(
+            (String(data: data, encoding: .utf8) ?? "")
+                .split(separator: "\n").map(String.init))
+        #expect(orgTypes.count > 40, "could not read org's own type list: got \(orgTypes.count)")
 
-        var thrown: Error?
-        do {
-            _ = try HarnessSupport.runOracleDump(on: probe)
-        } catch {
-            thrown = error
-        }
+        // org-element's names are not this schema's names for four types, and the comparison is
+        // meaningless without the mapping -- `plain-list` against `list` would read as a gap.
+        // Same alist `oracle-dump.el` uses, plus `plain-text`, which it maps in its own
+        // `org-swift--node-json` rather than in the rename table.
+        let renames = [
+            "org-data": "document", "plain-list": "list",
+            "strike-through": "strikethrough", "plain-text": "text",
+        ]
+        let schemaTypes = try HarnessSupport.schemaNodeTypes()
+        let unmapped = orgTypes
+            .filter { !schemaTypes.contains(renames[$0] ?? $0) }
+            .sorted()
 
-        guard case .some(HarnessSupport.OracleError.degenerateOutput(let warnings)) = thrown else {
-            Issue.record(
-                """
-                runOracleDump accepted a tree oracle-dump.el warned about, or failed some other \
-                way: \(String(describing: thrown)). A degenerate tree must never be returned as \
-                ground truth.
-                """
-            )
-            return
-        }
-        #expect(!warnings.isEmpty, "the thrown error must carry the warnings that caused it")
+        #expect(unmapped == ["inlinetask"], """
+            The set of unmapped org-element types is \(unmapped), not exactly ["inlinetask"].
+
+            MORE than inlinetask: a type this schema does not map is reachable, so
+            oracle-dump.el's fallback can emit a degenerate tree again. Map it, or document it             the way SCHEMA.md section 9 documents inlinetask.
+
+            FEWER (an empty list): inlinetask became mappable, which would mean the harness's             Emacs configuration changed -- see ORG-11 before celebrating, because loading             org-inlinetask re-parses every deep headline in the corpus.
+            """)
     }
 }

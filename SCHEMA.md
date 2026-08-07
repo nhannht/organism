@@ -337,6 +337,31 @@ Rules:
   source text. `org-element`'s `:call`, `:inside-header`, `:arguments` and `:end-header` are
   deterministic re-readings of those same bytes and are deliberately not duplicated -- same rule
   as `macro` above and the `entity` renderings.
+- `citation` -- `[cite/STYLE: PREFIX; @k SUFFIX; COMMON-SUFFIX]`. A CONTAINER whose `children`
+  are `citation-reference` nodes, and which ALSO carries two secondary strings of its own --
+  the same two-kinds-of-field shape `headline` has with `title` beside its children. `style`
+  (string or null; null for the plain `[cite:` form, and it must be NON-EMPTY when present, so
+  `[cite/:@k]` is plain text). `prefix`, `suffix`: `[object-nodes]` or null.
+- `citation-reference` -- one `@key` inside a citation, and the ONLY place this type appears
+  (org keeps it out of the standard restriction set for exactly that reason). `key` (string,
+  no leading `@`), `prefix`, `suffix` (`[object-nodes]` or null). `postBlank` is always 0 --
+  org hardcodes it in the parser rather than measuring it.
+
+  **The split into four regions is where all of a citation's difficulty is, and three of the
+  four are found by searching BACKWARDS.** A common `prefix` exists only when a `;` precedes the
+  FIRST key. A common `suffix` exists only when the LAST `;` is followed by no further key --
+  org searches backwards for a `;`, then FORWARD from it for a key, and treats a hit as proof
+  that `;` was a reference separator. Without that re-check `[cite:@a;@b]` reports ` @b` as a
+  common suffix instead of a second reference: one node where org builds two, and a
+  plausible-looking tree. Pinned by `i16-cite-two-keys`, `i16-cite-suffix-has-key` and
+  `i16-cite-double-semi` in the sweep, with `i16-cite-all-four` as the control where the suffix
+  is real.
+
+  The key class is `@` plus one or more of `[:word:]-.:?!\`'/*@+|(){}<>&_^$#%~`. `[:word:]` is
+  Unicode-aware, and unlike the four other Unicode-aware classes in this parser that costs
+  nothing: every scalar the ASCII test rejects is one org would also stop the key on, and a
+  non-ASCII scalar simply continues it. So this site does not throw where the dynamic-block
+  name, footnote label, sub/superscript body and inline-callable boundary all do.
 - `diary-sexp` -- ELEMENT leaf (so it may carry affiliated keywords; a `#+NAME:` above one really
   does attach, measured). `value`: string, the whole column-0 `%%(SEXP)` line **including** the
   `%%` marker -- unlike `comment`, whose marker is stripped. Not to be confused with a diary
