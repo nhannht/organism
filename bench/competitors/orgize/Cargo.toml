@@ -7,6 +7,7 @@ edition = "2021"
 # alpha-only on crates.io; if it ever ships stable, re-measure against it before publishing.
 [dependencies]
 orgize = "0.9"
+serde_json = "1.0.151"
 
 [profile.release]
 lto = true
