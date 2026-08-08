@@ -8,6 +8,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 [semantic](https://semver.org/), with the pre-1.0 caveat that the API is still being shaped: a
 breaking change moves the MINOR number while the major is 0.
 
+## [Unreleased]
+
+### Fixed
+
+- **A silent wrong tree.** `blockValue` appended `"\n"` after every line unconditionally, so
+  whenever its range reached a final line that has none, the emitted `value` carried a byte that
+  is not in the document. Measured against the oracle: `\begin{equation}` / `x` /
+  `\end{equation}` with no trailing newline produced
+  `"\begin{equation}\nx\n\end{equation}\n"` where org produces the same string without the
+  trailing newline.
+
+  Reachable through one of the three callers. The two body callers stop their range before the
+  closing line, so a body line always has a line after it and therefore always has a newline -
+  which is why this survived. The latex-environment caller includes the closer, and that range
+  can end at the last line of the file.
+
+  Both other value builders in the parser already read `hasNewline` per line; this was the lone
+  divergence from an idiom the codebase had settled. Five `w4-*` sweep cases cover it, shown able
+  to fail rather than merely added: with the old line restored the sweep goes red on
+  `w4-latexenv-eof-nonl` and on nothing else.
+
 ## [0.3.1] - 2026-08-08
 
 ### Fixed

@@ -39,7 +39,7 @@ over every org-element type its oracle can reach.
   type list and fails if anything but `inlinetask` is unmapped, another fails if a mapped type
   has no fixture.
 - **Refusals that remain are narrow and named**, not whole constructs, and that is now a counted
-  claim rather than an assertion. Across the 1,317-case differential sweep, **9 cases refuse**,
+  claim rather than an assertion. Across the 1,322-case differential sweep, **9 cases refuse**,
   in two groups: 8 an undecidable non-ASCII scalar at a subscript/superscript body boundary, 1
   the same at a footnote-label boundary. Everything else parses. Each refusal throws rather than
   guessing.
@@ -89,11 +89,11 @@ the whole verification story - run them yourself rather than taking this table's
 | What | Result |
 |---|---|
 | `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
-| `harness/validate-schema.sh` | 1,437 of 1,437 stored answers valid against the published schema |
+| `harness/validate-schema.sh` | 1,442 of 1,442 stored answers valid against the published schema |
 | `swift test` | 60 tests, 15 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
-| `sweep/` differential corpus | 1,317 inputs, 0 wrong trees - see `sweep/README.md` |
+| `sweep/` differential corpus | 1,322 inputs, 0 wrong trees - see `sweep/README.md` |
 | `parseOrg` matches the oracle tree, conformance | 120 of 120 |
 | `parseOrg` matches the oracle tree, real-world | 13 of 13 |
 | `renderOrg` re-emits `input.org` from the tree | 115 of 120, the other 5 permanent by measurement |
@@ -121,12 +121,12 @@ how `todo-hidden-by-unterminated-example` behaved for months before unpaired blo
 parsed, and how the next such fixture will behave.
 
 **`sweep/` is the only gate here that can fail on a WRONG TREE, and it is the one that keeps
-earning its place.** 1,317 generated inputs, each with org's own answer stored beside it,
+earning its place.** 1,322 generated inputs, each with org's own answer stored beside it,
 reporting four states where the rest of the repository reports two: MATCH, MISMATCH (a wrong
 tree, right now), an EXPECTED throw, and an unexpected one. A MISMATCH fails the build and a
 throw does not, because over-throwing costs a construct while a wrong tree costs trust in every
 tree - but WHICH cases throw is pinned by name in `SweepTests.knownRefusals`, so a new refusal is
-red too. That second half was missing until 2026-08-08 and is why `9 of 1,317` above is a gated
+red too. That second half was missing until 2026-08-08 and is why `9 of 1,322` above is a gated
 number rather than a sentence. Nine defects have been found this way, five of them live
 in this repository at the time and none visible to `swift test`, `verify-corpus.sh` or the
 fixtures. The most recent was found by a GENERATED group of cases on its first run, four wrong
@@ -266,14 +266,14 @@ such a field: all 9 other AST tests stayed green and only the drift test went re
 gracefully when `python3` is absent, like the Emacs-backed suites.
 
 What says the typed layer is complete and lossless: `OrgJSON -> OrgNode -> OrgJSON` is asserted
-identical for **all 1,437 stored trees**, and a companion test asserts the corpus exercises every
+identical for **all 1,442 stored trees**, and a companion test asserts the corpus exercises every
 one of the 55 generated types, so a green run is not green because something never ran.
 
 That is deliberately the shape of the published cross-language contract rather than a Swift-native
 AST, so the tree you get in Swift is the same tree a Rust or Python adapter gets. A typed layer
 over it is planned.
 
-**`parseOrg` throws rather than guessing.** It refuses 9 of the 1,317 differential-sweep inputs
+**`parseOrg` throws rather than guessing.** It refuses 9 of the 1,322 differential-sweep inputs
 (see "Current state" for the two groups), and `SweepTests.knownRefusals` names every one. A
 refusal is always `OrgError.notImplemented` carrying the construct and the throw site, so handle
 it explicitly if you feed the parser files you do not control:
@@ -350,7 +350,7 @@ Every number below was checked directly in this repository, on this commit, not 
 - `swift test` on this commit: 60 tests, 15 suites, 0 real failures, 53 known issues: ZERO
   parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
   `interpret-data` losses.
-- 1,317 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,
+- 1,322 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,
   and that is a measured result rather than a starting state -- it held 30 names, all ORG-28,
   until 2026-08-07. A new entry means a wrong tree was introduced. Read `sweep/README.md` before
   quoting that zero anywhere.
@@ -361,8 +361,8 @@ Every number below was checked directly in this repository, on this commit, not 
   known-issue counts off the run, not inferred from the total.
 - `harness/verify-corpus.sh` on this commit: 120/120 conformance cases pass (a runnable
   reference adapter that uses the Emacs oracle itself as the stand-in parser).
-- Every stored answer validates against `schema/org-node.schema.json`: 1,437/1,437 valid, 0
-  invalid -- 120 conformance plus all 1,317 sweep answers, which went unchecked until 2026-08-07
+- Every stored answer validates against `schema/org-node.schema.json`: 1,442/1,442 valid, 0
+  invalid -- 120 conformance plus all 1,322 sweep answers, which went unchecked until 2026-08-07
   and were the half holding degenerate trees (see `schema/README.md` for how to run this
   yourself). The
   rewritten `affiliated` def was also shown able to fail: the old object container, a

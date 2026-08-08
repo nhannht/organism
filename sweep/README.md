@@ -1,6 +1,6 @@
 # `sweep/` - the generated differential corpus
 
-1,317 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
+1,322 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
 via `Tests/OrgSwiftTests/SweepTests.swift`.
 
 ```
@@ -56,7 +56,7 @@ the time. Not one was visible to `swift test`,
 
 ## What a zero here does NOT mean
 
-"1,317 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
+"1,322 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
 
 It means: no disagreement with org on inputs someone THOUGHT TO CONSTRUCT. This corpus is the
 product of one reviewer's guesses about where the parser might be wrong. Every defect it found was
