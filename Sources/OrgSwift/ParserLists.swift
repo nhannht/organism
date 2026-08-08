@@ -245,7 +245,29 @@ extension OrgParser {
                     next = runEnd
                     continue scan
                 }
-                if lines[next].contentStart > indent { next += 1; continue scan }
+                if lines[next].contentStart > indent {
+                    // org's own list scanner (`org-list-struct`) jumps from a block, dynamic
+                    // block or drawer opener straight past its paired closer, so NOTHING inside
+                    // - a column-0 line, a blank run, even an outdented closer - is tested
+                    // against the item's indent. Without this, org-manual.org's own example
+                    // blocks (whose comma-escaped lines sit at column 0 inside indented
+                    // blocks) shredded into paragraphs. The whole rule is measured, one sweep
+                    // case per cell: paired example/quote/dynamic/drawer bodies are skipped
+                    // (`lix-block-col0-*`, `lix-quote-col0`, `lix-dynamic-block`,
+                    // `lix-drawer-col0`), an UNPAIRED opener skips nothing
+                    // (`lix-unpaired-begin`, `lix-drawer-unpaired`), blanks inside a body do
+                    // not end the list (`lix-block-blanks`), a column-0 closer still pairs and
+                    // the item continues past it (`lix-end-outdented`), a real headline breaks
+                    // pairing (`lix-block-real-headline`, via `pairedCloseIndex`'s own
+                    // headline abort), and a latex environment is deliberately NOT skipped -
+                    // org protects only these three construct families (`lix-latex-env-col0`).
+                    if let closer = try skippableBodyConstructEnd(openedAt: next, in: range) {
+                        next = closer + 1
+                        continue scan
+                    }
+                    next += 1
+                    continue scan
+                }
                 break scan
             }
             var bodyEnd = next
@@ -278,6 +300,28 @@ extension OrgParser {
             "children": .array(items),
             "postBlank": .int(listPostBlank),
         ]), i)
+    }
+
+    /// The closing line of a construct at `at` whose body the item-extent scan skips, or nil
+    /// when the line opens none of the three protected families or its opener never pairs.
+    ///
+    /// Reuses the exact pairing predicates the ELEMENT parsers dispatch on, deliberately: a
+    /// private re-derivation here could disagree with what the body's element run later builds,
+    /// and the two would shear a block in half again - which is the defect this closes.
+    private func skippableBodyConstructEnd(openedAt at: Int, in range: Range<Int>) throws -> Int? {
+        let line = lines[at]
+        if let (type, _) = OrgParser.blockBeginLine(line) {
+            return blockEndIndex(openedAt: at, type: type, in: range)
+        }
+        if try OrgParser.dynamicBlockBeginLine(line) != nil {
+            return pairedCloseIndex(
+                openedAt: at, upperBound: range.upperBound,
+                isCloser: OrgParser.isDynamicBlockEndLine)
+        }
+        if OrgParser.drawerName(of: line) != nil {
+            return drawerCloseIndex(openedAt: at, in: range)
+        }
+        return nil
     }
 
     /// One item: its bullet-line prefixes (counter, checkbox, tag) and its body as an element run.

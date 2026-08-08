@@ -1,0 +1,6 @@
+- item one
+
+  #+begin_example
+  body
+#+end_example
+after

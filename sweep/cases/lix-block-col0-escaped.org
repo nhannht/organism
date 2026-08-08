@@ -1,0 +1,6 @@
+- Time range ::
+
+  #+begin_example
+,* Discussion on climate
+   <2006-11-02 Thu 10:00>
+  #+end_example

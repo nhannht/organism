@@ -1,0 +1,5 @@
+- item one
+
+  \begin{equation}
+zzz at column zero
+  \end{equation}

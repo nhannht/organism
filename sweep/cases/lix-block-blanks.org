@@ -1,0 +1,9 @@
+- item one
+
+  #+begin_example
+  first
+
+
+  after two blanks
+  #+end_example
+  tail of item
