@@ -333,10 +333,22 @@ extension OrgParser {
     /// `#+k` that never needed escaping both store value `#+k`, and org's interpreter
     /// re-escapes both on the way out. The renderer mirrors that (`escapedBlockValue`).
     func blockValue(bodyFrom start: Int, to end: Int, unescaping: Bool) -> String {
+        guard start < end else { return "" }
+        // The body is the source verbatim - each line with its own newline - unless a line
+        // actually carries the comma escape, so the common case materializes as ONE slice of
+        // the buffer instead of a per-line append loop. The scan deciding that is the same
+        // predicate the slow path applies, so the two paths cannot disagree about which lines
+        // change.
+        if !unescaping
+            || !(start..<end).contains(where: {
+                OrgParser.unescapedBlockLine(lines[$0].text) != nil
+            }) {
+            return String(scalars: sourceSlice(ofLines: start..<end))
+        }
         var value = ""
         for i in start..<end {
             let text = lines[i].text
-            if unescaping, let unescaped = OrgParser.unescapedBlockLine(text) {
+            if let unescaped = OrgParser.unescapedBlockLine(text) {
                 value.append(String(scalars: unescaped))
             } else {
                 value.append(String(scalars: text))

@@ -666,11 +666,9 @@ extension OrgParser {
         // org parses a lone `+---+` as a paragraph containing a STRIKE-THROUGH, so the emphasis
         // guard's refusal is correct behaviour and this must not replace it. See `tableElEnd`.
         if OrgParser.isTableElRuleLine(line), let end = tableElEnd(openedAt: i, in: range) {
-            var value = ""
-            for lineIndex in i..<end {
-                value.append(String(scalars: lines[lineIndex].text))
-                if lines[lineIndex].hasNewline { value.append("\n") }
-            }
+            // The grid is the source verbatim over its lines, so it materializes as one slice -
+            // same argument as `blockValue`'s fast path, and `i..<end` is never empty here.
+            let value = String(scalars: sourceSlice(ofLines: i..<end))
             var formulas: [OrgJSON] = []
             var next = end
             while next < range.upperBound, let formula = OrgParser.tblfmValue(of: lines[next]) {
