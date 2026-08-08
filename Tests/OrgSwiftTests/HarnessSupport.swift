@@ -205,6 +205,50 @@ enum HarnessSupport {
         }
     }()
 
+    /// One node of `oracle-dump.el`'s SPAN tree (ORG-32): where in the file org-element says
+    /// this node lives, in 0-based Unicode scalar offsets.
+    ///
+    /// Mirrors the normalized tree's shape exactly -- one span node per JSON node, same order --
+    /// because the oracle records them at `org-swift--node-json`, the single recursion point
+    /// every child descent already funnels through. See that file's ORG-32 block comment for
+    /// what was measured to justify the coordinate system.
+    ///
+    /// All four offsets are OPTIONAL and a `text` node has none of them: org-element represents
+    /// plain text as a bare propertized string with no standard-properties vector, so it has no
+    /// positions to report. That is not a gap in this type -- see `SpanTests` for how a text
+    /// node's extent is checked more strictly than a comparison could check it.
+    struct OracleSpan: Decodable, Sendable {
+        let type: String
+        let begin: Int?
+        let end: Int?
+        let contentsBegin: Int?
+        let contentsEnd: Int?
+        let children: [OracleSpan]
+
+        /// This node and every descendant, depth-first, parents before children -- the same
+        /// order `OrgNode.walk()` produces, which is what makes the two walkable in lockstep.
+        func walk() -> [OracleSpan] {
+            var out: [OracleSpan] = []
+            var stack: [OracleSpan] = [self]
+            while let node = stack.popLast() {
+                out.append(node)
+                stack.append(contentsOf: node.children.reversed())
+            }
+            return out
+        }
+    }
+
+    /// Decodes oracle stdout, re-wrapping any decode failure as `OracleError.decodeFailed` so a
+    /// malformed oracle answer reads as "no oracle answer" rather than as a parser defect.
+    /// Shared by both dump entry points; the wrapping used to live inside the single one.
+    static func decodeOracle<T: Decodable>(_ data: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw OracleError.decodeFailed(error)
+        }
+    }
+
     enum OracleError: Error, CustomStringConvertible {
         case emacsUnavailable
         case processFailed(status: Int32, stderr: String)
@@ -291,6 +335,23 @@ enum HarnessSupport {
     /// and skip gracefully, since a broken oracle script is a gap in the oracle, not a signal
     /// about the parser under test.
     static func runOracleDump(on fileURL: URL) throws -> OrgJSON {
+        try decodeOracle(try runOracleScript(entryPoint: "org-swift-dump", on: fileURL))
+    }
+
+    /// Runs `oracle-dump.el`'s SPAN entry point against `fileURL` (ORG-32) and decodes its
+    /// stdout as an `OracleSpan` tree.
+    ///
+    /// Same script, same guards, same graceful-skip contract as `runOracleDump` -- it shares
+    /// `runOracleScript` with it rather than repeating the process plumbing, so the
+    /// degenerate-output guard in particular cannot end up applied to one dump and not the
+    /// other. That guard is the one this repo already learned to care about (ORG-13): an
+    /// unmapped construct makes the oracle warn and exit 0, and a span tree built over a
+    /// degenerate node is exactly as untrustworthy as a normalized tree built over one.
+    static func runOracleSpanDump(on fileURL: URL) throws -> OracleSpan {
+        try decodeOracle(try runOracleScript(entryPoint: "org-swift-dump-spans", on: fileURL))
+    }
+
+    private static func runOracleScript(entryPoint: String, on fileURL: URL) throws -> Data {
         guard emacsAvailable, let emacsExecutablePath else {
             throw OracleError.emacsUnavailable
         }
@@ -298,7 +359,7 @@ enum HarnessSupport {
         process.executableURL = URL(fileURLWithPath: emacsExecutablePath)
         process.arguments = [
             "--batch", "-Q", "-l", oracleDumpScript.path,
-            "--eval", "(org-swift-dump \"\(fileURL.path)\")",
+            "--eval", "(\(entryPoint) \"\(fileURL.path)\")",
         ]
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -330,11 +391,7 @@ enum HarnessSupport {
         guard warnings.isEmpty else {
             throw OracleError.degenerateOutput(warnings: warnings)
         }
-        do {
-            return try JSONDecoder().decode(OrgJSON.self, from: stdoutData)
-        } catch {
-            throw OracleError.decodeFailed(error)
-        }
+        return stdoutData
     }
 
     /// Result of `harness/interpret-data-check.el` for one file - see that script's header for

@@ -1264,10 +1264,128 @@ form; each shape's own measurement lives in the inline comments below and in
         (puthash "affiliated" affiliated base)))
     base))
 
+;; ---------------------------------------------------------------------------
+;; Buffer positions (ORG-32).
+;;
+;; The normalized tree deliberately carries NO buffer positions - see the
+;; stripping note in `org-swift--dump-typed-node's tail, and SCHEMA.md section
+;; 1. That decision is not reopened here. An EDITOR still needs to know which
+;; characters of the file a node came from, and org-element has that answer, so
+;; this emits it as a SEPARATE tree rather than as keys on the normalized one.
+;;
+;; The span tree mirrors the normalized tree's shape by CONSTRUCTION, not by a
+;; second traversal kept in step by hand: `org-swift--node-json' is the single
+;; recursion point every child descent funnels through, so recording there
+;; produces exactly one span node per JSON node, in exactly the same order, for
+;; free. A parallel dumper with its own `pcase' would be a copy to keep in
+;; sync, and this file has 55 type branches for it to drift across.
+;;
+;; MEASURED 2026-08-08 (Emacs 30.2 / org 9.7.11), because the whole mapping
+;; rests on it and an assumed identity is what ORG-19 cost:
+;;
+;;   fixture              bytes  scalars  utf16   point-max - 1
+;;   ascii                    8        8      8        8
+;;   viet precomposed        21       17     17       17
+;;   viet decomposed         25       21     21       21
+;;   astral (emoji)          13       10     11       10   <- not utf16
+;;   combining               12       11     11       11
+;;   ZWJ sequence            20       12     14       12   <- not utf16
+;;   crlf                    10       10     10        8   <- see below
+;;
+;; So an Emacs buffer position counts UNICODE SCALARS, and `point - 1' is the
+;; 0-based scalar offset. The two rows that discriminate are `astral' and
+;; `zwj', where the scalar count and the UTF-16 count differ and Emacs follows
+;; scalars; `viet' separates scalars from bytes.
+;;
+;; CRLF is the one divergence and it is not a counting difference: Emacs
+;; decodes the CRs away at read time, so the buffer genuinely holds 8
+;; characters. `parseOrg' refuses CRLF outright (ParserDocument.swift, "outside
+;; the implemented subset"), so it throws before a span could exist, and the
+;; relation holds on every input the parser accepts.
+;;
+;; PLAIN TEXT HAS NO POSITIONS. `org-element-property :begin' is nil for every
+;; `plain-text' object - it is a bare propertized string in the contents list,
+;; not a node with a standard-properties vector. Measured on all 9 fixtures
+;; above, nil in every one. So a `text' node's span is emitted as null here and
+;; CANNOT be graded against this oracle. It is recoverable on the reader's side
+;; instead, and more strictly than a comparison would be: positioned siblings
+;; TILE their parent's contents range, so a text node's span is exactly the gap
+;; between its neighbours. Measured on `one *bold /it/* two':
+;;
+;;   paragraph [1,21)                      text "one "  = [1,5)
+;;     bold    [5,17)  contents [6,15)     text "bold " = [6,11)
+;;       italic [11,15) contents [12,14)   text "it"    = [12,14)
+;;                                         text "two\n" = [17,21)
+;;
+;; Note also from that probe what `:end' includes, both of which the reader
+;; must reproduce rather than assume: for an ELEMENT it runs past trailing
+;; blank lines (`para one' / blank / blank / `para two' gives the first
+;; paragraph end=12 and the second begin=12, tiling exactly), and for an OBJECT
+;; it absorbs character-counted post-blank (`bold' above ends at 17, two past
+;; its closing `*' at 15).
+;; ---------------------------------------------------------------------------
+
+(defvar org-swift--span-kids nil
+  "Span nodes accumulated at the CURRENT tree level, newest first.
+
+Non-nil binding is also the \"recording\" switch: `org-swift-dump' never binds
+it, so the normalized-tree path runs byte-identically whether or not this
+feature exists. `org-swift-dump-spans' binds it to the root accumulator.")
+
+(defvar org-swift--span-recording nil
+  "Whether `org-swift--node-json' should record spans.
+
+Separate from `org-swift--span-kids' because that variable is legitimately nil
+at every level whose node has no children yet, so it cannot double as the
+flag.")
+
+(defun org-swift--span-node (node kids)
+  "A span entry for NODE with already-collected child spans KIDS.
+
+Positions are converted to 0-BASED SCALAR OFFSETS here rather than left as
+Emacs points, so the stored answer is in the reader's coordinate system and no
+consumer has to remember the shift. A `plain-text' NODE (a bare string) has no
+positions at all; its four fields are null - see the block comment above."
+  (let ((h (make-hash-table :test 'equal))
+        (positioned (not (stringp node))))
+    (puthash "type" (if (stringp node)
+                        "text"
+                      (org-swift--schema-type-name (org-element-type node)))
+             h)
+    (dolist (pair '(("begin" . :begin) ("end" . :end)
+                    ("contentsBegin" . :contents-begin)
+                    ("contentsEnd" . :contents-end)))
+      (let ((p (and positioned (org-element-property (cdr pair) node))))
+        (puthash (car pair) (if p (1- p) :null) h)))
+    (puthash "children" (org-swift--json-array kids) h)
+    h))
+
 (defun org-swift--node-json (node)
   "Convert one org-element NODE - or a bare Lisp string (a `plain-text'
 object) or nil - into the JSON-ready Lisp value described at the top of this
-file."
+file.
+
+When `org-swift--span-recording' is on, also records NODE's buffer positions
+onto `org-swift--span-kids'. That recording is a pure side effect: the value
+returned is identical either way, which is what lets one traversal serve both
+dumps. A nil NODE is an absent optional FIELD rather than a node (a link with
+no description), so it is deliberately not recorded - it contributes no node
+to the JSON tree either, and recording one would put the two trees out of
+step at the first such field."
+  (if (or (not org-swift--span-recording) (null node))
+      (org-swift--node-json-1 node)
+    (let (json mine)
+      ;; A fresh accumulator for MY children, so the recursion below fills it
+      ;; rather than my parent's.
+      (let ((org-swift--span-kids nil))
+        (setq json (org-swift--node-json-1 node))
+        (setq mine (org-swift--span-node node (nreverse org-swift--span-kids))))
+      ;; Binding restored: `org-swift--span-kids' is my parent's list again.
+      (push mine org-swift--span-kids)
+      json)))
+
+(defun org-swift--node-json-1 (node)
+  "The body of `org-swift--node-json'; see it for the contract."
   (cond
    ((null node) :null)
    ((stringp node) (org-swift--make-node "text" `(("value" . ,node))))
@@ -1337,11 +1455,27 @@ produced zero output in `--batch` mode - it manipulates a terminal that does
 not exist there). The fix that worked: `decode-coding-string` the unibyte
 result back into a genuine multibyte Lisp string of real characters BEFORE
 `princ`, so `princ` re-encodes actual characters instead of re-encoding
-already-encoded bytes."
+already-encoded bytes.
+
+BOTH behaviours this docstring describes now live in extracted helpers -
+`org-swift--parse-file` binds `coding-system-for-read`, `org-swift--princ-json`
+does the `decode-coding-string` dance - because `org-swift-dump-spans` has to
+read and write the SAME way, and two readers written to look equivalent are two
+readers that can diverge. The history stays here, where a reader of the main
+entry point finds it."
+  (org-swift--princ-json (org-swift--node-json (org-swift--parse-file path))))
+
+(defun org-swift--parse-file (path)
+  "Parse the .org file at PATH and return its `org-element' tree.
+
+Extracted from `org-swift-dump' so the span dump reads the file the SAME way
+rather than approximately the same way. Coding-system detection happens at
+file read, so a second reader written to look equivalent measures a different
+variable - which is exactly the mistake the ORG-32 probe was written to avoid
+making about Emacs points."
   (unless (file-readable-p path)
     (error "oracle-dump.el: cannot read file: %s" path))
-  (let ((coding-system-for-read 'utf-8)
-        tree)
+  (let ((coding-system-for-read 'utf-8))
     (with-temp-buffer
       (insert-file-contents path)
       ;; `org-mode' must run AFTER the text is inserted so it scans this
@@ -1350,10 +1484,33 @@ already-encoded bytes."
       ;; two-pass behavior the spec requires, and Emacs already does it for
       ;; free via normal mode activation.
       (org-mode)
-      (setq tree (org-element-parse-buffer)))
-    (let ((json-value (org-swift--node-json tree)))
-      (princ (decode-coding-string (json-serialize json-value) 'utf-8))
-      (princ "\n"))))
+      (org-element-parse-buffer))))
+
+(defun org-swift--princ-json (value)
+  "Serialize VALUE and print it, working around the double-encoding bug
+documented at length in `org-swift-dump's docstring."
+  (princ (decode-coding-string (json-serialize value) 'utf-8))
+  (princ "\n"))
+
+(defun org-swift-dump-spans (path)
+  "Print the BUFFER-POSITION tree for the .org file at PATH (ORG-32).
+
+Same shape as `org-swift-dump's normalized tree, one span node per JSON node
+in the same order, but carrying only `type' plus four 0-based scalar offsets
+and `children'. See the block comment above `org-swift--span-node' for what
+was measured to justify the coordinate conversion, and why a `text' node's
+positions are null.
+
+This is a SECOND entry point rather than a flag on the first, and it shares
+`org-swift--parse-file' with it. `org-swift-dump' does not bind
+`org-swift--span-recording', so the normalized path is inert with respect to
+everything here - the 1,442 stored answers cannot move because of a change to
+this function."
+  (let* ((tree (org-swift--parse-file path))
+         (org-swift--span-recording t)
+         (org-swift--span-kids nil))
+    (org-swift--node-json tree)
+    (org-swift--princ-json (car (nreverse org-swift--span-kids)))))
 
 (provide 'oracle-dump)
 ;;; oracle-dump.el ends here
