@@ -35,6 +35,40 @@ enum ObjectKind: String, CaseIterable, Sendable {
     case timestamp = "timestamp"
     case underline = "underline"
     case verbatim = "verbatim"
+
+    /// This case's position in `allCases`, as an exhaustive switch so a new case cannot compile
+    /// without a row here, used as the case's BIT in the permission masks. It exists because
+    /// the synthesized alternative is not O(1): a String-backed enum's `Hashable` hashes the
+    /// raw string, and `allCases.firstIndex(of:)` is a linear scan. The order is pinned to
+    /// `allCases` by `ObjectRestrictionMaskTests`.
+    var caseOrdinal: Int {
+        switch self {
+        case .bold: 0
+        case .citation: 1
+        case .citationReference: 2
+        case .code: 3
+        case .entity: 4
+        case .exportSnippet: 5
+        case .footnoteReference: 6
+        case .inlineBabelCall: 7
+        case .inlineSrcBlock: 8
+        case .italic: 9
+        case .latexFragment: 10
+        case .lineBreak: 11
+        case .link: 12
+        case .macro: 13
+        case .radioTarget: 14
+        case .statisticsCookie: 15
+        case .strikeThrough: 16
+        case .subscript: 17
+        case .superscript: 18
+        case .tableCell: 19
+        case .target: 20
+        case .timestamp: 21
+        case .underline: 22
+        case .verbatim: 23
+        }
+    }
 }
 
 /// One CONTAINER row of `org-element-object-restrictions`: the thing whose contents are being
@@ -82,6 +116,32 @@ enum ObjectContainer: String, CaseIterable, Sendable {
     case tableRow = "table-row"
     case underline = "underline"
     case verseBlock = "verse-block"
+
+    /// This case's position in `allCases` - the container's row in `permittedMasks`. Same
+    /// contract and same reason as `ObjectKind.caseOrdinal` above.
+    var caseOrdinal: Int {
+        switch self {
+        case .bold: 0
+        case .citation: 1
+        case .citationReference: 2
+        case .footnoteReference: 3
+        case .headline: 4
+        case .inlinetask: 5
+        case .italic: 6
+        case .item: 7
+        case .keyword: 8
+        case .link: 9
+        case .paragraph: 10
+        case .radioTarget: 11
+        case .strikeThrough: 12
+        case .subscript: 13
+        case .superscript: 14
+        case .tableCell: 15
+        case .tableRow: 16
+        case .underline: 17
+        case .verseBlock: 18
+        }
+    }
 }
 
 extension ObjectContainer {
@@ -164,7 +224,28 @@ extension ObjectContainer {
     }
 
     /// Whether an object of `kind` may form directly inside this container.
-    func permits(_ kind: ObjectKind) -> Bool { permittedObjects.contains(kind) }
+    ///
+    /// A BIT TEST, not a `Set.contains`, and the distinction was measured before it was made:
+    /// `permits` runs per scanned position in `parseObjects` (the `.link` gates alone fire on
+    /// nearly every scalar of ordinary prose), and `Set<ObjectKind>.contains` on a
+    /// String-backed enum hashes the raw STRING each call - `Hasher`, `String.hash(into:)` and
+    /// the `rawValue` getter together were a double-digit share of a whole parse. The masks
+    /// below are DERIVED from the transcribed sets once per process, so the sets stay the
+    /// single measured artifact and `ObjectRestrictionMaskTests` re-proves the derivation over
+    /// the full container-by-kind cross product on every run.
+    func permits(_ kind: ObjectKind) -> Bool {
+        Self.permittedMasks[caseOrdinal] & (1 << UInt32(kind.caseOrdinal)) != 0
+    }
+
+    /// `permittedObjects` of every container, as bitmasks over `ObjectKind.caseOrdinal`,
+    /// indexed by the container's own `caseOrdinal`. Derived, never hand-written.
+    private static let permittedMasks: [UInt32] = allCases.map { container in
+        var mask: UInt32 = 0
+        for kind in container.permittedObjects {
+            mask |= 1 << UInt32(kind.caseOrdinal)
+        }
+        return mask
+    }
 
     /// Whether ANY of `kinds` may form directly inside this container.
     ///
