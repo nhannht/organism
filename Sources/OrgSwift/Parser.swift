@@ -335,7 +335,7 @@ struct OrgParser {
     /// whether a `"\n"` followed it in `source` -- false only for the final line of a file that
     /// does not end with a newline, so paragraph text can reproduce the source bytes exactly.
     ///
-    /// **`text` is `[Unicode.Scalar]`, not `[Character]`, and that is the whole of ORG-19.**
+    /// **`text` is Unicode SCALARS (a `ScalarSlice`), not `[Character]` - the whole of ORG-19.**
     /// A Swift `Character` is a grapheme CLUSTER; org's own unit is the CODEPOINT. Every
     /// structural decision org makes -- where an emphasis marker is, where a cell boundary is,
     /// what counts as border whitespace -- is defined over codepoints, and Emacs buffer positions
@@ -355,7 +355,7 @@ struct OrgParser {
     /// was false, and 2,619 scalars were waiting behind it. On scalars the guard is ordinary
     /// input validation rather than a correctness crutch.
     struct Line {
-        let text: [Unicode.Scalar]
+        let text: ScalarSlice
         let hasNewline: Bool
 
         /// Where `text[0]` sits in the ROOT document, as a 0-based Unicode scalar offset (ORG-32).
@@ -363,18 +363,23 @@ struct OrgParser {
         /// Absolute, never relative to the parser instance holding the line, and that is the
         /// whole point. A sub-parser is handed an already-built line list, and for an item body
         /// or a footnote definition the caller ASSEMBLES that list - a sliced first line plus
-        /// copies of a line range - so a per-instance coordinate system would need translating at
+        /// a line range - so a per-instance coordinate system would need translating at
         /// every boundary. Carrying the absolute offset on the line deletes the second coordinate
         /// system instead of adding a conversion between two, which is what ORG-32's first
         /// sketch proposed (a base-offset parameter on the sub-parser initializer) before the
         /// spawn sites were read: both of them have the parent line and the slice index in scope,
         /// so the arithmetic is available exactly where it is needed and nowhere else.
         ///
+        /// Since the flat-buffer move this is no longer a stored second coordinate at all:
+        /// `text` is a view of the ROOT buffer and `text.base` IS the absolute offset, so the
+        /// two cannot disagree. (A fabricated probe line over a detached buffer - the renderer's
+        /// `escapedBlockValue` - reports 0, exactly what it passed explicitly before.)
+        ///
         /// Scalars because Emacs buffer positions count scalars and this parser already works on
-        /// `[Unicode.Scalar]` throughout - measured, see `harness/oracle-dump.el`'s ORG-32 block.
+        /// scalars throughout - measured, see `harness/oracle-dump.el`'s ORG-32 block.
         /// NOT a UTF-16 offset: an `NSRange` consumer converts at its own boundary, since this
         /// library imports nothing, not even Foundation.
-        let offset: Int
+        var offset: Int { text.base }
 
         var isBlank: Bool { text.allSatisfy { $0 == " " || $0 == "\t" } }
 
@@ -448,26 +453,25 @@ struct OrgParser {
         self.nesting = nesting
         self.source = source
 
+        // The document's scalars are materialized ONCE, and every line is a zero-copy window
+        // into that buffer. The root is the right place to establish the coordinate system:
+        // every other line in the parse is a sub-slice of one of these, so `Line.offset` -
+        // the slice's own base - is absolute everywhere and nothing downstream counts anything
+        // again. This replaced a loop that grew a fresh `[Unicode.Scalar]` per line, which the
+        // baseline profile put at the top of the allocation churn.
+        let buffer = Array(source.unicodeScalars)
         var built: [Line] = []
-        var current: [Unicode.Scalar] = []
-        // `Line.offset` costs one counter on a scan this loop was already doing, which is why
-        // the root is the right place to establish the coordinate system: every other line in
-        // the parse is either a copy of one of these or a slice of one, so nothing downstream
-        // has to count anything again.
-        var scanned = 0
         var lineStart = 0
-        for ch in source.unicodeScalars {
-            scanned += 1
-            if ch == "\n" {
-                built.append(Line(text: current, hasNewline: true, offset: lineStart))
-                current = []
-                lineStart = scanned
-            } else {
-                current.append(ch)
-            }
+        for i in 0..<buffer.count where buffer[i] == "\n" {
+            built.append(Line(
+                text: ScalarSlice(buffer: buffer, base: lineStart, count: i - lineStart),
+                hasNewline: true))
+            lineStart = i + 1
         }
-        if !current.isEmpty {
-            built.append(Line(text: current, hasNewline: false, offset: lineStart))
+        if lineStart < buffer.count {
+            built.append(Line(
+                text: ScalarSlice(buffer: buffer, base: lineStart, count: buffer.count - lineStart),
+                hasNewline: false))
         }
         self.lines = built
 

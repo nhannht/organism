@@ -97,7 +97,7 @@ extension OrgParser {
     ///
     /// So: a run of ASCII digits, or exactly ONE ASCII letter case-insensitively with `a` = 1.
     /// Multi-letter is not a counter at all. Set on unordered items too (`- [@5] x` reports 5).
-    static func counterMatch(in t: [Unicode.Scalar], at i: Int) -> (value: Int, end: Int)? {
+    static func counterMatch(in t: ScalarSlice, at i: Int) -> (value: Int, end: Int)? {
         guard i + 3 < t.count, t[i] == "[", t[i + 1] == "@" else { return nil }
         var j = i + 2
         var digits = ""
@@ -126,7 +126,7 @@ extension OrgParser {
     /// `equal`, so `[x]` yields checkbox null, not "on". And org's group is
     /// `\(\[[ X-]\]\)\(?:[ \t]+\|$\)`: without trailing whitespace or end of line the box is
     /// no box at all, so `[X]tight` keeps its brackets as text.
-    static func checkboxMatch(in t: [Unicode.Scalar], at i: Int) -> (state: OrgJSON, end: Int)? {
+    static func checkboxMatch(in t: ScalarSlice, at i: Int) -> (state: OrgJSON, end: Int)? {
         guard i + 2 < t.count, t[i] == "[", t[i + 2] == "]" else { return nil }
         guard i + 3 == t.count || t[i + 3] == " " || t[i + 3] == "\t" else { return nil }
         switch t[i + 1] {
@@ -164,7 +164,7 @@ extension OrgParser {
     /// whitespace before), `- t ::d` (none after and not end of line), and `- ::` in any form,
     /// where the bullet's own trailing whitespace has already been consumed so nothing separates
     /// the marker from the colons.
-    static func tagSeparator(in t: [Unicode.Scalar], from start: Int, upTo end: Int) -> Range<Int>? {
+    static func tagSeparator(in t: ScalarSlice, from start: Int, upTo end: Int) -> Range<Int>? {
         guard end >= start + 2 else { return nil }
         var i = end - 2
         while i >= start {
@@ -360,16 +360,15 @@ extension OrgParser {
         // line VERBATIM. That asymmetry is the measured shape -- `- one` / `  continued` gives
         // 'one\n  continued\n', so the continuation's indent survives in the value.
         var bodyLines: [Line] = []
-        let firstRest = Array(t[idx...])
+        let firstRest = t.sub(idx..<t.count)
         // A bullet line with nothing after it contributes no content line at all; `-\n` is an
         // item with an EMPTY body, not an item holding a blank line.
         if !firstRest.isEmpty {
             // `t` IS `lines[head].text`, so `idx` is a direct index into that line and the
             // sliced body line's absolute offset is the bullet line's plus what the bullet,
             // checkbox, counter and tag consumed. Nothing needs to know that breakdown; `idx` is
-            // already the answer.
-            bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline,
-                                  offset: lines[head].offset + idx))
+            // already the answer, and `sub` carries it in the slice's own base.
+            bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline))
         }
         // ORG-24. The bullet line CAN hold the item's first content, unlike a headline line, so
         // this call site's `preBlank` counts from the bullet line itself. When the bullet line

@@ -462,13 +462,13 @@ extension OrgParser {
                   line.text[bodyStart] == " " || line.text[bodyStart] == "\t" {
                 bodyStart += 1
             }
-            let firstRest = Array(line.text[bodyStart...])
+            let firstRest = line.text.sub(bodyStart..<line.text.count)
             if !firstRest.isEmpty {
                 // `bodyStart` indexes `line.text` directly (the label match plus the whitespace
                 // run after `]`), so the sliced line's absolute offset is the label line's plus
-                // it - the same shape as the item's sliced first body line in `parseItem`.
-                bodyLines.append(Line(text: firstRest, hasNewline: line.hasNewline,
-                                      offset: line.offset + bodyStart))
+                // it - the same shape as the item's sliced first body line in `parseItem` - and
+                // `sub` carries exactly that offset in the slice's own base.
+                bodyLines.append(Line(text: firstRest, hasNewline: line.hasNewline))
             }
             // The third `:pre-blank` carrier, sharing ORG-24's one derivation. It counts like an
             // ITEM rather than a headline, because the label line CAN hold the first content.

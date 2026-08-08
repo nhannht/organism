@@ -127,7 +127,7 @@ extension OrgParser {
     static func babelCallValue(of line: Line) -> String? {
         // Case-folds document text against an ASCII keyword: see the case-FOLD note in
         // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        let content = Array(line.text[line.contentStart...])
+        let content = line.text.sub(line.contentStart..<line.text.count)
         let prefix = Array("#+call:".unicodeScalars)
         guard content.count >= prefix.count else { return nil }
         for (offset, expected) in prefix.enumerated()

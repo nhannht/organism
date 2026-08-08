@@ -49,7 +49,7 @@ extension OrgParser {
 
     /// Matches a timestamp at `i`, or nil. Throws only for a form that IS a timestamp opener and
     /// cannot be parsed, so an unrecognized `<`/`[` construct returns nil and its caller decides.
-    func timestampMatch(in chars: [Unicode.Scalar], at i: Int) -> TimestampMatch? {
+    func timestampMatch(in chars: ScalarSlice, at i: Int) -> TimestampMatch? {
         guard i < chars.count else { return nil }
         let open = chars[i]
         guard open == "<" || open == "[" else { return nil }
@@ -217,7 +217,7 @@ extension OrgParser {
     /// Attaches `postBlank` and reports where scanning resumes. Same inter-object rule as links
     /// and emphasis: spaces and tabs after the timestamp are CONSUMED onto the node, newlines are
     /// not (SCHEMA.md section 1).
-    func timestampNode(_ match: TimestampMatch, in chars: [Unicode.Scalar]) -> (node: OrgJSON, next: Int) {
+    func timestampNode(_ match: TimestampMatch, in chars: ScalarSlice) -> (node: OrgJSON, next: Int) {
         var postBlank = 0
         var k = match.end
         while k < chars.count, chars[k] == " " || chars[k] == "\t" {
@@ -260,7 +260,7 @@ extension OrgParser {
     ///     <2026-01-01 Thu +1w -2d>   repeater +1w, delay -2d
     ///     <2026-01-01 Thu -2d +1w>   identical tree
     private func parseTimestampBody(
-        in chars: [Unicode.Scalar], from start: Int, close: Unicode.Scalar
+        in chars: ScalarSlice, from start: Int, close: Unicode.Scalar
     ) -> TimestampBody? {
         var j = start
         func digits(_ count: Int) -> Int? {
@@ -345,7 +345,7 @@ extension OrgParser {
 
     /// `("+"|"++"|".+") N UNIT` for a repeater, `("-"|"--") N UNIT` for a delay.
     private func parseRep(
-        in chars: [Unicode.Scalar], at start: Int, isDelay: Bool
+        in chars: ScalarSlice, at start: Int, isDelay: Bool
     ) -> (json: OrgJSON, end: Int)? {
         var j = start
         var type = ""
@@ -400,7 +400,7 @@ extension OrgParser {
     /// `[ \t]+=>[ \t]+[0-9]+:[0-9][0-9][ \t]*$` from `i`. Note tabs ARE accepted here --
     /// it is the clock PARSER's later literal `"=> "` search that rejects them, not this
     /// line regexp (measured: `=>\t1:07` is still a clock line, with the duration dropped).
-    private static func clockDurationClosesLine(_ t: [Unicode.Scalar], from i: Int) -> Bool {
+    private static func clockDurationClosesLine(_ t: ScalarSlice, from i: Int) -> Bool {
         var j = i
         let wsStart = j
         while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
@@ -425,7 +425,7 @@ extension OrgParser {
     /// `[YYYY-MM-DD ` EVERY later `]` on the line is a candidate end -- that backtracking is
     /// how `CLOCK: [a]--[b]` with no duration matches the line regexp at all (the whole range
     /// reads as ONE loose timestamp), measured.
-    private static func inactiveTimestampEnds(_ t: [Unicode.Scalar], at p: Int) -> [Int] {
+    private static func inactiveTimestampEnds(_ t: ScalarSlice, at p: Int) -> [Int] {
         func isDigit(_ i: Int) -> Bool { i < t.count && t[i].asciiDigitValue != nil }
         guard p < t.count, t[p] == "[",
               isDigit(p + 1), isDigit(p + 2), isDigit(p + 3), isDigit(p + 4),

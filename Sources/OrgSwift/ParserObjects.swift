@@ -568,9 +568,9 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: ScalarSlice(chars), at: i) {
                     flushText(upTo: i)
-                    let (node, next) = timestampNode(match, in: chars)
+                    let (node, next) = timestampNode(match, in: ScalarSlice(chars))
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -581,7 +581,7 @@ extension OrgParser {
                 // plain text. Without this gate increment 4 would have added a wrong tree of
                 // exactly the class ORG-23 closed.
                 if container.permits(.footnoteReference),
-                   let match = try footnoteMatch(in: chars, at: i) {
+                   let match = try footnoteMatch(in: ScalarSlice(chars), at: i) {
                     flushText(upTo: i)
                     var postBlank = 0
                     var k = match.end
@@ -658,9 +658,9 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: ScalarSlice(chars), at: i) {
                     flushText(upTo: i)
-                    let (node, next) = timestampNode(match, in: chars)
+                    let (node, next) = timestampNode(match, in: ScalarSlice(chars))
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -991,7 +991,8 @@ extension OrgParser {
     func citationMatch(in chars: [Unicode.Scalar], at i: Int) throws -> CitationMatch? {
         guard let afterPrefix = try citationPrefixEnd(in: chars, at: i) else { return nil }
         guard let closing = balancedEnd(
-            in: chars, openAt: i, opener: "[", closer: "]", maxDepth: Int.max) else { return nil }
+            in: ScalarSlice(chars), openAt: i, opener: "[", closer: "]", maxDepth: Int.max)
+        else { return nil }
         let style = afterPrefix.style
         let start = afterPrefix.end
         // At least one key must sit inside the brackets, or this is not a citation at all.
@@ -1381,7 +1382,8 @@ extension OrgParser {
         ) -> (contents: String, end: Int)? {
             guard j < chars.count, chars[j] == opener,
                   let past = balancedEnd(
-                      in: chars, openAt: j, opener: opener, closer: closer, maxDepth: Int.max)
+                      in: ScalarSlice(chars), openAt: j, opener: opener, closer: closer,
+                      maxDepth: Int.max)
             else { return nil }
             return (String(scalars: chars[(j + 1)..<(past - 1)]), past)
         }
@@ -1571,7 +1573,7 @@ extension OrgParser {
     }
 
     /// Matches a `[fn:` construct at `i`, or nil when there is none.
-    func footnoteMatch(in chars: [Unicode.Scalar], at i: Int) throws -> FootnoteMatch? {
+    func footnoteMatch(in chars: ScalarSlice, at i: Int) throws -> FootnoteMatch? {
         let prefix = Array("[fn:".unicodeScalars)
         guard i + prefix.count <= chars.count else { return nil }
         for (offset, expected) in prefix.enumerated() where chars[i + offset] != expected {
@@ -1618,7 +1620,7 @@ extension OrgParser {
     ///     a_{b{c{d}}}         3 levels   subscript      a_(b (c (d)))       3 levels   subscript
     ///     a_{b{c{d{e}}}}      4 levels   plain TEXT     a_(b (c (d (e))))   4 levels   plain TEXT
     private func balancedEnd(
-        in chars: [Unicode.Scalar], openAt open: Int,
+        in chars: ScalarSlice, openAt open: Int,
         opener: Unicode.Scalar, closer: Unicode.Scalar, maxDepth: Int
     ) -> Int? {
         var depth = 0
@@ -1687,14 +1689,14 @@ extension OrgParser {
 
         if chars[i + 1] == "{" {
             guard let end = balancedEnd(
-                in: chars, openAt: i + 1, opener: "{", closer: "}", maxDepth: 3
+                in: ScalarSlice(chars), openAt: i + 1, opener: "{", closer: "}", maxDepth: 3
             ) else { return nil }
             // Braces are stripped: the contents are what sits BETWEEN them.
             return ScriptMatch(end: end, body: (i + 2)..<(end - 1), useBrackets: true)
         }
         if chars[i + 1] == "(" {
             guard let end = balancedEnd(
-                in: chars, openAt: i + 1, opener: "(", closer: ")", maxDepth: 3
+                in: ScalarSlice(chars), openAt: i + 1, opener: "(", closer: ")", maxDepth: 3
             ) else { return nil }
             // Parentheses are KEPT: the contents include them.
             return ScriptMatch(end: end, body: (i + 1)..<end, useBrackets: false)

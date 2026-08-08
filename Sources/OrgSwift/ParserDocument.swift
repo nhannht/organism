@@ -297,7 +297,7 @@ extension OrgParser {
         while start < line.text.count, line.text[start] == " " || line.text[start] == "\t" { start += 1 }
         var end = line.text.count
         while end > start, line.text[end - 1] == " " || line.text[end - 1] == "\t" { end -= 1 }
-        let titleChars = Array(line.text[start..<end])
+        let titleChars = line.text.sub(start..<end)
         // Whether the SOURCE line carried whitespace past the trimmed title end -- one of the
         // three signals the empty-title rule below reads, so it is captured before the trim
         // destroys it.

@@ -304,7 +304,7 @@ extension OrgRenderer {
             let commaRunThenMarker = i > indentEnd && i < scalars.count
                 && (scalars[i] == "*"
                     || (scalars[i] == "#" && i + 1 < scalars.count && scalars[i + 1] == "+"))
-            let probe = OrgParser.Line(text: scalars, hasNewline: true, offset: 0)
+            let probe = OrgParser.Line(text: ScalarSlice(scalars), hasNewline: true)
             if commaRunThenMarker
                 || OrgParser.isBlockEndLine(probe, type: blockType)
                 || OrgParser.headlineLevel(of: probe) != nil {

@@ -336,23 +336,29 @@ extension OrgParser {
         var value = ""
         for i in start..<end {
             let text = lines[i].text
-            value.append(String(scalars: unescaping ? OrgParser.unescapedBlockLine(text) : text))
+            if unescaping, let unescaped = OrgParser.unescapedBlockLine(text) {
+                value.append(String(scalars: unescaped))
+            } else {
+                value.append(String(scalars: text))
+            }
             if lines[i].hasNewline { value.append("\n") }
         }
         return value
     }
 
     /// One line of a literal block body with `org-unescape-code-in-region`'s comma removed,
-    /// or the line unchanged when the pattern does not match. See `blockValue`.
-    static func unescapedBlockLine(_ text: [Unicode.Scalar]) -> [Unicode.Scalar] {
+    /// or nil when the pattern does not match and the line stands as it is. Optional rather
+    /// than echoing the input back, because the no-match answer is the common one and echoing
+    /// it would cost a copy per body line. See `blockValue`.
+    static func unescapedBlockLine(_ text: ScalarSlice) -> [Unicode.Scalar]? {
         var i = 0
         while i < text.count, text[i] == " " || text[i] == "\t" { i += 1 }
         let commaRunStart = i
         while i < text.count, text[i] == "," { i += 1 }
-        guard i > commaRunStart, i < text.count else { return text }
+        guard i > commaRunStart, i < text.count else { return nil }
         guard text[i] == "*" || (text[i] == "#" && i + 1 < text.count && text[i + 1] == "+")
-        else { return text }
-        var out = text
+        else { return nil }
+        var out = Array(text)
         out.remove(at: i - 1)
         return out
     }

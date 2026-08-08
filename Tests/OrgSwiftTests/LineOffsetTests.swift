@@ -63,7 +63,7 @@ struct LineOffsetTests {
             #expect(end <= scalars.count,
                     "\(label): line \(i) runs to \(end), past the document's \(scalarsCountText(scalars))")
             if end <= scalars.count {
-                #expect(Array(scalars[line.offset..<end]) == line.text,
+                #expect(Array(scalars[line.offset..<end]) == Array(line.text),
                         "\(label): line \(i) does not slice back out of the source at \(line.offset)")
             }
             // `endOffset` is what a caller uses when there is no next line to ask, so it has to
