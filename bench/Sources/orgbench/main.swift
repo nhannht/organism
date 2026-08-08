@@ -4,13 +4,16 @@ import OrgSwift
 // orgbench - the organism side of the benchmark harness.
 //
 //   orgbench gen <dir> [--size BYTES]           write the synthetic corpus (deterministic)
-//   orgbench run [options] <file.org ...>       time parseOrg on each file, TSV to stdout
+//   orgbench run [options] <file.org ...>       time the parse on each file, TSV to stdout
 //   orgbench sample <file> <warmup> <min-time>  raw ns-per-iteration lines (run-all.sh protocol)
 //
 // run options:
 //   --min-time SECONDS   target measuring time per file (default 1.0)
 //   --warmup N           unmeasured runs per file first (default 3)
 //   --max-iters N        iteration ceiling per file (default 20000)
+//   --tree native|json   which tree the timed call builds (default native, the typed
+//                        tree - the same rule the competitor runners follow; json is the
+//                        derived OrgJSON view, the pre-Phase-3 comparable number)
 //
 // The competitor runners under bench/competitors/ follow the same protocol: parse to the
 // parser's NATIVE tree, loop, self-time, so process startup and I/O never enter a number.
@@ -62,6 +65,10 @@ case "run":
         guard let n = Int(s), n > 0 else { die("--max-iters must be a positive integer") }
         return n
     } ?? 20_000
+    let tree = takeOption("--tree").map { s in
+        guard let t = BenchTree(rawValue: s) else { die("--tree must be native or json") }
+        return t
+    } ?? .native
     guard !args.isEmpty else { die("run needs at least one .org file") }
 
     print(BenchResult.tsvHeader)
@@ -69,7 +76,8 @@ case "run":
     for path in args {
         do {
             let result = try benchFile(
-                path: path, minTime: minTime, warmup: warmup, maxIterations: maxIterations)
+                path: path, minTime: minTime, warmup: warmup, maxIterations: maxIterations,
+                tree: tree)
             print(result.tsvLine)
         } catch {
             failed = true

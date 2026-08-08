@@ -82,3 +82,43 @@ clear top block (~2,200 of ~10k samples: swift_release/retain, DictionaryStorage
 RawDictionaryStorage.find on node-field inserts), then String building (_StringGuts.append,
 UnicodeScalarView.distance, _allASCII), then plainLinkEnd probing. **Phase 3 (native typed
 tree construction) is now earned by the numbers**, exactly as the plan gated it.
+
+## Phase 3 native typed-tree construction, 2026-08-08 (three commits)
+
+The parser now builds the generated typed AST (`OrgNode` / `OrgDocument`) natively;
+`parseOrg` is that parse re-emitted once through the generated `toJSON()`, and the
+`strippingSpans` full-tree rebuild is deleted (spans ride the typed nodes' `span` slot and
+the JSON emitter has no code that could write one). `OrgDocument(parsing:)` is the
+zero-JSON path and carries ORG-32 spans.
+
+Two numbers per file now exist, and the bench protocol's own rule ("every runner parses to
+its NATIVE tree") makes the typed one the headline: before Phase 3 the JSON tree WAS the
+native tree, so the historical numbers stay comparable to `--tree json`.
+
+Medians, min-time 0.5, load avg ~4-5 (moderate; re-confirm on a quiet machine):
+
+| file | pre-phase (json) | json after | NATIVE after | native/pre |
+|---|---|---|---|---|
+| syn-prose.org | 16.4 | 19.5 | 24.5 | 1.5x |
+| syn-emphasis.org | 8.0 | 12.1 | 27.5 | 3.4x |
+| syn-lists.org | 13.8 | 16.2 | 21.6 | 1.6x |
+| syn-tables.org | ~9 | 11.9 | 30.9 | 3.4x |
+| syn-links.org | - | - | 26.2 | - |
+| syn-outline.org | - | - | 26.9 | - |
+| syn-radio.org | - | - | 10.5 | (two real passes, by design) |
+| org-manual.org | ~13 | 15.4 | 17.9 | 1.4x |
+| org-guide.org | - | - | 22.5 | - |
+
+The node-DENSE files gained the most, which is the diagnosis confirmed: emphasis and tables
+are many small nodes, so they were paying the most dictionary storage + boxed-field cost per
+byte. Even the JSON path got faster everywhere (typed construction + one flat emission beats
+incremental dict building + patch-time copying + the strip pass).
+
+Cumulative on syn-prose since the campaign baseline of 2.43: **10.1x** (native), 8.0x (json).
+
+Post-phase profile (native syn-prose, flat): the dictionary block is GONE
+(RawDictionaryStorage.find / DictionaryStorage.deinit no longer appear). Remaining top
+costs: node-box ARC (indirect-enum allocation + release), per-iteration tree TEARDOWN
+(_ContiguousArrayStorage deinit, swift_arrayDestroy - partly the benchmark consumer's own
+cost, every tree must be freed), and leaf String materialization (String.init(scalars:)).
+No single dominant block remains; further wins are likely smaller and spread out.
