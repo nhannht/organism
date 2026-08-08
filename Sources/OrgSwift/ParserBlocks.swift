@@ -302,11 +302,30 @@ extension OrgParser {
     /// `"\n"` after the last one (SCHEMA.md section 4's convention for every literal block).
     /// An empty body is `""`, not `"\n"` -- measured on `#+begin_src swift` immediately followed
     /// by `#+end_src`. Blank lines inside the body survive verbatim (`"a\n\nb\n"`, measured).
+    ///
+    /// **The newline is copied from the line, never assumed.** This used to append `"\n"`
+    /// unconditionally, which FABRICATED a byte that is not in the source whenever the range
+    /// reaches a final line that has none. Measured wrong tree, latex-environment at EOF with no
+    /// trailing newline:
+    ///
+    ///     input   `\begin{equation}` / `x` / `\end{equation}`   (no final newline)
+    ///     org     value `\begin{equation}\nx\n\end{equation}`
+    ///     was     value `\begin{equation}\nx\n\end{equation}\n`
+    ///
+    /// The BODY callers could never reach it -- their range stops before the closing line, so a
+    /// body line always has a line after it and therefore always has a newline -- which is why it
+    /// survived. The latex-environment caller passes `end + 1` to include the closer, and that
+    /// range CAN end at the last line of the file.
+    ///
+    /// The two other value builders in this parser, the table.el grid and the paragraph text,
+    /// both already read `hasNewline` per line. This function was the lone divergence from an
+    /// idiom the codebase had already settled, and nothing caught it: no conformance or sweep
+    /// case ends a latex environment at EOF without a trailing newline. Now `w4-*` does.
     func blockValue(bodyFrom start: Int, to end: Int) -> String {
         var value = ""
         for i in start..<end {
             value.append(String(scalars: lines[i].text))
-            value.append("\n")
+            if lines[i].hasNewline { value.append("\n") }
         }
         return value
     }
