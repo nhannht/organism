@@ -80,6 +80,32 @@ case "run":
     FileHandle.standardError.write(Data("sink=\(benchSink)\n".utf8))
     if failed { exit(1) }
 
+case "json":
+    // Parse one file and print the tree as JSON (sorted keys) - the seam the accuracy
+    // adapters and tree-diff tooling read.
+    guard args.count == 1 else { die("usage: orgbench json <file.org>") }
+    do {
+        let source = try String(contentsOfFile: args[0], encoding: .utf8)
+        let tree = try parseOrg(source)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(tree)
+        FileHandle.standardOutput.write(data)
+        FileHandle.standardOutput.write(Data("\n".utf8))
+    } catch {
+        die("\(args[0]): \(error)")
+    }
+
+case "render":
+    // Parse one file and print renderOrg's re-emission - the round-trip debugging seam.
+    guard args.count == 1 else { die("usage: orgbench render <file.org>") }
+    do {
+        let source = try String(contentsOfFile: args[0], encoding: .utf8)
+        FileHandle.standardOutput.write(Data(try renderOrg(parseOrg(source)).utf8))
+    } catch {
+        die("\(args[0]): \(error)")
+    }
+
 case "sample":
     // The cross-runner contract run-all.sh drives every parser through, this one included:
     //   sample <file> <warmup> <min-time-seconds>
