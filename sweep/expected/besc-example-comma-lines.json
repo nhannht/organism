@@ -1,0 +1,1 @@
+{"type":"document","children":[{"type":"section","children":[{"type":"example-block","switches":null,"value":"* escaped headline\n#+escaped keyword\n,* double comma\n * indented escape\n,x untouched\n, * space between\n","postBlank":0}],"postBlank":0}],"postBlank":0}

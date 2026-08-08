@@ -208,8 +208,8 @@ extension OrgParser {
     /// `_`, `.` and `:` all END the name, measured. It IS Unicode-aware, and measured WIDE --
     /// `café`, `漢字`, `한글`, `αβ`, `ß` are names, and so are `Ⅷ`, `٣`, `²` and `ʰ`, which are
     /// exactly the scalars where Swift's `isLetterScalar` / `isNumberScalar` and Emacs's word
-    /// syntax have diverged twice before in this parser (see `plainLinkCouldStart`, 16 silent
-    /// wrong trees, and `emacsUpcased`).
+    /// syntax have diverged twice before in this parser (see `plainLinkEnd`'s boundary table,
+    /// 16 silent wrong trees, and `emacsUpcased`).
     ///
     /// So the name run here is ASCII-only and the function THROWS rather than guessing the
     /// moment a non-ASCII scalar sits where the name could continue. Both directions of a wrong
@@ -321,13 +321,40 @@ extension OrgParser {
     /// both already read `hasNewline` per line. This function was the lone divergence from an
     /// idiom the codebase had already settled, and nothing caught it: no conformance or sweep
     /// case ends a latex environment at EOF without a trailing newline. Now `w4-*` does.
-    func blockValue(bodyFrom start: Int, to end: Int) -> String {
+    /// `unescaping` applies org's comma-escape removal, and which body gets it is MEASURED per
+    /// construct rather than assumed: src, example and export blocks unescape; a comment
+    /// block, a verse body and a latex environment keep their commas byte-intact (sweep cases
+    /// `besc-*`, each an oracle answer). The rule itself is `org-unescape-code-in-region`'s:
+    /// after any indentation and any run of commas, a comma sitting DIRECTLY before `*` or
+    /// `#+` is removed - one comma, the innermost - so `,* x` gives `* x`, `,,* x` gives
+    /// `,* x`, ` ,#+k` gives ` #+k`, and `,x` or `, *` are untouched.
+    ///
+    /// The removal is deliberately lossy and the loss is org's own: source `,#+k` and a raw
+    /// `#+k` that never needed escaping both store value `#+k`, and org's interpreter
+    /// re-escapes both on the way out. The renderer mirrors that (`escapedBlockValue`).
+    func blockValue(bodyFrom start: Int, to end: Int, unescaping: Bool) -> String {
         var value = ""
         for i in start..<end {
-            value.append(String(scalars: lines[i].text))
+            let text = lines[i].text
+            value.append(String(scalars: unescaping ? OrgParser.unescapedBlockLine(text) : text))
             if lines[i].hasNewline { value.append("\n") }
         }
         return value
+    }
+
+    /// One line of a literal block body with `org-unescape-code-in-region`'s comma removed,
+    /// or the line unchanged when the pattern does not match. See `blockValue`.
+    static func unescapedBlockLine(_ text: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var i = 0
+        while i < text.count, text[i] == " " || text[i] == "\t" { i += 1 }
+        let commaRunStart = i
+        while i < text.count, text[i] == "," { i += 1 }
+        guard i > commaRunStart, i < text.count else { return text }
+        guard text[i] == "*" || (text[i] == "#" && i + 1 < text.count && text[i + 1] == "+")
+        else { return text }
+        var out = text
+        out.remove(at: i - 1)
+        return out
     }
 
     /// Builds the node for a LITERAL block. `rest` is the raw text after `#+begin_TYPE`.

@@ -1,0 +1,4 @@
+#+begin_verse
+,* escaped?
+line two
+#+end_verse

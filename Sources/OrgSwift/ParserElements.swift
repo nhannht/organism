@@ -383,8 +383,11 @@ extension OrgParser {
             // example, export, comment), ELEMENTS (quote, center, and every unrecognized
             // type, which is a special-block) and OBJECTS (verse).
             if OrgParser.literalBlockTypes.contains(type) {
+                // comment is the one literal block org does NOT comma-unescape, measured
+                // (sweep `besc-comment-comma-lines` against `besc-{src,example,export}-*`).
                 return (literalBlockNode(
-                    type: type, rest: rest, value: blockValue(bodyFrom: i + 1, to: end)
+                    type: type, rest: rest,
+                    value: blockValue(bodyFrom: i + 1, to: end, unescaping: type != "comment")
                 ), end + 1)
             }
             switch type {
@@ -408,7 +411,7 @@ extension OrgParser {
                     // `lines[i + 1].offset` because an empty body at end of file has no line
                     // `i + 1` to read.
                     "children": .array(try parseObjects(
-                        blockValue(bodyFrom: i + 1, to: end), in: .verseBlock,
+                        blockValue(bodyFrom: i + 1, to: end, unescaping: false), in: .verseBlock,
                         at: lines[i].endOffset
                     )),
                     "postBlank": .int(0),
@@ -441,7 +444,7 @@ extension OrgParser {
            let end = latexEnvironmentEndIndex(openedAt: i, name: name, in: range) {
             return (.object([
                 "type": .string("latex-environment"),
-                "value": .string(blockValue(bodyFrom: i, to: end + 1)),
+                "value": .string(blockValue(bodyFrom: i, to: end + 1, unescaping: false)),
                 "postBlank": .int(0),
             ]), end + 1)
         }

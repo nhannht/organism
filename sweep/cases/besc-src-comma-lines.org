@@ -1,0 +1,5 @@
+#+begin_src elisp
+,* escaped
+,,#+double
+plain
+#+end_src

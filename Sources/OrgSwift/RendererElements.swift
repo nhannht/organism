@@ -261,7 +261,61 @@ extension OrgRenderer {
         default:
             throw OrgError.malformedTree("renderLiteralBlock: '\(type)' is not a literal block")
         }
-        return linePrefix + head + "\n" + (try string(node, "value", type)) + linePrefix + tail + "\n"
+        var value = try string(node, "value", type)
+        // src, example and export values were comma-UNESCAPED at parse (`blockValue`), so
+        // their render re-escapes; a comment block never unescaped and never escapes here.
+        if type != "comment-block" {
+            value = OrgRenderer.escapedBlockValue(value, blockType: String(type.dropLast("-block".count)))
+        }
+        return linePrefix + head + "\n" + value + linePrefix + tail + "\n"
+    }
+
+    /// The MINIMAL INVERTIBLE escape over a block value - deliberately NOT org's own
+    /// `org-escape-code-in-region`, which comma-escapes every line-leading `*` or `#+`. That
+    /// breadth is a fidelity loss org accepts and this renderer does not have to: blocks.org
+    /// carries a src block whose `  *styled text*` line was never escaped in the source (legal
+    /// content - only a column-0 star-plus-SPACE line is a headline), and org's broad rule
+    /// re-emits it as `,*styled text*`, different bytes for no reason the parse created.
+    ///
+    /// A value line is escaped exactly when emitting it raw would NOT re-parse to this value:
+    ///
+    ///   (a) indentation + a comma run + `*` or `#+` - the parse's unescape would strip one
+    ///       comma, so this line's comma count came FROM an escape and must go back through
+    ///       one (`,* x` in a value can only arise from `,,* x` in the source);
+    ///   (b) a line `isBlockEndLine` recognizes for THIS block's type - raw, it would
+    ///       terminate the block early (such a value line can only arise from an escaped
+    ///       source line, so the escape restores it exactly);
+    ///   (c) a line `headlineLevel` recognizes - raw at column 0, it would break out of the
+    ///       block as a headline (same provenance argument as (b)).
+    ///
+    /// (b) and (c) reuse the parser's own predicates on a fabricated `Line`, so the renderer
+    /// cannot drift into disagreeing with the parser about what terminates a block or what a
+    /// headline is.
+    static func escapedBlockValue(_ value: String, blockType: String) -> String {
+        let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+        var out: [Substring] = []
+        out.reserveCapacity(lines.count)
+        for line in lines {
+            let scalars = Array(line.unicodeScalars)
+            var i = 0
+            while i < scalars.count, scalars[i] == " " || scalars[i] == "\t" { i += 1 }
+            let indentEnd = i
+            while i < scalars.count, scalars[i] == "," { i += 1 }
+            let commaRunThenMarker = i > indentEnd && i < scalars.count
+                && (scalars[i] == "*"
+                    || (scalars[i] == "#" && i + 1 < scalars.count && scalars[i + 1] == "+"))
+            let probe = OrgParser.Line(text: scalars, hasNewline: true, offset: 0)
+            if commaRunThenMarker
+                || OrgParser.isBlockEndLine(probe, type: blockType)
+                || OrgParser.headlineLevel(of: probe) != nil {
+                var escaped = scalars
+                escaped.insert(",", at: indentEnd)
+                out.append(Substring(String(scalars: escaped)))
+            } else {
+                out.append(line)
+            }
+        }
+        return out.joined(separator: "\n")
     }
 
     // MARK: - Greater blocks

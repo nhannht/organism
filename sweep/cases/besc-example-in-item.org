@@ -1,0 +1,4 @@
+- item
+  #+begin_example
+  ,* indented block escape
+  #+end_example
