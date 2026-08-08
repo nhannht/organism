@@ -656,11 +656,24 @@ extension OrgParser {
         return only
     }
 
+    /// Switch bodies rather than `prePunctuation.contains` / `postPunctuation.contains`: these
+    /// run at every emphasis-marker candidate, and hashing a scalar into a 5-element Set showed
+    /// up in the flat profile once the ICU lookups were gone. The Sets above stay as the
+    /// documented, measured membership; `ScalarClassFastPathTests` holds each switch equal to
+    /// its Set over every valid scalar, so the two cannot drift.
     func isPreChar(_ ch: Unicode.Scalar) -> Bool {
-        isBorderWhitespace(ch) || Self.prePunctuation.contains(ch)
+        if isBorderWhitespace(ch) { return true }
+        switch ch {
+        case "-", "(", "{", "'", "\"": return true
+        default: return false
+        }
     }
 
     func isPostChar(_ ch: Unicode.Scalar) -> Bool {
-        isBorderWhitespace(ch) || Self.postPunctuation.contains(ch)
+        if isBorderWhitespace(ch) { return true }
+        switch ch {
+        case "-", ".", ",", ";", ":", "!", "?", "'", ")", "}", "[", "\"", "\\": return true
+        default: return false
+        }
     }
 }

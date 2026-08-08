@@ -59,4 +59,26 @@ struct ScalarClassFastPathTests {
             }
         }
     }
+
+    /// The emphasis border predicates carry switch bodies for speed; the documented Set
+    /// constants remain the measured membership. Same contract as the lanes above: equal
+    /// everywhere, proven every run.
+    @Test("isPreChar and isPostChar switches equal their documented Sets")
+    func borderSwitchesMatchSets() {
+        let parser = OrgParser(
+            source: "", todoKeywords: nil,
+            radioTargets: [], radioCollector: RadioTargetCollector())
+        for s in Self.allScalars {
+            let pre = parser.isBorderWhitespace(s) || OrgParser.prePunctuation.contains(s)
+            let post = parser.isBorderWhitespace(s) || OrgParser.postPunctuation.contains(s)
+            if parser.isPreChar(s) != pre {
+                Issue.record("isPreChar disagrees with its Set at U+\(String(s.value, radix: 16, uppercase: true))")
+                return
+            }
+            if parser.isPostChar(s) != post {
+                Issue.record("isPostChar disagrees with its Set at U+\(String(s.value, radix: 16, uppercase: true))")
+                return
+            }
+        }
+    }
 }

@@ -35,3 +35,17 @@ Post-change profile: getBinaryProperties is gone from the flat view. New ranking
 allocation churn ~30%, hashing ~11% (Set<Unicode.Scalar> predicates), iterator ~7%.
 
 Cumulative since session baseline: syn-prose 2.43 -> 7.07 (2.9x), manual refused -> 6.77.
+
+## Border-predicate switches (isPreChar/isPostChar Set -> switch), 2026-08-08
+
+No measurable change: syn-prose 7.07 -> 6.96, manual 6.77 -> 6.86, emphasis 4.22 -> 4.16,
+all within run-to-run noise. The Set.contains profile samples evidently come from other
+sets (todoSet, object-kind sets). Kept: gated by the same full-scalar equivalence test,
+and a switch is the cheaper form even below the noise floor.
+
+## Span strip measured (Phase 1.2 gate), 2026-08-08
+
+Bypassing strippingSpans: syn-prose 141.7 -> 134.4 ms, manual 123.9 -> 116.5 ms - the strip
+costs 5-6% of a parse. DEFERRED: whether spans stay in nodes, move to a side table, or
+become conditional is exactly the ORG-32 representation decision, and a flag now would
+answer that spike by default. Reclaim the 5-6% when ORG-32 settles.
