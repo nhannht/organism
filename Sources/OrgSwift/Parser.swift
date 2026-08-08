@@ -86,17 +86,6 @@
 /// emits a radio link whose description is plain text, this throws on the citation. That is an
 /// over-throw, which is the safe direction and is suite-visible.
 public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
-    // Pass 1. The tree is discarded; the collector is the output.
-    let collected = RadioTargetCollector()
-    _ = try OrgParser(
-        source: source, todoKeywords: todoKeywords,
-        radioTargets: [], radioCollector: collected
-    ).parseDocument()
-
-    // Pass 2. A FRESH collector, not the pass-1 one: every parse reports the radio targets it
-    // built, and this parse's report is simply not the thing being asked for. Reusing pass 1's
-    // would work only because the two agree, which is the invariant above -- relying on it here
-    // would make a proof do the job of a variable.
     return OrgParser.strippingSpans(try parseOrgRetainingSpans(source, todoKeywords: todoKeywords))
 }
 
