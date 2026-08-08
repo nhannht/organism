@@ -49,3 +49,36 @@ Bypassing strippingSpans: syn-prose 141.7 -> 134.4 ms, manual 123.9 -> 116.5 ms 
 costs 5-6% of a parse. DEFERRED: whether spans stay in nodes, move to a side table, or
 become conditional is exactly the ORG-32 representation decision, and a flag now would
 answer that spike by default. Reclaim the 5-6% when ORG-32 settles.
+
+## Phase 2 representation overhaul, 2026-08-08 (five commits)
+
+Per-commit medians, quiet machine unless noted. Cumulative on syn-prose: 7.07 -> 16.4
+(2.3x this phase; 6.7x since the campaign baseline of 2.43). org-manual: 6.87 -> ~13.
+
+| commit | syn-prose | syn-emphasis | syn-lists | syn-tables | manual |
+|---|---|---|---|---|---|
+| flat buffer, Line as view | 7.72 | 4.68 | 7.31 | 4.77 | 6.87 |
+| object layer on slices | 11.46 | 6.92 | 10.23 | 7.06 | 10.27 |
+| permission bitmasks | 16.37 | 7.98 | 13.45 | 9.02 | 13.35 |
+| link-type first-scalar buckets | 16.46 | 7.98 | 13.79 | noise | noise |
+| block values as one slice | within noise, structural |
+
+Two regressions caught by measuring, not shipped:
+
+- The first cut of the slice object layer DROPPED syn-prose 7.7 -> 5.9. Profile: the generic
+  String(scalars:) over Slice<ScalarSlice> ran unspecialized - protocol-witness next() per
+  scalar, Slice.subscript through the stdlib dylib, runtime metadata cache lookups. Fixed with
+  two CONCRETE String(scalars:) overloads every existing call site binds to at compile time.
+- Replacing the view-append String materialization with a UTF-8-transcode-then-decode buffer
+  REGRESSED prose 15-16.6 -> 13.5-14.8 in a paired A/B (the intermediate [UInt8] costs more
+  than the appends). Dropped.
+
+The String-backed enums were the hashing share: Set<ObjectKind>.contains hashes the raw
+STRING, and permits() runs per scanned position. Now a derived bitmask + bit test, gated by
+ObjectRestrictionMaskTests over the full 19x24 cross product.
+
+Post-phase profile (syn-prose): ARC + malloc/free from OrgJSON tree construction is now the
+clear top block (~2,200 of ~10k samples: swift_release/retain, DictionaryStorage.deinit,
+RawDictionaryStorage.find on node-field inserts), then String building (_StringGuts.append,
+UnicodeScalarView.distance, _allASCII), then plainLinkEnd probing. **Phase 3 (native typed
+tree construction) is now earned by the numbers**, exactly as the plan gated it.
