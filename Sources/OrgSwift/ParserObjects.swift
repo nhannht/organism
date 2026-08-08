@@ -1115,14 +1115,14 @@ extension OrgParser {
     /// The range of the FIRST `@KEY` at or after `from` and ending at or before `upTo`, or nil.
     ///
     /// The key class is `org-element-citation-key-re`: `@` then one or more of
-    /// `[:word:]` plus `-.:?!\`'/*@+|(){}<>&_^$#%~`. `[:word:]` is Unicode-aware, and unlike the
-    /// other four undecidable classes in this parser that costs NOTHING here: every scalar this
-    /// test rejects is one org would also have to reject to end the key, and a non-ASCII scalar
-    /// simply extends it. So the ASCII half plus "any non-ASCII scalar is a word constituent"
-    /// is exact rather than narrow -- Emacs's `word` class covers letters and digits in every
-    /// script, and the only non-ASCII scalars it excludes are punctuation and symbols, which
-    /// this parser would have to enumerate to do better. Recorded here because the other four
-    /// sites throw and this one deliberately does not.
+    /// `[:word:]` plus `-.:?!\`'/*@+|(){}<>&_^$#%~`, with `[:word:]` consulted from the
+    /// MEASURED word table. The assumption this replaces -- "any non-ASCII scalar is a word
+    /// constituent" -- was written down as exact and was wrong on 2,339 scalars: U+2212 MINUS
+    /// SIGN, NBSP and a few thousand other symbols are not word constituents, so they END a
+    /// key that this parser used to extend through them. Sweep `cc-cite-*` pins a witness.
+    /// The enumeration also confirmed what the old comment could only assert: the ASCII
+    /// punctuation list plus the word class is org's whole answer here, and this site
+    /// deliberately never throws where the other class sites used to.
     private func citationKeyRange(
         in chars: ScalarSlice, from: Int, upTo: Int
     ) -> Range<Int>? {
@@ -1139,7 +1139,7 @@ extension OrgParser {
     }
 
     static func isCitationKeyScalar(_ s: Unicode.Scalar) -> Bool {
-        if !s.isASCII { return true }
+        if !s.isASCII { return isEmacsWord(s) }
         if (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z") {
             return true
         }

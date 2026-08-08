@@ -1,0 +1,3 @@
+#+BEGIN: café
+x
+#+END:

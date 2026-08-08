@@ -430,8 +430,14 @@ extension OrgParser {
         oddLevels ? 1 + stars / 2 : stars
     }
 
+    /// The tag class is `[[:alnum:]_@#%:]`, and the alnum half is the MEASURED table, not
+    /// Swift's letter/number predicates. The two disagree on 11,293 scalars, both ways:
+    /// `²` is a number to Swift and not alphanumeric to Emacs (so `:a²b:` is TITLE text, not a
+    /// tag group), while a combining mark is alphanumeric to Emacs and neither letter nor
+    /// number to Swift (so `:a<U+0301>b:` really is a tag). Sweep `cc-tag-*` pins both
+    /// directions.
     private func isTagChar(_ ch: Unicode.Scalar) -> Bool {
-        OrgParser.isLetterScalar(ch) || OrgParser.isNumberScalar(ch)
+        OrgParser.isEmacsAlnum(ch)
             || ch == "_" || ch == "@" || ch == "#" || ch == "%" || ch == ":"
     }
 }

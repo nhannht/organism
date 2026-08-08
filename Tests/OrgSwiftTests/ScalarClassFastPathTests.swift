@@ -29,14 +29,11 @@ struct ScalarClassFastPathTests {
             return false
         }
     }
-    private static func pureIsDrawerNameChar(_ s: Unicode.Scalar) -> Bool {
-        if s == "-" || s == "_" { return true }
-        if pureIsLetter(s) || pureIsNumber(s) { return true }
-        switch s.properties.generalCategory {
-        case .nonspacingMark, .spacingMark, .enclosingMark: return true
-        default: return false
-        }
-    }
+    // `isDrawerNameChar` used to be gated here as a lane over ICU properties. It is not one
+    // any more: the drawer-name class now consults the measured Emacs `[:word:]` table, whose
+    // drift gate is PinnedTableDriftTests. Its old "letter, number, or mark" property form was
+    // an approximation the enumeration measured as wrong on ~960,000 scalars, so keeping the
+    // comparison would re-assert the approximation this suite exists to prevent.
 
     @Test("every predicate, every scalar")
     func lanesAgreeEverywhere() {
@@ -51,10 +48,6 @@ struct ScalarClassFastPathTests {
             }
             if OrgParser.isPunctuationScalar(s) != Self.pureIsPunctuation(s) {
                 Issue.record("isPunctuationScalar disagrees with generalCategory P* at U+\(String(s.value, radix: 16, uppercase: true))")
-                return
-            }
-            if OrgParser.isDrawerNameChar(s) != Self.pureIsDrawerNameChar(s) {
-                Issue.record("isDrawerNameChar disagrees with its property form at U+\(String(s.value, radix: 16, uppercase: true))")
                 return
             }
         }

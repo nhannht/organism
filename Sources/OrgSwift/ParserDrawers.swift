@@ -20,21 +20,19 @@
 
 extension OrgParser {
 
-    /// Emacs `\w` plus `-` and `_`, which is org's own drawer-name class.
+    /// Emacs `\w` plus `-` and `_`, which is org's own drawer-name class
+    /// (`org-drawer-regexp` is `[_[:word:]-]+`), with `\w` consulted from the MEASURED word
+    /// table rather than approximated with Swift predicates.
     ///
-    /// Marks are included deliberately and are the ORG-20 case: a combining mark is a word
-    /// constituent in Emacs, so `:<U+0301>LOGBOOK:` is a drawer whose NAME begins with the mark.
+    /// The approximation this replaces (letter, number, or mark) was wrong on ~960,000
+    /// scalars, because Emacs defaults nearly every non-ASCII scalar to word syntax: `:a€b:`
+    /// really is a drawer. It was also wrong on THREE ASCII scalars -- org-mode's syntax table
+    /// gives `$ % '` word syntax, so `:a$b:` is a drawer too, and no "which non-ASCII scalars"
+    /// reasoning would ever have found that. The mark handling ORG-20 predicted
+    /// (`:<U+0301>LOGBOOK:` is a drawer whose name begins with the combining mark) now falls
+    /// out of the table instead of a category switch. Sweep `cc-drawer-*` pins the witnesses.
     static func isDrawerNameChar(_ c: Unicode.Scalar) -> Bool {
-        if c == "-" || c == "_" { return true }
-        if isLetterScalar(c) || isNumberScalar(c) { return true }
-        // ASCII has no marks, so an ASCII scalar that got this far is not a name char - and
-        // the mark check below is an ICU call this line keeps off the hot path. Gated with
-        // the other ASCII lanes by `ScalarClassFastPathTests`.
-        if c.value < 0x80 { return false }
-        switch c.properties.generalCategory {
-        case .nonspacingMark, .spacingMark, .enclosingMark: return true
-        default: return false
-        }
+        c == "-" || c == "_" || isEmacsWord(c)
     }
 
     /// The drawer name on `line`, or nil when the line is not a drawer opener.

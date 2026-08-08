@@ -1,0 +1,3 @@
+#+BEGIN: a$b
+x
+#+END:
