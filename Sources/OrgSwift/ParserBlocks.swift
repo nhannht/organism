@@ -32,9 +32,12 @@ extension OrgParser {
     /// line after it. Case-insensitive: `#+BEGIN_SRC` and `#+Begin_Src` both parse, measured.
     ///
     /// Column 0 only. An INDENTED block is real org -- `  #+begin_quote` parses fine, and the
-    /// body keeps its indentation verbatim (`"  hi\n"`, measured) -- but indented lines are
-    /// rejected wholesale by `isUnimplementedElementStart`, so they throw rather than being
-    /// mis-parsed here.
+    /// body keeps its indentation verbatim (`"  hi\n"`, measured). This predicate does not claim
+    /// one, and the note that used to stand here explained that as "indented lines are rejected
+    /// wholesale by `isUnimplementedElementStart`, so they throw". That is no longer true and has
+    /// not been for some time: the indentation branch went when six over-throws were fixed, and
+    /// the predicate itself is now deleted. An indented block opener therefore reaches the
+    /// paragraph path rather than a refusal, which is an over-narrow parse and not a wrong tree.
     static func blockBeginLine(_ line: Line) -> (type: String, rest: String)? {
         let text = line.text
         let start = line.contentStart

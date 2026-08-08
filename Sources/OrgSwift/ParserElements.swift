@@ -571,14 +571,44 @@ extension OrgParser {
             return try parseList(at: i, in: range)
         }
 
-        try throwIfUnimplementedElementStart(line)
-
-        // Tables and fixed-width areas are dispatched AFTER the unimplemented check, not before,
-        // and the order carries meaning. Both predicates accept leading indentation the way org
-        // does, but every indented line is rejected above, so an indented table or `: ` line
-        // throws while an indented CONTINUATION row inside a table started at column 0 parses.
-        // Dispatching these first would silently accept indented starts that the rest of the
-        // parser still refuses.
+        // NOTHING REFUSES AT ELEMENT START ANY MORE. `throwIfUnimplementedElementStart` used to
+        // sit on this line, and the predicate behind it emptied out one construct at a time until
+        // its last branch went. Every one of them was retired the same way -- by asking org what
+        // it builds and finding an ordinary element, usually a paragraph -- so the record is kept
+        // here, where the temptation to add the next such branch would land:
+        //
+        //     indented anything    six over-throws at once. org's element regexes are `^[ \t]*`,
+        //                          so `  text`, `  | a |`, `  : x`, `  # c`, `  -----` and
+        //                          `  #+TITLE: t` are all ordinary elements.
+        //     `:` lines            the answer needs drawer PAIRING, not a prefix: `parseDrawer`
+        //                          returns nil unpaired and falls through to paragraph, which is
+        //                          org's answer for `:NOTADRAWER` and a bare `:END:` alike.
+        //     `#+begin_` `#+end_`  unpaired opener and stray closer are both paragraph text.
+        //     `#+BEGIN:`           same rule, one construct later. A paired opener is a
+        //                          `dynamic-block`; unpaired is a paragraph; `#+BEGIN:` with no
+        //                          word-character name is an ordinary keyword.
+        //     `\begin{NAME}`       unpaired falls to paragraph, where the entity machinery lexes
+        //                          it as a command-form latex fragment.
+        //     `#\t`                refused on a premise that was FALSE -- it was never a comment
+        //                          to org at all, just a paragraph. See `cmt-*` in the sweep.
+        //     alphabetical bullets `a.` / `a)` / `A.` are paragraphs, `org-list-allow-alphabetical`
+        //                          being nil by default. A 147,404-scalar over-throw.
+        //     `CLOCK:`             every line `org-element-clock-line-re` rejects is a paragraph.
+        //     planning keywords    `SCHEDULED:` / `DEADLINE:` / `CLOSED:` are a `planning` element
+        //                          ONLY directly after a headline, and `parseElementRun` consumes
+        //                          them there. Everywhere else: paragraph.
+        //     `[fn:`               column-0 standard form is a real definition; every other shape
+        //                          is an inline reference the object layer handles.
+        //     `%%(`                column-0 is a real `diary-sexp`; indented is a paragraph.
+        //
+        // The pattern is one claim, made eleven times and wrong eleven times: that a line's
+        // PREFIX decides its element. Org decides by grammar and by pairing, and each branch here
+        // was a prefix standing in for a decision the parser could not yet make. Anything landing
+        // in this position in future is the twelfth -- ask the oracle first.
+        //
+        // Tables and fixed-width areas are dispatched here rather than earlier because both
+        // predicates accept leading indentation the way org does, and the dispatch order is what
+        // keeps an indented CONTINUATION row inside a column-0 table parsing.
         // Drawers are dispatched before fixed-width for the same ordering reason the comment above
         // gives: both can open with `:`, and `isFixedWidthLine` would claim `:PROPERTIES:` first.
         // An UNPAIRED opener returns nil rather than throwing, because it is paragraph text in
@@ -650,9 +680,16 @@ extension OrgParser {
             if i > paragraphStart,
                 candidate.isBlank || isHorizontalRule(candidate) || isCommentLine(candidate)
                 || OrgParser.keywordParts(of: candidate) != nil
-                || isUnimplementedElementStart(candidate)
+                // `isUnimplementedElementStart(candidate)` stood here and is gone with the
+                // predicate. It was never a boundary RULE, only the side effect of a refusal:
+                // while a construct threw, its lines could not continue a paragraph either. Every
+                // construct that left the predicate had to bring its own clause, and the ones
+                // below are those clauses. The last departure needed none -- `#\t` does not
+                // separate, measured (`cmt-hash-tab-after-text`: `text` then `#\tc` is ONE
+                // paragraph), which is exactly why it must not be listed here.
+                //
                 // Now that these two parse rather than throw, they no longer reach the paragraph
-                // boundary through `isUnimplementedElementStart` and have to break it themselves.
+                // boundary through that predicate and have to break it themselves.
                 // Both are measured: `text` then `| a |` is a paragraph AND a table, never one
                 // paragraph, and the same holds for `text` then `: a`.
                 || OrgParser.isTableLine(candidate)
@@ -787,55 +824,6 @@ extension OrgParser {
         return String(scalars: line.text[(s + 2)...])
     }
 
-    private func throwIfUnimplementedElementStart(_ line: Line) throws {
-        // The reason string is a live enumeration of what still reaches here, not a historical
-        // note. It named `clock' and `diary sexp' until both landed, and then the dynamic-block
-        // family, at which point the message described a refusal that could no longer happen --
-        // and the only cost of a stale reason is paid by whoever debugs the throw. ONE family
-        // remains:
-        //   `#\t...'   a comment per spec; SCHEMA.md's strip convention covers only `# '
-        // Re-derived from `isUnimplementedElementStart', not edited from memory: the sweep now
-        // sends ZERO of its 1312 cases here, because the nine that used to were all dynamic-block
-        // shapes and those parse. It has no `#\t' case at all, so this throw is currently
-        // unreachable from any gate in the repository -- see ORG-36.
-        if isUnimplementedElementStart(line) {
-            throw OrgError.unimplemented("unimplemented element start (#-tab comment)")
-        }
-    }
-
-    /// Lines that open (or could open) an element type outside the implemented subset. Also used
-    /// as a paragraph boundary, so an unsupported element interrupting a paragraph is dispatched
-    /// -- and thrown on -- rather than silently swallowed as paragraph text.
-    ///
-    /// `#+` lines are no longer claimed wholesale. This predicate used to return true for every
-    /// one of them (and before that, a document-wide pre-scan threw on them before parsing even
-    /// began). Now that keywords are implemented, the three `#+` shapes are separated, each
-    /// according to a measured answer rather than a guess:
-    ///
-    /// - A valid `#+KEY: VALUE` line is dispatched as a `keyword` element by `parseSection`
-    ///   BEFORE this predicate is consulted, so it never reaches here.
-    /// - A `#+` line whose real element type is something else and is unimplemented -- a block, a
-    ///   dynamic block, or a `#+CALL:` babel call -- still returns true and still throws
-    ///   (`isUnimplementedHashPlusElement`).
-    /// - Anything else -- `#+foo` with no colon, `#+: x` with an empty key -- is ordinary
-    ///   PARAGRAPH text, measured, and now correctly falls through instead of throwing.
-    ///
-    /// The paragraph loop in `parseSection` breaks on keyword lines as well as on this predicate,
-    /// so a keyword interrupting a paragraph is re-dispatched rather than swallowed as text.
-    ///
-    /// **What changes when blocks land:** block CONTENT lines stop passing through
-    /// `parseSection`, so a `#+TODO:` written inside a `#+begin_example` becomes reachable
-    /// without ever reaching this predicate, and `scanTodoKeywords` would wrongly read it as a
-    /// declaration. That scan is only correct while blocks throw; both places have to change
-    /// together, and `scanTodoKeywords` carries the same warning.
-    ///
-    /// **One branch below is deliberately WIDER than org and must narrow when its construct
-    /// lands** -- measured, recorded here so the narrowing is not forgotten: `a.` / `a)`
-    /// alphabetical bullets are NOT a list. `a. alpha` + `b. beta` is ONE `paragraph` in org,
-    /// because alphabetical bullets need `org-list-allow-alphabetical`, which is nil by default
-    /// (SCHEMA.md section 10 item 10 says the same). Carrying that branch into the list
-    /// implementation as "this is a list" would emit a `list` where org emits a `paragraph`. It
-    /// is safe today only because it throws.
     /// Whether the line at `i` opens a block that CLOSES inside `range` -- the only case in
     /// which a `#+begin_X` line ends the paragraph before it. Same primitive as the element
     /// dispatch, so the boundary and the dispatch cannot disagree about what a closed block is.
@@ -902,80 +890,4 @@ extension OrgParser {
         return latexEnvironmentEndIndex(openedAt: i, name: name, in: range) != nil
     }
 
-    private func isUnimplementedElementStart(_ line: Line) -> Bool {
-        // Indentation is NOT a rejection of its own any more. org's element regexes are written
-        // `^[ \t]*...`, so an indented element is simply an element, and every question below is
-        // asked from `contentStart`. The blanket "indented anything is unimplemented" branch that
-        // used to stand here was the single cause of six real over-throws, measured: `  text`
-        // (paragraph), `  | a | b |` (table), `  : x` (fixed-width), `  # c` (comment),
-        // `  -----` (rule) and `  #+TITLE: t` (keyword) are all ordinary elements to org.
-        let s = line.contentStart
-        guard s < line.text.count else { return false }
-        let first = line.text[s]
-        func isSpaceOrTab(_ i: Int) -> Bool {
-            i < line.text.count && (line.text[i] == " " || line.text[i] == "\t")
-        }
-        // Drawers, and every other `:` line that is not a fixed-width area. `|` is gone from this
-        // list entirely: `org-element` decides `org` vs `table.el` on `[ \t]*|` alone, so at
-        // column 0 EVERY `|` line opens an org table and there is no `|` case left to reject.
-        //
-        // NOTE what is deliberately GONE: the blanket `:` throw. It collapsed two answers into
-        // one because deciding between them needs the drawer PAIRING -- which of a paragraph or a
-        // drawer a `:NAME:` line gets depends on whether a matching `:END:` follows, so the throw
-        // stood in for a decision this parser could not yet make. It can now: `parseDrawer`
-        // returns nil for an unpaired opener, and control falls through to the paragraph path,
-        // which is org's own answer for `:NOTADRAWER` and for a bare `:END:` alike.
-        // NOTE what is deliberately GONE: the dynamic-block branch, the LAST `#+` branch here.
-        // `#+begin_`/`#+end_` left this gate when unpaired openers became paragraphs, and
-        // `#+BEGIN:` has now left it for exactly the same reason -- an opener that pairs is a
-        // `dynamic-block`, one that does not is paragraph text, and `#+BEGIN` / `#+BEGIN foo`
-        // carry no colon so they were never keywords to be confused with. `parseOneElement` makes
-        // that call from the opener GRAMMAR rather than from a spelling list, so there is no `#+`
-        // branch left here at all.
-        // NOTE what is deliberately GONE: the `\begin{NAME}` branch. It stood here while
-        // latex-environment was oracle-unmapped (it landed WITH the entity work, because
-        // entities are what un-refused `\`); the element now parses, and an UNPAIRED opener
-        // falling through to the paragraph path -- where the entity/fragment machinery lexes
-        // `\begin{x}` as a command-form latex fragment -- is org's own answer, measured.
-        // `#\t...`: a comment per spec, but SCHEMA.md's strip convention covers only `# `.
-        if first == "#", isSpaceOrTab(s + 1), line.text[s + 1] == "\t" { return true }
-        // NOTE there is no list-item branch here any more. While lists were unimplemented this
-        // predicate carried its OWN copy of the bullet rule; now `bulletMatch` is the single
-        // recognizer and `parseOneElement` dispatches on it BEFORE reaching this guard. Two
-        // copies of one rule kept in sync by hand is the shape that produced Finding A, so the
-        // copy was deleted rather than left to agree by inspection.
-        // NOTE what is deliberately GONE: the alphabetical-bullet branch. `a. item`, `a) item`
-        // and `A. item` are all PARAGRAPHS in org, because `org-list-allow-alphabetical` is nil
-        // by default, so rejecting them was a pure over-throw (147,404 scalars wide). It was
-        // flagged during ORG-19 as needing re-derivation against that variable rather than an
-        // ASCII narrowing, and this is that re-derivation: they fall through to the paragraph
-        // path, which is org's answer rather than a widened guess.
-        // Diary sexp ELEMENTS (distinct from the inline `<%%(...)>` timestamp, which does
-        // parse). `CLOCK:` is GONE from this list: `isClockLine` transcribes
-        // `org-element-clock-line-re` and dispatches real clock lines, and every `CLOCK:` line
-        // the regexp rejects is a PARAGRAPH in org, measured (`clock-forms` pins four such).
-        //
-        // NOTE what is deliberately GONE: `SCHEDULED:`, `DEADLINE:` and `CLOSED:`. They belonged
-        // here while planning was unimplemented, and keeping them would now be a pure over-throw.
-        // A planning line is only a `planning` element directly after a headline, and
-        // `parseElementRun` consumes it there before this predicate is ever consulted. In EVERY
-        // other position org emits an ordinary paragraph, measured across all four:
-        //
-        //     SCHEDULED: <ts>           at top level, no headline    paragraph
-        //     * T / blank / SCHEDULED:  one blank line is enough     paragraph
-        //     * T / body / SCHEDULED:   not the first line           paragraph
-        //     * T / SCHEDULED: x2       the second one               paragraph
-        //
-        // so the paragraph path is org's own answer for all of them, and it reaches it only
-        // because timestamps parse as objects now.
-        // `[fn:` is GONE from this list: a column-0 standard form is now a real definition, and
-        // every other `[fn:` shape is an INLINE REFERENCE inside an ordinary paragraph, which
-        // the object layer handles. An indented one is a paragraph too, and stays refused by the
-        // indentation guard above rather than by a prefix.
-        // `%%(` is GONE from this list: a column-0 diary sexp is a real `diary-sexp`
-        // element now, and an INDENTED one is an ordinary paragraph in org (measured:
-        // `  %%(x)` is a paragraph), so a prefix test here refused a construct org
-        // parses. The column rule lives with the element, not in a blanket refusal.
-        return false
-    }
 }

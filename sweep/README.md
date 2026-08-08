@@ -1,6 +1,6 @@
 # `sweep/` - the generated differential corpus
 
-1,312 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
+1,317 inputs, each with org's own answer stored beside it. Run automatically by `swift test`
 via `Tests/OrgSwiftTests/SweepTests.swift`.
 
 ```
@@ -42,7 +42,7 @@ asymmetry above has a cost that took this project two findings to see: from insi
 construct that regressed into a refusal and a case that was never exercised are the same
 observation, so refusals could grow without limit and nothing would go red. ORG-30 measured five
 over-throws sitting at 0 of 1,181 with the whole suite green. `SweepTests.knownRefusals` pins
-every refusing case by name - currently 18, in three groups - and fails in BOTH directions: a new
+every refusing case by name - currently 9, in two groups - and fails in BOTH directions: a new
 refusal is red, and a listed case that starts parsing is also red, which is what forces the name
 back out when a construct lands.
 
@@ -56,7 +56,7 @@ the time. Not one was visible to `swift test`,
 
 ## What a zero here does NOT mean
 
-"1,312 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
+"1,317 inputs, 0 mismatches" is **not a correctness proof** and must never be quoted as one.
 
 It means: no disagreement with org on inputs someone THOUGHT TO CONSTRUCT. This corpus is the
 product of one reviewer's guesses about where the parser might be wrong. Every defect it found was

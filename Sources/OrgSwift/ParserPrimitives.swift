@@ -258,8 +258,8 @@ extension OrgParser {
     //
     // Every site that folds document text against a literal ASCII keyword now uses `asciiLowered`
     // rather than Swift's fold: `blockBeginLine` and `isBlockEndLine` (ParserBlocks),
-    // `isUnimplementedHashPlusElement` (ParserKeywords), the plain-link scheme match
-    // (ParserObjects), and `tblfmValue` (ParserTables).
+    // `dynamicBlockBeginLine` and `isDynamicBlockEndLine` (ParserBlocks), the plain-link scheme
+    // match (ParserObjects), and `tblfmValue` (ParserTables).
     //
     // This changed no behaviour on any input, and the note is kept so nobody "simplifies" it back:
     // no `k` appears in `#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, or in any of the 23 registered

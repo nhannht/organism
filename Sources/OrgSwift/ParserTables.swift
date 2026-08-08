@@ -22,11 +22,16 @@ extension OrgParser {
     /// A TAB after the colon does not qualify, which is the one most likely to be "simplified"
     /// into a whitespace test later.
     ///
-    /// Column 0 only, deliberately narrower than org: org accepts leading indentation here, but
-    /// every indented element is still unimplemented and rejected earlier by
-    /// `isUnimplementedElementStart`, so an indented `: a` throws rather than parsing. Widening
-    /// this predicate without also implementing indented elements would let an indented
-    /// fixed-width through while its indented neighbours still throw.
+    /// Column 0 only, and the reason recorded here was WRONG for as long as it stood. It said
+    /// indented elements are "rejected earlier by `isUnimplementedElementStart`, so an indented
+    /// `: a` throws rather than parsing". That predicate lost its indentation branch when six
+    /// over-throws were fixed, and has since been deleted outright; `  : a` parses as a
+    /// `fixed-width` today, measured, exactly as this comment said it must not.
+    ///
+    /// The narrowing is still correct, but for its own reason rather than a borrowed one: a
+    /// SLICED first line is mid-line in the source and cannot hold a column-0 element, which is
+    /// the rule `parseOneElement` applies at the dispatch. Both carriers of a slice are measured:
+    /// `- : x` and `[fn:1]: x` are each a PARAGRAPH whose text is `: x`.
     static func isFixedWidthLine(_ line: Line) -> Bool {
         let s = line.contentStart
         guard s < line.text.count, line.text[s] == ":" else { return false }
@@ -93,11 +98,12 @@ extension OrgParser {
     /// first non-whitespace character is anything other than `|`. A whitespace-only line therefore
     /// ENDS a table rather than continuing it: `| a |` / `"   "` / `| b |` is TWO tables, measured.
     ///
-    /// Indentation is accepted here on purpose, unlike `isFixedWidthLine` above, and the asymmetry
-    /// is real rather than an oversight. A table's FIRST line still has to reach this code, and an
-    /// indented one never does -- `isUnimplementedElementStart` rejects every indented line before
-    /// dispatch. So an indented table START throws, while an indented CONTINUATION row inside a
-    /// table that began at column 0 is parsed, which is exactly what org does.
+    /// Indentation is accepted here on purpose, unlike `isFixedWidthLine` above. The asymmetry is
+    /// real, but the reason given here used to be false and is corrected: it claimed an indented
+    /// table START throws because `isUnimplementedElementStart` rejected every indented line.
+    /// That branch was removed when six over-throws were fixed and the predicate is now deleted,
+    /// so `  | a | b |` parses as an ordinary `table`, measured -- which is what org does, and
+    /// what makes accepting indentation here right rather than a widening.
     static func isTableLine(_ line: Line) -> Bool {
         for ch in line.text {
             if ch == " " || ch == "\t" { continue }

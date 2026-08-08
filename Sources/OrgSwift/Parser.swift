@@ -296,7 +296,7 @@ struct OrgParser {
     ///
     /// **What real documents need is guard depth 9**, measured rather than reasoned about: with
     /// this constant set to 9 every corpus gate is green, and at 8 three of them fail on
-    /// `real/doomemacs-docs/getting_started.org`, deepest of the 1,427 inputs across
+    /// `real/doomemacs-docs/getting_started.org`, deepest of the inputs across
     /// `conformance/`, `real/` and `sweep/`. Against that, 24 is 2.7x headroom, and both numbers
     /// are guard depth.
     ///

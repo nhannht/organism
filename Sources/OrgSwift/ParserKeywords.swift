@@ -31,8 +31,11 @@ extension OrgParser {
     /// - `#+: x` -> NOT a keyword. It is a paragraph, because `\S-+` requires a non-empty key.
     ///
     /// The caller is responsible for rejecting the `#+` lines that are NOT keywords before
-    /// calling this -- see `isUnimplementedHashPlusElement`, which documents why `#+END:` and
-    /// `#+BEGIN:` end up on opposite sides of that line.
+    /// calling this. There is exactly one such line and `parseOneElement` handles it: a VALID
+    /// dynamic-block opener, which this function would otherwise report as key `BEGIN` with the
+    /// block name as its value. `#+END:` needs no such rejection and really IS an ordinary
+    /// keyword, key `END`, value `""` -- it stops being one only when a `#+BEGIN:` above it
+    /// consumes it, and then it never reaches here at all.
     ///
     /// This function handles the STANDALONE keyword grammar only. Affiliated keywords are a
     /// separate grammar with a separate regexp and are read by `affiliatedParts` -- including the

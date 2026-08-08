@@ -33,10 +33,11 @@ extension OrgParser {
         let ordered: Bool
     }
 
-    /// The SINGLE bullet recognizer. Both the list dispatch and `isUnimplementedElementStart`
-    /// answer "is this a list item" through this, deliberately: while lists were unimplemented
-    /// the guard carried its own copy of the rule, and two copies of one rule kept in sync by
-    /// hand is the shape that produced Finding A.
+    /// The SINGLE bullet recognizer, and now the only one: `parseOneElement` answers "is this a
+    /// list item" through this and nothing else. While lists were unimplemented, the
+    /// `isUnimplementedElementStart` guard carried its OWN copy of the rule -- two copies of one
+    /// rule kept in sync by hand, which is the shape that produced Finding A. That copy was
+    /// deleted when lists landed, and the guard itself has since been deleted entirely.
     ///
     /// Measured, and the `*` row is the subtle one:
     ///
