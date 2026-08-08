@@ -6,9 +6,12 @@
 # Usage:
 #   bash bench/run-all.sh [output.tsv]
 # Environment:
-#   WARMUP    unmeasured runs per file (default 3; JIT runners raise their own floor)
-#   MIN_TIME  measuring budget per file per runner, seconds (default 1.0)
-#   RUNNERS   space-separated subset to run (default: all five)
+#   WARMUP      unmeasured runs per file (default 3; JIT runners raise their own floor)
+#   MIN_TIME    measuring budget per file per runner, seconds (default 1.0)
+#   RUNNERS     space-separated subset to run (default: all five)
+#   FILES       space-separated corpus subset (default: synthetic + fetched + ../real)
+#   SKIP_BUILD  non-empty skips the build step - for resuming an interrupted sweep with
+#               binaries that must stay the bytes the earlier rows measured
 
 set -euo pipefail
 
@@ -20,17 +23,22 @@ OUT="${1:-$ROOT/results/$(date +%Y-%m-%d)-all.tsv}"
 
 mkdir -p "$ROOT/results"
 
-FILES=()
-for f in "$ROOT"/corpus/synthetic/*.org "$ROOT"/corpus/fetched/*.org "$ROOT"/../real/*/*.org; do
-  [ -f "$f" ] && FILES+=("$f")
-done
+if [ -n "${FILES:-}" ]; then
+  read -r -a FILES <<< "$FILES"
+else
+  FILES=()
+  for f in "$ROOT"/corpus/synthetic/*.org "$ROOT"/corpus/fetched/*.org "$ROOT"/../real/*/*.org; do
+    [ -f "$f" ] && FILES+=("$f")
+  done
+fi
 if [ "${#FILES[@]}" -eq 0 ]; then
   echo "no corpus files found - run 'orgbench gen corpus/synthetic' and fetch-bench-corpus.sh first" >&2
   exit 1
 fi
 
 echo "building runners..." >&2
-for r in $RUNNERS; do
+[ -n "${SKIP_BUILD:-}" ] && RUNNERS_TO_BUILD="" || RUNNERS_TO_BUILD="$RUNNERS"
+for r in $RUNNERS_TO_BUILD; do
   case "$r" in
     organism) (cd "$ROOT" && swift build -c release >/dev/null) ;;
     orgize) (cd "$ROOT/competitors/orgize" && cargo build --release --quiet) ;;
@@ -70,12 +78,17 @@ measure() {
     rm -f "$samples" "$err"
     return 0
   fi
-  local iters median min mib
-  iters=$(wc -l < "$samples" | tr -d ' ')
-  median=$(sort -n "$samples" | awk '{a[NR]=$1} END{if(NR%2){printf "%d", a[(NR+1)/2]} else {printf "%d", (a[NR/2]+a[NR/2+1])/2}}')
-  min=$(sort -n "$samples" | head -1)
-  mib=$(awk -v b="$bytes" -v m="$median" 'BEGIN{printf "%.2f", (b/1048576)/(m/1e9)}')
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$base" "$bytes" "$iters" "$median" "$min" "$mib" >> "$OUT"
+  # One awk pass for every statistic. The previous `sort | head -1` for the minimum died of
+  # SIGPIPE under `set -o pipefail` the first time a fast runner produced more samples than a
+  # pipe buffer holds - head exited, sort got the signal, pipefail made 141 the sweep's exit.
+  sort -n "$samples" | awk -v b="$bytes" '
+    {a[NR]=$1}
+    END{
+      med = (NR%2) ? a[(NR+1)/2] : (a[NR/2]+a[NR/2+1])/2
+      printf "%d\t%d\t%d\t%.2f\n", NR, med, a[1], (b/1048576)/(med/1e9)
+    }' | while IFS=$'\t' read -r iters median min mib; do
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$base" "$bytes" "$iters" "$median" "$min" "$mib" >> "$OUT"
+  done
   rm -f "$samples" "$err"
 }
 

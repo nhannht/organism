@@ -11,13 +11,19 @@ if (!file || !warmupArg || !minTimeArg) {
   process.exit(1);
 }
 const src = readFileSync(file, 'utf8');
-// A JIT needs more warmup than an AOT binary; the floor keeps the protocol's warmup
-// parameter honest without letting V8's cold tiers pollute the samples.
+// A JIT needs more warmup than an AOT binary, so the count floor is raised - but capped by
+// TIME as well: on a file this parser needs seconds per parse for, twenty warmup runs would
+// be minutes of pure warmup, and V8 has tiered everything hot long before that. At least 3
+// runs, at most max(warmup, 20), stop early past 3 seconds.
 const warmup = Math.max(parseInt(warmupArg, 10), 20);
 const minTime = parseFloat(minTimeArg);
 
 let sink = 0;
-for (let i = 0; i < warmup; i++) sink += parse(src).children.length;
+const warmupStart = process.hrtime.bigint();
+for (let i = 0; i < warmup; i++) {
+  sink += parse(src).children.length;
+  if (i >= 2 && Number(process.hrtime.bigint() - warmupStart) / 1e9 > 3) break;
+}
 
 let t0 = process.hrtime.bigint();
 sink += parse(src).children.length;
