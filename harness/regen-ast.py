@@ -403,6 +403,21 @@ class Generator:
                 self.w(f"        case .{cn}: return nil")
         self.w("""        }
     }
+
+    /// This node's affiliated keywords, or nil -- for a node with none attached and for a node
+    /// type whose schema def has no `affiliated` field alike. A traversal that wants EVERY
+    /// object node must read this as well as `childNodes`: a `#+CAPTION:`'s secondary strings
+    /// hold parsed objects, and they live here, not in any `childNodes` field.
+    public var affiliated: OrgAffiliated? {
+        switch self {""")
+        for n in names:
+            cn = case_name(n)
+            if has_field(n, "affiliated"):
+                self.w(f"        case .{cn}(let x): return x.affiliated")
+            else:
+                self.w(f"        case .{cn}: return nil")
+        self.w("""        }
+    }
 }""")
         self.w()
 

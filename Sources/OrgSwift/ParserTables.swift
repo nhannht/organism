@@ -75,18 +75,16 @@ extension OrgParser {
     ///
     /// Blank lines FOLLOWING the run are added on top of this seed by `parseSection`, which owns
     /// blank attribution for every element type.
-    func parseFixedWidth(at start: Int, in range: Range<Int>) -> (OrgJSON, Int) {
+    func parseFixedWidth(at start: Int, in range: Range<Int>) -> (OrgNode, Int) {
         var i = start
         var values: [String] = []
         while i < range.upperBound, OrgParser.isFixedWidthLine(lines[i]) {
             values.append(OrgParser.fixedWidthValue(of: lines[i]))
             i += 1
         }
-        return (.object([
-            "type": .string("fixed-width"),
-            "value": .string(values.joined(separator: "\n")),
-            "postBlank": .int(lines[i - 1].hasNewline ? 1 : 0),
-        ]), i)
+        return (.fixedWidth(OrgFixedWidth(
+            value: values.joined(separator: "\n"),
+            postBlank: lines[i - 1].hasNewline ? 1 : 0)), i)
     }
 
     // MARK: - Tables
@@ -225,7 +223,7 @@ extension OrgParser {
     ///     `| | a |`    2 cells        first is EMPTY (children [], not a missing cell)
     ///     `||`         1 empty cell
     ///     `|`          ZERO cells     the row exists and has no cells at all
-    func tableCells(of line: Line) throws -> [OrgJSON] {
+    func tableCells(of line: Line) throws -> [OrgTableCell] {
         let text = line.text
         guard let firstPipe = text.firstIndex(of: "|") else { return [] }
 
@@ -236,7 +234,7 @@ extension OrgParser {
             contentsEnd -= 1
         }
 
-        var cells: [OrgJSON] = []
+        var cells: [OrgTableCell] = []
         var pos = firstPipe + 1
         while pos < contentsEnd {
             var pipe = pos
@@ -244,17 +242,14 @@ extension OrgParser {
             var lower = pos, upper = pipe
             while lower < upper, text[lower] == " " || text[lower] == "\t" { lower += 1 }
             while upper > lower, text[upper - 1] == " " || text[upper - 1] == "\t" { upper -= 1 }
-            cells.append(.object([
-                "type": .string("table-cell"),
+            cells.append(OrgTableCell(
                 // The other container org REFUSES `line-break` in: `| a\\ | b |` keeps `a\\` as
                 // literal cell text, measured. A cell's contents end without a newline, so end
                 // of contents would otherwise read as end of line and manufacture a break.
-                "children": .array(try parseObjects(text.sub(lower..<upper),
-                                                    in: .tableCell,
-                                                    at: line.offset + lower)
-                    .map(OrgParser.bridgeJSON)),
-                "postBlank": .int(0),
-            ]))
+                children: try parseObjects(text.sub(lower..<upper),
+                                           in: .tableCell,
+                                           at: line.offset + lower),
+                postBlank: 0))
             // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.
             pos = pipe < contentsEnd ? pipe + 1 : contentsEnd
         }
@@ -310,31 +305,27 @@ extension OrgParser {
     /// accumulate in SOURCE order (`affiliatedValue`), and `affiliated-header-results-attr-plot`
     /// pins both directions in one fixture. A shared "collect into array" helper would have to
     /// carry a direction flag, and that flag is exactly the kind of switch that gets passed wrong.
-    func parseTable(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+    func parseTable(at start: Int, in range: Range<Int>) throws -> (OrgNode, Int) {
         var i = start
-        var rows: [OrgJSON] = []
+        var rows: [OrgTableRow] = []
         while i < range.upperBound, OrgParser.isTableLine(lines[i]) {
             let isRule = OrgParser.isTableRuleLine(lines[i])
-            rows.append(.object([
-                "type": .string("table-row"),
-                "kind": .string(isRule ? "rule" : "standard"),
-                "children": .array(isRule ? [] : try tableCells(of: lines[i])),
-                "postBlank": .int(0),
-            ]))
+            rows.append(OrgTableRow(
+                kind: isRule ? .rule : .standard,
+                children: isRule ? [] : try tableCells(of: lines[i]),
+                postBlank: 0))
             i += 1
         }
 
-        var formulas: [OrgJSON] = []
+        var formulas: [String] = []
         while i < range.upperBound, let formula = OrgParser.tblfmValue(of: lines[i]) {
-            formulas.insert(.string(formula), at: 0) // `push`, so source order is reversed
+            formulas.insert(formula, at: 0) // `push`, so source order is reversed
             i += 1
         }
 
-        return (.object([
-            "type": .string("table"),
-            "tblfm": formulas.isEmpty ? .null : .array(formulas),
-            "children": .array(rows),
-            "postBlank": .int(0),
-        ]), i)
+        return (.table(OrgTable(
+            flavour: .org(rows: rows),
+            tblfm: formulas.isEmpty ? nil : formulas,
+            postBlank: 0)), i)
     }
 }

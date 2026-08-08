@@ -392,45 +392,29 @@ extension OrgParser {
     ///   group requires the line to end after the single token, so a second token fails the whole
     ///   group rather than being ignored.
     /// - **comment**: the head is ignored entirely; `#+begin_comment foo` carries no field at all.
-    func literalBlockNode(type: String, rest: String, value: String) -> OrgJSON {
+    func literalBlockNode(type: String, rest: String, value: String) -> OrgNode {
         let trimmedRest = OrgParser.trimAsciiSpace(rest)
         switch type {
         case "src":
             let (language, switches, params) = OrgParser.splitSrcHead(rest)
-            return .object([
-                "type": .string("src-block"),
-                "language": language.map(OrgJSON.string) ?? .null,
-                "switches": switches.map(OrgJSON.string) ?? .null,
-                "params": params.map(OrgJSON.string) ?? .null,
-                "value": .string(value),
-                "postBlank": .int(0),
-            ])
+            return .srcBlock(OrgSrcBlock(
+                language: language, switches: switches, params: params,
+                value: value, postBlank: 0))
         case "example":
-            return .object([
-                "type": .string("example-block"),
-                "switches": OrgParser.exampleSwitches(rest).map(OrgJSON.string) ?? .null,
-                "value": .string(value),
-                "postBlank": .int(0),
-            ])
+            return .exampleBlock(OrgExampleBlock(
+                switches: OrgParser.exampleSwitches(rest), value: value, postBlank: 0))
         case "export":
             let isSingleToken = !trimmedRest.isEmpty
                 && !trimmedRest.contains(" ") && !trimmedRest.contains("\t")
-            return .object([
-                "type": .string("export-block"),
+            return .exportBlock(OrgExportBlock(
                 // UPCASED, measured: `#+begin_export LaTeX` reports `"LATEX"`, not `"LaTeX"`.
                 // Worth contrasting with a plain link's `pathType`, which keeps the source's own
                 // case (`HTTPS://x` reports `"HTTPS"`) -- two `#+`-adjacent string fields with
                 // opposite case conventions, so neither can be inferred from the other.
-                "backend": isSingleToken ? .string(OrgParser.emacsUpcased(trimmedRest)) : .null,
-                "value": .string(value),
-                "postBlank": .int(0),
-            ])
+                backend: isSingleToken ? OrgParser.emacsUpcased(trimmedRest) : nil,
+                value: value, postBlank: 0))
         default: // "comment" -- the head line carries no field
-            return .object([
-                "type": .string("comment-block"),
-                "value": .string(value),
-                "postBlank": .int(0),
-            ])
+            return .commentBlock(OrgCommentBlock(value: value, postBlank: 0))
         }
     }
 

@@ -1,152 +1,24 @@
 // Node-to-byte-range mapping (ORG-32): where in the document each node's characters live.
 //
-// WHY THIS IS NOT IN THE TREE. The published tree carries no buffer positions, by three
-// independent constraints that all still hold: SCHEMA.md section 1 strips them by recorded
-// decision because they are exactly the noise that would make two faithful implementations
-// disagree; `schema/org-node.schema.json` sets `additionalProperties: false` in 61 places, so an
-// extra key fails `validate-schema.sh` on all 1,442 stored answers; and `OrgJSON`'s `Equatable`
-// is exact dictionary equality, so it would fail every stored comparison too.
+// Spans live ON the typed node, in the generated structs' `span` slot (`OrgSpan`, defined with
+// its coordinate contract in OrgAST+Support.swift). The published `OrgJSON` tree still never
+// carries them - SCHEMA.md section 1 strips buffer positions by recorded decision, and the
+// generated `toJSON()` simply does not emit the slot, so there is no strip pass and nothing to
+// forget. A leak into `parseOrg`'s output is structurally impossible now, where it used to be
+// merely gated: the JSON emitter has no code that could write a position.
 //
-// WHY IT RIDES INSIDE THE NODE ANYWAY, UNTIL THE BOUNDARY. The parser does not build a node and
-// leave it alone. It goes back and PATCHES nodes after the fact -- `postBlank` accumulates blank
+// WHY THE SPAN IS A NODE FIELD AND NOT A SIDE COLLECTOR. The parser does not build a node and
+// leave it alone. It goes back and PATCHES nodes after the fact - `postBlank` accumulates blank
 // lines onto an element already appended, affiliated keywords attach to an element already built
-// -- and org's `:end` INCLUDES those trailing blanks, so a node's extent is genuinely not known
+// - and org's `:end` INCLUDES those trailing blanks, so a node's extent is genuinely not known
 // when the node is constructed. A side collector appending at construction time would record the
-// wrong end for every element followed by a blank line. Carrying the span in the node's own
-// dictionary means every patch site that copies the node carries it for free, and the two can
-// never drift, because there is only one of them.
-//
-// `parseOrg` then strips the key, so nothing public ever sees it. The cost of that strip lands on
-// the CONFORMANCE path rather than the editor path, which is the right way round: an editor wants
-// the spans on every keystroke and the corpus gates want the tree without them.
-//
-// A LEAK IS ALREADY GATED, with no new test. `OrgJSON` equality is exact, so a `__span` surviving
-// into `parseOrg`'s output fails all 120 conformance and 1,322 sweep comparisons at once.
-
-extension OrgParser {
-
-    /// The reserved key a span rides under inside a node, before `parseOrg` strips it.
-    ///
-    /// Double-underscored because it must never collide with a schema field, and the schema is
-    /// the authority on what a real key looks like: every one of them is a plain lowerCamelCase
-    /// word.
-    static let spanKey = "__span"
-
-    /// A span value: `begin` and `end` always, the contents pair when the node has one.
-    ///
-    /// Offsets are 0-BASED UNICODE SCALARS, matching `Line.offset` and matching what an Emacs
-    /// buffer position counts once its 1-based origin is removed - measured, see the ORG-32 block
-    /// in `harness/oracle-dump.el`. `end` is EXCLUSIVE and includes whatever org includes:
-    /// trailing blank lines for an element, character-counted post-blank for an object.
-    static func spanValue(_ begin: Int, _ end: Int, contents: Range<Int>? = nil) -> OrgJSON {
-        var o: [String: OrgJSON] = ["begin": .int(begin), "end": .int(end)]
-        if let contents {
-            o["contentsBegin"] = .int(contents.lowerBound)
-            o["contentsEnd"] = .int(contents.upperBound)
-        }
-        return .object(o)
-    }
-
-    /// The same node with `spanKey` removed, everywhere, recursively.
-    ///
-    /// Walks arrays and objects generically rather than knowing which keys hold children,
-    /// deliberately: a strip that had to be told where nodes live would need updating every time
-    /// a node type gained a field, and the one time it was forgotten a span would ship into the
-    /// published tree.
-    static func strippingSpans(_ node: OrgJSON) -> OrgJSON {
-        switch node {
-        case .object(let fields):
-            var out: [String: OrgJSON] = [:]
-            out.reserveCapacity(fields.count)
-            for (key, value) in fields where key != spanKey {
-                out[key] = strippingSpans(value)
-            }
-            return .object(out)
-        case .array(let items):
-            return .array(items.map(strippingSpans))
-        default:
-            return node
-        }
-    }
-
-    /// Replaces a built node's span, for the patch sites where the extent is only known later.
-    ///
-    /// Returns the node unchanged when it carries no span, which is the normal case for the 49
-    /// construction sites that do not emit one yet. That is deliberately NOT an error: a patch
-    /// site runs over every element type, so it cannot require that every element be spanned
-    /// while spans are being added one type at a time.
-    static func withSpan(_ fields: [String: OrgJSON], endingAt end: Int) -> [String: OrgJSON] {
-        patchingSpan(fields) { $0["end"] = .int(end) }
-    }
-
-    /// The other half of the same story, for the site where affiliated keywords attach.
-    ///
-    /// org's `:begin` for a decorated element is its first `#+KEYWORD:` line, so a node that was
-    /// built knowing only its own extent grows BACKWARDS once the run attaches to it. `contents`
-    /// is untouched, which is exactly why a span carries the two independently.
-    static func withSpan(_ fields: [String: OrgJSON], beginningAt begin: Int) -> [String: OrgJSON] {
-        patchingSpan(fields) { $0["begin"] = .int(begin) }
-    }
-
-    private static func patchingSpan(
-        _ fields: [String: OrgJSON], _ patch: (inout [String: OrgJSON]) -> Void
-    ) -> [String: OrgJSON] {
-        guard case .object(var span)? = fields[spanKey] else { return fields }
-        patch(&span)
-        var out = fields
-        out[spanKey] = .object(span)
-        return out
-    }
-}
-
-extension OrgParser {
-
-    /// TEMPORARY Phase 3 migration bridge: a typed node re-emitted as `OrgJSON` WITH its spans,
-    /// where `toJSON()` deliberately drops them. Lives only while the parser converts to native
-    /// typed construction one layer at a time - each converted layer returns `[OrgNode]` and its
-    /// not-yet-converted caller crosses this bridge; when the document layer converts, the last
-    /// caller disappears and this function is DELETED with the rest of the JSON span machinery.
-    ///
-    /// Only the cases whose fields hold nodes need branches: everything else is a leaf whose
-    /// `toJSON()` is already complete, and the object layer cannot emit element cases at all.
-    static func bridgeJSON(_ node: OrgNode) -> OrgJSON {
-        guard case .object(var o) = node.toJSON() else { return node.toJSON() }
-        switch node {
-        case .bold(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .italic(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .underline(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .strikethrough(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .`subscript`(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .superscript(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .radioTarget(let x): o["children"] = .array(x.children.map(bridgeJSON))
-        case .link(let x):
-            if let d = x.description { o["description"] = .array(d.map(bridgeJSON)) }
-        case .footnoteReference(let x):
-            if let c = x.children { o["children"] = .array(c.map(bridgeJSON)) }
-        case .citation(let x):
-            if let p = x.prefix { o["prefix"] = .array(p.map(bridgeJSON)) }
-            if let s = x.suffix { o["suffix"] = .array(s.map(bridgeJSON)) }
-            o["children"] = .array(x.children.map(bridgeJSON))
-        case .citationReference(let x):
-            if let p = x.prefix { o["prefix"] = .array(p.map(bridgeJSON)) }
-            if let s = x.suffix { o["suffix"] = .array(s.map(bridgeJSON)) }
-        default:
-            break
-        }
-        if let s = node.span {
-            var span: [String: OrgJSON] = ["begin": .int(s.begin), "end": .int(s.end)]
-            if let cb = s.contentsBegin { span["contentsBegin"] = .int(cb) }
-            if let ce = s.contentsEnd { span["contentsEnd"] = .int(ce) }
-            o[spanKey] = .object(span)
-        }
-        return .object(o)
-    }
-}
+// wrong end for every element followed by a blank line. Carrying the span on the node means the
+// patch sites move it with `settingSpan` where they move the extent, and the two cannot drift.
 
 /// One node's extent, flattened out of a parsed tree.
 ///
 /// FLAT and canonically ordered rather than a mirror of the tree's shape, and that is a
-/// deliberate limit on what this spike commits to. A shape mirror needs both sides to agree on a
+/// deliberate limit on what this commits to. A shape mirror needs both sides to agree on a
 /// child ORDER, and they do not yet: `oracle-dump.el` records affiliated-keyword objects through
 /// the same recursion point as ordinary children, so a `#+CAPTION:` object lands after the table
 /// rows it precedes in the file, while `OrgNode.childNodes` says nothing about affiliated values
@@ -166,34 +38,33 @@ struct OrgSpanRecord: Equatable, Comparable, Sendable {
 
 extension OrgParser {
 
-    /// Every span in a tree that still carries them, in canonical order.
-    static func spanRecords(in node: OrgJSON) -> [OrgSpanRecord] {
+    /// Every span in a parsed typed tree, in canonical order.
+    static func spanRecords(in document: OrgDocument) -> [OrgSpanRecord] {
         var out: [OrgSpanRecord] = []
-        collectSpans(node, into: &out)
+        collectSpans(.document(document), into: &out)
         return out.sorted()
     }
 
-    private static func collectSpans(_ node: OrgJSON, into out: inout [OrgSpanRecord]) {
-        switch node {
-        case .object(let fields):
-            if case .object(let span)? = fields[spanKey],
-               case .string(let type)? = fields["type"],
-               case .int(let begin)? = span["begin"],
-               case .int(let end)? = span["end"] {
-                var contentsBegin: Int?
-                var contentsEnd: Int?
-                if case .int(let cb)? = span["contentsBegin"] { contentsBegin = cb }
-                if case .int(let ce)? = span["contentsEnd"] { contentsEnd = ce }
-                out.append(OrgSpanRecord(type: type, begin: begin, end: end,
-                                         contentsBegin: contentsBegin, contentsEnd: contentsEnd))
+    private static func collectSpans(_ node: OrgNode, into out: inout [OrgSpanRecord]) {
+        if let span = node.span {
+            out.append(OrgSpanRecord(type: node.typeName, begin: span.begin, end: span.end,
+                                     contentsBegin: span.contentsBegin,
+                                     contentsEnd: span.contentsEnd))
+        }
+        for child in node.childNodes { collectSpans(child, into: &out) }
+        // A `#+CAPTION:`'s secondary strings hold parsed OBJECT nodes, and `childNodes`
+        // deliberately does not cover affiliated values (the child-order question above).
+        // An emphasis inside a caption carries a span like any other, so the walk must reach
+        // it here or the record set silently loses exactly the nodes the JSON walk used to find.
+        if let affiliated = node.affiliated {
+            for entry in affiliated.entries {
+                if case .captions(let captions) = entry.value {
+                    for caption in captions {
+                        for nested in caption.long { collectSpans(nested, into: &out) }
+                        for nested in caption.short ?? [] { collectSpans(nested, into: &out) }
+                    }
+                }
             }
-            for (key, value) in fields where key != spanKey {
-                collectSpans(value, into: &out)
-            }
-        case .array(let items):
-            for item in items { collectSpans(item, into: &out) }
-        default:
-            break
         }
     }
 }

@@ -88,15 +88,17 @@
 /// emits a radio link whose description is plain text, this throws on the citation. That is an
 /// over-throw, which is the safe direction and is suite-visible.
 public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
-    return OrgParser.strippingSpans(try parseOrgRetainingSpans(source, todoKeywords: todoKeywords))
+    return try parseOrgDocument(source, todoKeywords: todoKeywords).toJSON()
 }
 
-/// `parseOrg`'s tree with the internal span key still on it (ORG-32).
+/// The NATIVE parse: the typed tree the parser actually builds, positions included (ORG-32).
 ///
-/// Not public, and deliberately so: the shape a consumer should get - flat records, a parallel
-/// tree, positions on a typed node - is the decision the span spike exists to inform, and
-/// freezing one here would answer it by default. The gate reads this through `@testable`.
-func parseOrgRetainingSpans(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
+/// `parseOrg` is this parse re-emitted as the normalized `OrgJSON` tree through the generated
+/// `toJSON()`, which never emits positions -- so the published tree still matches SCHEMA.md
+/// with nothing to strip. The span spike's open question ("flat records, a parallel tree, or
+/// positions on a typed node") is answered here: positions ride the typed node's `span` slot.
+/// Public access goes through `OrgDocument(parsing:)`, which is this function.
+func parseOrgDocument(_ source: String, todoKeywords: [String]? = nil) throws -> OrgDocument {
     let collected = RadioTargetCollector()
     let firstPass = try OrgParser(
         source: source, todoKeywords: todoKeywords,

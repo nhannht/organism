@@ -126,14 +126,14 @@ extension OrgParser {
     /// `equal`, so `[x]` yields checkbox null, not "on". And org's group is
     /// `\(\[[ X-]\]\)\(?:[ \t]+\|$\)`: without trailing whitespace or end of line the box is
     /// no box at all, so `[X]tight` keeps its brackets as text.
-    static func checkboxMatch(in t: ScalarSlice, at i: Int) -> (state: OrgJSON, end: Int)? {
+    static func checkboxMatch(in t: ScalarSlice, at i: Int) -> (state: OrgCheckbox?, end: Int)? {
         guard i + 2 < t.count, t[i] == "[", t[i + 2] == "]" else { return nil }
         guard i + 3 == t.count || t[i + 3] == " " || t[i + 3] == "\t" else { return nil }
         switch t[i + 1] {
-        case " ": return (.string("off"), i + 3)
-        case "X": return (.string("on"), i + 3)
-        case "x": return (.null, i + 3)
-        case "-": return (.string("trans"), i + 3)
+        case " ": return (.off, i + 3)
+        case "X": return (.on, i + 3)
+        case "x": return (nil, i + 3)
+        case "-": return (.trans, i + 3)
         default: return nil
         }
     }
@@ -204,14 +204,14 @@ extension OrgParser {
     /// `kind` belongs to the LIST, not to each item, and is taken from the FIRST item: `- a`
     /// followed by `1. b` is ONE unordered list with two items, measured. Descriptive wins when
     /// the first item carries a ` :: ` tag.
-    func parseList(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+    func parseList(at start: Int, in range: Range<Int>) throws -> (OrgNode, Int) {
         guard let head = OrgParser.bulletMatch(of: lines[start]) else {
             throw OrgError.unimplemented("list dispatch reached a non-bullet line")
         }
         let indent = head.indent
-        var items: [OrgJSON] = []
+        var items: [OrgItem] = []
         var listPostBlank = 0
-        var kind = head.ordered ? "ordered" : "unordered"
+        var kind: OrgListKind = head.ordered ? .ordered : .unordered
         var i = start
 
         while i < range.upperBound,
@@ -277,7 +277,7 @@ extension OrgParser {
             let (item, descriptive, base) = try parseItem(
                 at: i, bodyFrom: i + 1, to: bodyEnd, bullet: b
             )
-            if items.isEmpty, descriptive { kind = "descriptive" }
+            if items.isEmpty, descriptive { kind = .descriptive }
 
             // Where the trailing blanks land depends on whether the LIST continues. Between two
             // items they are the finished item's postBlank; after the last item they are the
@@ -285,7 +285,11 @@ extension OrgParser {
             let listContinues = !listEnded && next < range.upperBound
                 && OrgParser.bulletMatch(of: lines[next]).map { $0.indent == indent } == true
             if listContinues {
-                items.append(item.withPostBlank(base + blanks))
+                // Items learn their trailing blank count only after the parser has seen what
+                // follows them, so the node is built first and adjusted here.
+                var finished = item
+                finished.postBlank = base + blanks
+                items.append(finished)
             } else {
                 items.append(item)
                 listPostBlank = blanks
@@ -294,12 +298,8 @@ extension OrgParser {
             if listEnded { break }
         }
 
-        return (.object([
-            "type": .string("list"),
-            "kind": .string(kind),
-            "children": .array(items),
-            "postBlank": .int(listPostBlank),
-        ]), i)
+        return (.list(OrgList(
+            kind: kind, children: items, postBlank: listPostBlank)), i)
     }
 
     /// The closing line of a construct at `at` whose body the item-extent scan skips, or nil
@@ -327,19 +327,19 @@ extension OrgParser {
     /// One item: its bullet-line prefixes (counter, checkbox, tag) and its body as an element run.
     private func parseItem(
         at head: Int, bodyFrom: Int, to bodyEnd: Int, bullet b: BulletMatch
-    ) throws -> (node: OrgJSON, descriptive: Bool, basePostBlank: Int) {
+    ) throws -> (node: OrgItem, descriptive: Bool, basePostBlank: Int) {
         let t = lines[head].text
         var idx = b.contentIndex
-        var counter: OrgJSON = .null
-        var checkbox: OrgJSON = .null
-        var tag: OrgJSON = .null
+        var counter: Int?
+        var checkbox: OrgCheckbox?
+        var tag: [OrgNode]?
         var descriptive = false
 
         func skipSpace() { while idx < t.count, t[idx] == " " || t[idx] == "\t" { idx += 1 } }
 
         // Counter precedes checkbox: `1. [@5] [X] x` carries both, measured.
         if let c = OrgParser.counterMatch(in: t, at: idx) {
-            counter = .int(c.value); idx = c.end; skipSpace()
+            counter = c.value; idx = c.end; skipSpace()
         }
         if let cb = OrgParser.checkboxMatch(in: t, at: idx) {
             checkbox = cb.state; idx = cb.end; skipSpace()
@@ -350,9 +350,8 @@ extension OrgParser {
             // `item` is org's row for a descriptive-list TAG, and it refuses `line-break`. The
             // item's BODY is a paragraph and permits one; the two are different containers.
             // `t` is `lines[head].text`, so the tag starts `idx` scalars into that line.
-            tag = .array(try parseObjects(t.sub(idx..<sep.lowerBound), in: .item,
-                                          at: lines[head].offset + idx)
-                .map(OrgParser.bridgeJSON))
+            tag = try parseObjects(t.sub(idx..<sep.lowerBound), in: .item,
+                                   at: lines[head].offset + idx)
             idx = sep.upperBound
             descriptive = true
         }
@@ -412,25 +411,13 @@ extension OrgParser {
         // So it is the empty body that carries it, not the file ending or the next line.
         let base = bodyLines.isEmpty ? 1 : 0
 
-        return (.object([
-            "type": .string("item"),
-            "bullet": .string(b.bullet),
-            "checkbox": checkbox,
-            "counter": counter,
-            "tag": tag,
-            "children": .array(children),
-            "preBlank": .int(preBlank),
-            "postBlank": .int(base),
-        ]), descriptive, base)
-    }
-}
-
-extension OrgJSON {
-    /// Returns this node with `postBlank` replaced. Items learn their trailing blank count only
-    /// after the parser has seen what follows them, so the node is built first and adjusted here.
-    func withPostBlank(_ n: Int) -> OrgJSON {
-        guard var fields = objectValue else { return self }
-        fields["postBlank"] = .int(n)
-        return .object(fields)
+        return (OrgItem(
+            bullet: b.bullet,
+            checkbox: checkbox,
+            counter: counter,
+            tag: tag,
+            preBlank: preBlank,
+            children: children,
+            postBlank: base), descriptive, base)
     }
 }

@@ -113,7 +113,7 @@ extension OrgParser {
         in range: Range<Int>,
         mayOpenWithPlanning: Bool = false,
         propertyDrawerMode: PropertyDrawerMode = .none
-    ) throws -> OrgJSON {
+    ) throws -> OrgNode {
         let children = try parseElementRun(
             in: range,
             mayOpenWithPlanning: mayOpenWithPlanning,
@@ -122,13 +122,9 @@ extension OrgParser {
         // element), so unlike a paragraph its extent IS final here: the whole range, contents
         // identical to it.
         let extent = lines[range.lowerBound].offset..<lines[range.upperBound - 1].endOffset
-        return .object([
-            "type": .string("section"),
-            "children": .array(children),
-            "postBlank": .int(0),
-            OrgParser.spanKey: OrgParser.spanValue(extent.lowerBound, extent.upperBound,
-                                                   contents: extent),
-        ])
+        var section = OrgSection(children: children, postBlank: 0)
+        section.span = OrgSpan(extent.lowerBound, extent.upperBound, contents: extent)
+        return .section(section)
     }
 
     /// Parses the run of ELEMENTS filling `range`, with no container node wrapped around them.
@@ -144,7 +140,7 @@ extension OrgParser {
         in range: Range<Int>,
         mayOpenWithPlanning: Bool = false,
         propertyDrawerMode initialPropertyDrawerMode: PropertyDrawerMode = .none
-    ) throws -> [OrgJSON] {
+    ) throws -> [OrgNode] {
         // Every ELEMENT nesting level in this parser passes through here -- a quote or center
         // block body, a drawer body, a headline's section, a list item body and a footnote
         // definition body (the last two via a sub-parser that shares this guard). Counting the
@@ -153,7 +149,7 @@ extension OrgParser {
         try nesting.enter()
         defer { nesting.leave() }
 
-        var elements: [OrgJSON] = []
+        var elements: [OrgNode] = []
         var i = range.lowerBound
 
         // ORG-28. `:PROPERTIES:` is a property-drawer only where org's parsing MODE allows one,
@@ -181,8 +177,8 @@ extension OrgParser {
             if line.isBlank {
                 var count = 0
                 while i < range.upperBound, lines[i].isBlank { count += 1; i += 1 }
-                guard var last = elements.popLast()?.objectValue,
-                      case .int(let existing)? = last["postBlank"] else {
+                guard let lastElement = elements.popLast(),
+                      let existing = lastElement.postBlank else {
                     // No preceding element for these blanks to attach to. That means different
                     // things per caller now that there are two, so do NOT read this as a
                     // bookkeeping bug. `parseSection`'s callers strip leading blanks into
@@ -194,13 +190,16 @@ extension OrgParser {
                     // answer until that rule is derived rather than guessed.
                     throw OrgError.unimplemented("leading blank line inside a greater-block body")
                 }
-                last["postBlank"] = .int(existing + count)
+                var patched = lastElement.settingPostBlank(existing + count)
                 // org's `:end` INCLUDES the blank lines it just absorbed, so the element's
-                // extent is only settled here - which is precisely why a span rides in the node
+                // extent is only settled here - which is precisely why a span rides on the node
                 // rather than being appended to a side collector when the node was built.
                 // `i` has already advanced past the blank run.
-                last = OrgParser.withSpan(last, endingAt: lines[i - 1].endOffset)
-                elements.append(.object(last))
+                if var span = patched.span {
+                    span.end = lines[i - 1].endOffset
+                    patched = patched.settingSpan(span)
+                }
+                elements.append(patched)
                 // A blank line ends the chain: org's guard requires the previous line to be
                 // non-blank. Measured both ways -- `# c / <blank> / :PROPERTIES:` is an ordinary
                 // drawer, and so is `* H / SCHEDULED: / <blank> / :PROPERTIES:`.
@@ -265,16 +264,22 @@ extension OrgParser {
                 // here would produce a property-drawer and be wrong in all four.
                 let (node, next) = try parseOneElement(
                     at: runEnd, in: range, propertyDrawerAllowed: false)
-                guard var fields = node.objectValue else { throw OrgError.unimplemented("affiliated keywords attach to a non-object element") }
-                fields["affiliated"] = try affiliatedValue(from: affiliated)
+                guard var decorated = node.settingAffiliated(try affiliatedValue(from: affiliated))
+                else {
+                    throw OrgError.unimplemented(
+                        "affiliated keywords attach to an element with no affiliated field")
+                }
                 // org's `:begin` for a decorated element is the FIRST affiliated keyword line,
                 // not the element's own. The second of the two patch sites where a node's extent
                 // changes after it was built, and the reason `contents` is tracked separately
                 // from `begin` at all: the contents stay where they were, only the node grows.
-                fields = OrgParser.withSpan(fields, beginningAt: lines[i].offset)
-                elements.append(.object(fields))
+                if var span = decorated.span {
+                    span.begin = lines[i].offset
+                    decorated = decorated.settingSpan(span)
+                }
+                elements.append(decorated)
                 propertyDrawerMode = propertyDrawerMode.afterElement(
-                    ofType: fields["type"]?.stringValue)
+                    ofType: decorated.typeName)
                 i = next
                 continue
             }
@@ -284,7 +289,7 @@ extension OrgParser {
                 propertyDrawerAllowed: propertyDrawerMode.permitsPropertyDrawer)
             elements.append(node)
             propertyDrawerMode = propertyDrawerMode.afterElement(
-                ofType: node.objectValue?["type"]?.stringValue)
+                ofType: node.typeName)
             i = next
         }
 
@@ -308,7 +313,7 @@ extension OrgParser {
         at start: Int,
         in range: Range<Int>,
         propertyDrawerAllowed: Bool
-    ) throws -> (OrgJSON, Int) {
+    ) throws -> (OrgNode, Int) {
         var i = start
         let line = lines[i]
 
@@ -345,10 +350,7 @@ extension OrgParser {
         }
 
         if isHorizontalRule(line) {
-            return (.object([
-                "type": .string("horizontal-rule"),
-                "postBlank": .int(0),
-            ]), i + 1)
+            return (.horizontalRule(OrgHorizontalRule(postBlank: 0)), i + 1)
         }
 
         if isCommentLine(line) {
@@ -359,11 +361,8 @@ extension OrgParser {
             }
             // Consecutive comment lines merge into one element, values joined by "\n" with
             // no trailing newline (oracle-confirmed).
-            return (.object([
-                "type": .string("comment"),
-                "value": .string(values.joined(separator: "\n")),
-                "postBlank": .int(0),
-            ]), i)
+            return (.comment(OrgComment(
+                value: values.joined(separator: "\n"), postBlank: 0)), i)
         }
 
         // CLOCK lines. Dispatched BEFORE the block/keyword group because org checks
@@ -395,42 +394,38 @@ extension OrgParser {
                 // GREATER elements: their children are ELEMENT nodes, so the body re-enters the
                 // element layer. Nothing about the body is literal -- a table, a fixed-width
                 // line or a comment inside a quote block is that element, measured.
-                return (.object([
-                    "type": .string(type == "quote" ? "quote-block" : "center-block"),
-                    "children": .array(try parseElementRun(in: (i + 1)..<end)),
-                    "postBlank": .int(0),
-                ]), end + 1)
+                let children = try parseElementRun(in: (i + 1)..<end)
+                return (type == "quote"
+                    ? .quoteBlock(OrgQuoteBlock(children: children, postBlank: 0))
+                    : .centerBlock(OrgCenterBlock(children: children, postBlank: 0)), end + 1)
             case "verse":
                 // The one block whose children are OBJECTS rather than elements or a literal
                 // value (SCHEMA.md section 4). Its body is therefore parsed exactly like a
                 // paragraph's contents, newlines and all.
-                return (.object([
-                    "type": .string("verse-block"),
-                    // Same verbatim argument as a paragraph's text - the body is one slice of
-                    // the buffer, starting exactly where the opener line ends. The empty body
-                    // is answered directly rather than sliced: `(i + 1)..<end` has no line to
-                    // read a position from when it is empty, and `parseObjects` of nothing is
-                    // [] by definition.
-                    "children": i + 1 < end
-                        ? .array(try parseObjects(
+                //
+                // Same verbatim argument as a paragraph's text - the body is one slice of
+                // the buffer, starting exactly where the opener line ends. The empty body
+                // is answered directly rather than sliced: `(i + 1)..<end` has no line to
+                // read a position from when it is empty, and `parseObjects` of nothing is
+                // [] by definition.
+                return (.verseBlock(OrgVerseBlock(
+                    children: i + 1 < end
+                        ? try parseObjects(
                             sourceSlice(ofLines: (i + 1)..<end), in: .verseBlock,
-                            at: lines[i].endOffset).map(OrgParser.bridgeJSON))
-                        : .array([]),
-                    "postBlank": .int(0),
-                ]), end + 1)
+                            at: lines[i].endOffset)
+                        : [],
+                    postBlank: 0)), end + 1)
             default:
                 // Every other `#+begin_X` is a SPECIAL-BLOCK, a greater element like quote and
                 // center: its children are ELEMENT nodes. `blockType` keeps the SOURCE case of
                 // the name while pairing stays case-folded; `parameters` is the rest of the
                 // opener line trimmed, null when empty (`#+begin_note` -> null, measured).
                 let parameters = OrgParser.trimAsciiSpace(rest)
-                return (.object([
-                    "type": .string("special-block"),
-                    "blockType": .string(OrgParser.blockBeginSourceType(line)),
-                    "parameters": parameters.isEmpty ? .null : .string(parameters),
-                    "children": .array(try parseElementRun(in: (i + 1)..<end)),
-                    "postBlank": .int(0),
-                ]), end + 1)
+                return (.specialBlock(OrgSpecialBlock(
+                    blockType: OrgParser.blockBeginSourceType(line),
+                    parameters: parameters.isEmpty ? nil : parameters,
+                    children: try parseElementRun(in: (i + 1)..<end),
+                    postBlank: 0)), end + 1)
             }
         }
 
@@ -444,11 +439,9 @@ extension OrgParser {
         // org's own fallback.
         if let name = OrgParser.latexEnvironmentOpenName(line),
            let end = latexEnvironmentEndIndex(openedAt: i, name: name, in: range) {
-            return (.object([
-                "type": .string("latex-environment"),
-                "value": .string(blockValue(bodyFrom: i, to: end + 1, unescaping: false)),
-                "postBlank": .int(0),
-            ]), end + 1)
+            return (.latexEnvironment(OrgLatexEnvironment(
+                value: blockValue(bodyFrom: i, to: end + 1, unescaping: false),
+                postBlank: 0)), end + 1)
         }
 
         // FOOTNOTE DEFINITIONS. Column 0 only, and the label line may carry the first content.
@@ -501,13 +494,9 @@ extension OrgParser {
                 firstLineIsSliced: !firstRest.isEmpty
             ).parseElementRun(in: 0..<bodyLines.count)
 
-            return (.object([
-                "type": .string("footnote-definition"),
-                "label": .string(match.label),
-                "preBlank": .int(preBlank),
-                "children": .array(children),
-                "postBlank": .int(0),
-            ]), contentEnd)
+            return (.footnoteDefinition(OrgFootnoteDefinition(
+                label: match.label, preBlank: preBlank, children: children,
+                postBlank: 0)), contentEnd)
         }
 
         // The dynamic-block opener grammar, consulted ONCE and its answer reused by the keyword
@@ -530,13 +519,10 @@ extension OrgParser {
             // block really is a `keyword` element, which is why pass 1 must SEE it. That is also
             // why `dynamic` is absent from `nonElementBlockTypes` -- measured, a file setting
             // inside one is honored exactly as at top level.
-            return (.object([
-                "type": .string("dynamic-block"),
-                "blockName": .string(name),
-                "arguments": arguments.map(OrgJSON.string) ?? .null,
-                "children": .array(try parseElementRun(in: (i + 1)..<end)),
-                "postBlank": .int(0),
-            ]), end + 1)
+            return (.dynamicBlock(OrgDynamicBlock(
+                blockName: name, arguments: arguments,
+                children: try parseElementRun(in: (i + 1)..<end),
+                postBlank: 0)), end + 1)
         }
 
         // DIARY SEXP, a whole-line `%%(...)` element. Column 0 only, and the same slice rule
@@ -551,11 +537,8 @@ extension OrgParser {
         // marker IS stripped, and from a diary TIMESTAMP `<%%(...)>`, which is an object.
         if line.contentStart == 0, !(i == range.lowerBound && i == 0 && firstLineIsSliced),
            line.text.starts(with: "%%(".unicodeScalars) {
-            return (.object([
-                "type": .string("diary-sexp"),
-                "value": .string(String(scalars: line.text[...])),
-                "postBlank": .int(0),
-            ]), i + 1)
+            return (.diarySexp(OrgDiarySexp(
+                value: String(scalars: line.text[...]), postBlank: 0)), i + 1)
         }
 
         if let value = OrgParser.babelCallValue(of: line) {
@@ -564,11 +547,7 @@ extension OrgParser {
             // the empty string. That is why this sits BEFORE the keyword branch rather than
             // inside it -- `keywordParts` would happily report key `CALL`, which is the tree org
             // does not build.
-            return (.object([
-                "type": .string("babel-call"),
-                "value": .string(value),
-                "postBlank": .int(0),
-            ]), i + 1)
+            return (.babelCall(OrgBabelCall(value: value, postBlank: 0)), i + 1)
         }
 
         // A VALID dynamic-block opener is NOT a keyword, even having failed to pair above:
@@ -586,12 +565,7 @@ extension OrgParser {
             // An affiliated keyword reaching HERE is one that attached to nothing, so it stands
             // alone and keeps its SOURCE key -- `parseSection` handles the attaching case before
             // calling this, and alias normalization belongs to that path only.
-            return (.object([
-                "type": .string("keyword"),
-                "key": .string(key),
-                "value": .string(value),
-                "postBlank": .int(0),
-            ]), i + 1)
+            return (.keyword(OrgKeyword(key: key, value: value, postBlank: 0)), i + 1)
         }
 
         // Lists dispatch BEFORE the unimplemented guard, which no longer knows about bullets.
@@ -669,21 +643,19 @@ extension OrgParser {
             // The grid is the source verbatim over its lines, so it materializes as one slice -
             // same argument as `blockValue`'s fast path, and `i..<end` is never empty here.
             let value = String(scalars: sourceSlice(ofLines: i..<end))
-            var formulas: [OrgJSON] = []
+            var formulas: [String] = []
             var next = end
             while next < range.upperBound, let formula = OrgParser.tblfmValue(of: lines[next]) {
-                formulas.append(.string(formula))
+                formulas.append(formula)
                 next += 1
             }
-            // A LEAF: `value` is the raw literal grid and there is no `children` key at all.
+            // A LEAF: `value` is the raw literal grid and there is no `children` field at all.
             // org-element never decomposes a table.el grid into rows and cells, so the two table
             // shapes are genuinely different nodes rather than one node with an empty `children`.
-            return (.object([
-                "type": .string("table"),
-                "tblfm": formulas.isEmpty ? .null : .array(formulas),
-                "value": .string(value),
-                "postBlank": .int(0),
-            ]), next)
+            return (.table(OrgTable(
+                flavour: .tableEl(value: value),
+                tblfm: formulas.isEmpty ? nil : formulas,
+                postBlank: 0)), next)
         }
 
         if OrgParser.isTableLine(line) {
@@ -701,7 +673,7 @@ extension OrgParser {
     /// `paragraphStart` yields an empty paragraph and an infinite loop. It is also simply true of
     /// a normal paragraph -- a line that could open an element never gets here, because
     /// `parseOneElement` would have dispatched it.
-    private func parseParagraph(at start: Int, in range: Range<Int>) throws -> (OrgJSON, Int) {
+    private func parseParagraph(at start: Int, in range: Range<Int>) throws -> (OrgNode, Int) {
         var i = start
         let paragraphStart = i
         while i < range.upperBound {
@@ -784,21 +756,18 @@ extension OrgParser {
         // it equal to the contents end here is the correct answer for a paragraph with nothing
         // blank after it, and the starting point the patch corrects otherwise.
         let contents = lines[paragraphStart].offset..<lines[i - 1].endOffset
-        return (.object([
-            "type": .string("paragraph"),
-            OrgParser.spanKey: OrgParser.spanValue(contents.lowerBound, contents.upperBound,
-                                                   contents: contents),
-            // A paragraph's text is the source verbatim over `paragraphStart..<i` - each line
-            // with its own newline - so the contents are ONE slice of the buffer and a local
-            // index into it is a document offset shifted by the first line's. This used to be
-            // a per-line String join; ORG-32 measured that the join added nothing and dropped
-            // nothing, which is exactly the property that lets the slice replace it.
-            "children": .array(try parseObjects(sourceSlice(ofLines: paragraphStart..<i),
-                                                in: .paragraph,
-                                                at: lines[paragraphStart].offset)
-                .map(OrgParser.bridgeJSON)),
-            "postBlank": .int(0),
-        ]), i)
+        // A paragraph's text is the source verbatim over `paragraphStart..<i` - each line
+        // with its own newline - so the contents are ONE slice of the buffer and a local
+        // index into it is a document offset shifted by the first line's. This used to be
+        // a per-line String join; ORG-32 measured that the join added nothing and dropped
+        // nothing, which is exactly the property that lets the slice replace it.
+        var paragraph = OrgParagraph(
+            children: try parseObjects(sourceSlice(ofLines: paragraphStart..<i),
+                                       in: .paragraph,
+                                       at: lines[paragraphStart].offset),
+            postBlank: 0)
+        paragraph.span = OrgSpan(contents.lowerBound, contents.upperBound, contents: contents)
+        return (.paragraph(paragraph), i)
     }
 
     /// A column-0 line of exactly ONE `*` followed by end of line or a TAB.

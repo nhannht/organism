@@ -44,21 +44,28 @@ public struct OrgSpan: Equatable, Sendable {
 // MARK: - Entry point
 
 extension OrgDocument {
-    /// Parse org text straight into the typed tree.
+    /// Parse org text straight into the typed tree - the parser's NATIVE path.
     ///
-    /// Sugar over `parseOrg` plus a decode. The two-step form stays available and is what the
-    /// gates use, because they need the untyped tree to compare against the corpus:
+    /// This is not sugar over `parseOrg` plus a decode any more; it is the other way around.
+    /// The parser builds THIS tree, and `parseOrg` is the same parse re-emitted as the
+    /// normalized `OrgJSON` through the generated `toJSON()`. Two consequences a consumer
+    /// should know:
+    ///
+    /// - Nodes carry their source positions in `span` (ORG-32) - 0-based Unicode-scalar
+    ///   offsets, populated one construction site at a time. A tree DECODED from JSON has
+    ///   nil spans, because the published tree never carries positions.
+    /// - This path allocates no JSON at all, so it is also the fast one.
+    ///
+    /// The two-step form stays available and is what the gates use, because they need the
+    /// untyped tree to compare against the corpus:
     ///
     ///     let json = try parseOrg(source)     // graded by every corpus gate
     ///     let doc  = try OrgDocument(json)    // graded by ASTRoundTripTests
     ///
-    /// Throws whatever `parseOrg` throws (`OrgError.notImplemented` for a refused construct),
-    /// or `OrgError.malformedTree` if the tree does not fit the schema. The second is not
-    /// reachable through this path today -- the round-trip gate proves the parser's own output
-    /// always decodes -- but it is not swallowed, because a silent fallback here would be the
-    /// one place a malformed tree could enter typed code unnoticed.
+    /// Throws whatever `parseOrg` throws (`OrgError.notImplemented` for a refused construct,
+    /// `OrgError.nestingTooDeep` past the depth limit).
     public init(parsing source: String, todoKeywords: [String]? = nil) throws {
-        try self.init(try parseOrg(source, todoKeywords: todoKeywords))
+        self = try parseOrgDocument(source, todoKeywords: todoKeywords)
     }
 }
 

@@ -212,7 +212,7 @@ struct SpanTests {
     func ourSpansMatchTheOracle(_ testCase: CorpusLoader.ConformanceCase) throws {
         let url = HarnessSupport.conformanceInputURL(for: testCase.name)
         guard let oracleRoot = try? HarnessSupport.runOracleSpanDump(on: url) else { return }
-        guard let tree = try? parseOrgRetainingSpans(testCase.inputOrg) else {
+        guard let tree = try? parseOrgDocument(testCase.inputOrg) else {
             // parseOrg refuses this input. Its refusals are gated by SweepTests in both
             // directions already; a refusal here is not a span defect.
             return

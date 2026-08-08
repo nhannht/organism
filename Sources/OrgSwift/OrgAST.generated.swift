@@ -3298,6 +3298,70 @@ extension OrgNode {
         case .verseBlock(var x): x.affiliated = affiliated; return .verseBlock(x)
         }
     }
+
+    /// This node's affiliated keywords, or nil -- for a node with none attached and for a node
+    /// type whose schema def has no `affiliated` field alike. A traversal that wants EVERY
+    /// object node must read this as well as `childNodes`: a `#+CAPTION:`'s secondary strings
+    /// hold parsed objects, and they live here, not in any `childNodes` field.
+    public var affiliated: OrgAffiliated? {
+        switch self {
+        case .babelCall(let x): return x.affiliated
+        case .bold: return nil
+        case .centerBlock(let x): return x.affiliated
+        case .citation: return nil
+        case .citationReference: return nil
+        case .clock: return nil
+        case .code: return nil
+        case .comment(let x): return x.affiliated
+        case .commentBlock(let x): return x.affiliated
+        case .diarySexp(let x): return x.affiliated
+        case .document: return nil
+        case .drawer(let x): return x.affiliated
+        case .dynamicBlock(let x): return x.affiliated
+        case .entity: return nil
+        case .exampleBlock(let x): return x.affiliated
+        case .exportBlock(let x): return x.affiliated
+        case .exportSnippet: return nil
+        case .fixedWidth(let x): return x.affiliated
+        case .footnoteDefinition(let x): return x.affiliated
+        case .footnoteReference: return nil
+        case .headline(let x): return x.affiliated
+        case .horizontalRule(let x): return x.affiliated
+        case .inlineBabelCall: return nil
+        case .inlineSrcBlock: return nil
+        case .italic: return nil
+        case .item(let x): return x.affiliated
+        case .keyword(let x): return x.affiliated
+        case .latexEnvironment(let x): return x.affiliated
+        case .latexFragment: return nil
+        case .lineBreak: return nil
+        case .link: return nil
+        case .list(let x): return x.affiliated
+        case .macro: return nil
+        case .nodeProperty(let x): return x.affiliated
+        case .paragraph(let x): return x.affiliated
+        case .planning(let x): return x.affiliated
+        case .propertyDrawer(let x): return x.affiliated
+        case .quoteBlock(let x): return x.affiliated
+        case .radioTarget: return nil
+        case .section(let x): return x.affiliated
+        case .specialBlock(let x): return x.affiliated
+        case .srcBlock(let x): return x.affiliated
+        case .statisticsCookie(let x): return x.affiliated
+        case .strikethrough: return nil
+        case .`subscript`: return nil
+        case .superscript: return nil
+        case .table(let x): return x.affiliated
+        case .tableCell: return nil
+        case .tableRow(let x): return x.affiliated
+        case .target: return nil
+        case .text: return nil
+        case .timestamp: return nil
+        case .underline: return nil
+        case .verbatim: return nil
+        case .verseBlock(let x): return x.affiliated
+        }
+    }
 }
 
 // Every generated node type satisfies the decode/encode contract.

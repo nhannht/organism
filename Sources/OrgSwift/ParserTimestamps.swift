@@ -140,7 +140,7 @@ extension OrgParser {
     /// Keywords may appear in any order and any subset, and only the ones present are non-null.
     /// A SECOND planning line is a paragraph, which falls out of the caller's rule rather than
     /// needing a check here.
-    func planningLineNode(_ line: Line) -> OrgJSON? {
+    func planningLineNode(_ line: Line) -> OrgNode? {
         let chars = line.text
 
         /// The planning keyword opening at `at`, with the index just past its colon.
@@ -192,13 +192,8 @@ extension OrgParser {
             i = next
         }
 
-        return .object([
-            "type": .string("planning"),
-            "scheduled": scheduled.map { $0.toJSON() } ?? .null,
-            "deadline": deadline.map { $0.toJSON() } ?? .null,
-            "closed": closed.map { $0.toJSON() } ?? .null,
-            "postBlank": .int(0),
-        ])
+        return .planning(OrgPlanning(
+            scheduled: scheduled, deadline: deadline, closed: closed, postBlank: 0))
     }
 
     /// Attaches `postBlank` and reports where scanning resumes. Same inter-object rule as links
@@ -449,11 +444,11 @@ extension OrgParser {
     /// `org-element-clock-parser` exactly. `status` is DERIVABLE -- org sets it to `closed`
     /// exactly when `:duration` is non-nil -- so it is not duplicated in the tree, same rule
     /// as the entity renderings and the macro key.
-    func clockNode(of line: Line) throws -> OrgJSON {
+    func clockNode(of line: Line) throws -> OrgNode {
         let t = line.text
         var j = line.contentStart + "clock:".unicodeScalars.count
         while j < t.count, t[j] == " " || t[j] == "\t" { j += 1 }
-        var value: OrgJSON = .null
+        var value: OrgTimestamp?
         var searchFrom = j
         if j < t.count, t[j] == "[" {
             // org re-parses with the REAL timestamp parser here, so ranges come out as
@@ -469,14 +464,14 @@ extension OrgParser {
             while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
             var node = match.node
             node.postBlank = w - match.end
-            value = node.toJSON()
+            value = node
             searchFrom = w
         }
         // org: `search-forward "=> "` -- LITERAL, single trailing space, ONE attempt at the
         // first occurrence -- then skip whitespace and take `\S-+` only if it reaches the line
         // end. A tab after `=>` fails the literal search and the duration is silently DROPPED
         // (status stays running), measured; that byte loss is SCHEMA.md section 10 item 12.
-        var duration: OrgJSON = .null
+        var duration: String?
         var s = searchFrom
         while s + 2 < t.count {
             if t[s] == "=", t[s + 1] == ">", t[s + 2] == " " {
@@ -487,18 +482,13 @@ extension OrgParser {
                 var w = k
                 while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
                 if k > runStart, w == t.count {
-                    duration = .string(String(scalars: t[runStart..<k]))
+                    duration = String(scalars: t[runStart..<k])
                 }
                 break
             }
             s += 1
         }
-        return .object([
-            "type": .string("clock"),
-            "value": value,
-            "duration": duration,
-            "postBlank": .int(0),
-        ])
+        return .clock(OrgClock(value: value, duration: duration, postBlank: 0))
     }
 }
 

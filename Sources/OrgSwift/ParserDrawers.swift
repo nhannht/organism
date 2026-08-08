@@ -79,7 +79,7 @@ extension OrgParser {
     ///
     /// The key keeps its source spelling and drops the colons; the value is the rest of the line
     /// with surrounding whitespace trimmed. A property row with no value is `""`, not null.
-    static func nodePropertyNode(of line: Line) -> OrgJSON? {
+    static func nodePropertyNode(of line: Line) -> OrgNodeProperty? {
         let text = line.text
         var i = line.contentStart
         guard i < text.count, text[i] == ":" else { return nil }
@@ -92,12 +92,8 @@ extension OrgParser {
         while v < text.count, text[v] == " " || text[v] == "\t" { v += 1 }
         var end = text.count
         while end > v, text[end - 1] == " " || text[end - 1] == "\t" { end -= 1 }
-        return .object([
-            "type": .string("node-property"),
-            "key": .string(key),
-            "value": .string(String(scalars: text[v..<end])),
-            "postBlank": .int(0),
-        ])
+        return OrgNodeProperty(
+            key: key, value: String(scalars: text[v..<end]), postBlank: 0)
     }
 
     /// Whether a `:PROPERTIES:` line at the current position opens a `property-drawer` or an
@@ -181,7 +177,7 @@ extension OrgParser {
         at i: Int,
         in range: Range<Int>,
         propertyDrawerAllowed: Bool
-    ) throws -> (node: OrgJSON, next: Int)? {
+    ) throws -> (node: OrgNode, next: Int)? {
         guard let name = OrgParser.drawerName(of: lines[i]) else { return nil }
         guard let end = drawerCloseIndex(openedAt: i, in: range) else { return nil }
 
@@ -208,7 +204,7 @@ extension OrgParser {
             //
             // This used to throw. Falling through is not a loosened refusal: org has a defined
             // answer for these, and emitting it is strictly more faithful than refusing.
-            var properties: [OrgJSON] = []
+            var properties: [OrgNodeProperty] = []
             var everyRowIsAProperty = true
             for row in body {
                 guard let property = OrgParser.nodePropertyNode(of: lines[row]) else {
@@ -218,19 +214,12 @@ extension OrgParser {
                 properties.append(property)
             }
             if everyRowIsAProperty {
-                return (.object([
-                    "type": .string("property-drawer"),
-                    "children": .array(properties),
-                    "postBlank": .int(0),
-                ]), end + 1)
+                return (.propertyDrawer(OrgPropertyDrawer(
+                    children: properties, postBlank: 0)), end + 1)
             }
         }
 
-        return (.object([
-            "type": .string("drawer"),
-            "name": .string(name),
-            "children": .array(try parseElementRun(in: body)),
-            "postBlank": .int(0),
-        ]), end + 1)
+        return (.drawer(OrgDrawer(
+            name: name, children: try parseElementRun(in: body), postBlank: 0)), end + 1)
     }
 }

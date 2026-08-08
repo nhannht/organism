@@ -364,22 +364,22 @@ extension OrgParser {
     /// per keyword, which is why each row above is a measurement rather than a generalization.
     func affiliatedValue(
         from run: [AffiliatedParts]
-    ) throws -> OrgJSON {
+    ) throws -> OrgAffiliated {
         var order: [String] = []
-        var fields: [String: OrgJSON] = [:]
+        var fields: [String: OrgAffiliated.Value] = [:]
         for entry in run {
             if fields[entry.base] == nil { order.append(entry.base) }
             switch entry.base {
             case "NAME", "PLOT":
-                fields[entry.base] = .string(entry.value) // last wins
+                fields[entry.base] = .text(entry.value) // last wins
             case "RESULTS":
-                fields["RESULTS"] = .object([
-                    "value": .string(entry.value),
-                    "hash": entry.dual.map { OrgJSON.string($0.text) } ?? .null,
-                ])
+                fields["RESULTS"] = .results(OrgAffiliated.Results(
+                    value: entry.value,
+                    hash: entry.dual.map { $0.text }))
             case "CAPTION":
-                var entries = fields["CAPTION"]?.arrayValue ?? []
-                entries.append(.object([
+                var entries: [OrgAffiliated.Caption] = []
+                if case .captions(let existing)? = fields["CAPTION"] { entries = existing }
+                entries.append(OrgAffiliated.Caption(
                     // ORG-22: a caption PERMITS `line-break` -- org's `keyword` row, which is the
                     // standard set minus `footnote-reference` only.
                     // SCHEMA.md section 4 always said so; the measurement that appeared to refute
@@ -392,20 +392,20 @@ extension OrgParser {
                     // Until this landed, `#+CAPTION: cap\\` fell to the blanket `\` throw and
                     // declined honestly, so the gap was a coverage loss and not a wrong tree.
                     // Links landing is what would have turned it into one.
-                    "long": .array(try parseObjects(
+                    long: try parseObjects(
                         ScalarSlice(Array(entry.value.unicodeScalars)),
-                        in: .keyword, at: entry.valueOffset).map(OrgParser.bridgeJSON)),
-                    "short": try captionShort(entry.dual),
-                ]))
-                fields["CAPTION"] = .array(entries)
+                        in: .keyword, at: entry.valueOffset),
+                    short: try captionShort(entry.dual)))
+                fields["CAPTION"] = .captions(entries)
             default: // HEADER and the open-ended ATTR_* family: accumulate raw strings
-                var entries = fields[entry.base]?.arrayValue ?? []
-                entries.append(.string(entry.value))
-                fields[entry.base] = .array(entries)
+                var entries: [String] = []
+                if case .strings(let existing)? = fields[entry.base] { entries = existing }
+                entries.append(entry.value)
+                fields[entry.base] = .strings(entries)
             }
         }
-        return .array(order.map { key in
-            .object(["key": .string(key), "value": fields[key]!])
+        return OrgAffiliated(entries: order.map { key in
+            OrgAffiliated.Entry(key: key, value: fields[key]!)
         })
     }
 
@@ -437,11 +437,10 @@ extension OrgParser {
     /// The SHORT form is the same keyword container as `long`, so it carries the same ORG-22
     /// permission: a caption permits `line-break`, org's `keyword` restriction row being the
     /// standard set minus `footnote-reference`.
-    private func captionShort(_ dual: (text: String, offset: Int)?) throws -> OrgJSON {
-        guard let dual, !dual.text.isEmpty else { return .null }
-        return .array(try parseObjects(
+    private func captionShort(_ dual: (text: String, offset: Int)?) throws -> [OrgNode]? {
+        guard let dual, !dual.text.isEmpty else { return nil }
+        return try parseObjects(
             ScalarSlice(Array(dual.text.unicodeScalars)), in: .keyword, at: dual.offset)
-            .map(OrgParser.bridgeJSON))
     }
 
     // MARK: File-level settings (the two-pass scan)

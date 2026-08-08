@@ -8,7 +8,7 @@ extension OrgParser {
 
     // MARK: Document
 
-    func parseDocument() throws -> OrgJSON {
+    func parseDocument() throws -> OrgDocument {
         // CRLF (or stray CR) input is outside the implemented subset. This is now ORDINARY input
         // validation, and it is worth recording that it used to be load-bearing for correctness.
         //
@@ -31,11 +31,7 @@ extension OrgParser {
         // An empty or all-blank document is a document with no children at all -- no section,
         // no headline, postBlank 0 (oracle-confirmed for "", "\n", and "\n\n\n").
         guard lines.contains(where: { !$0.isBlank }) else {
-            return .object([
-                "type": .string("document"),
-                "children": .array([]),
-                "postBlank": .int(0),
-            ])
+            return OrgDocument(children: [], postBlank: 0)
         }
 
         // Locate every headline line. (`***` with no following space is NOT a headline -- it is
@@ -48,7 +44,7 @@ extension OrgParser {
             }
         }
 
-        var documentChildren: [OrgJSON] = []
+        var documentChildren: [OrgNode] = []
 
         // Zeroth section: everything before the first headline. Leading blank lines at the very
         // start of the document are dropped entirely -- recorded in no node's preBlank or
@@ -93,7 +89,7 @@ extension OrgParser {
             //
             // `contents` exists only when the headline has children at all; org reports no pair
             // for a childless one, and a pair spanning nothing would be a different claim.
-            top.span = OrgParser.spanValue(
+            top.span = OrgSpan(
                 top.beginOffset, end,
                 contents: top.children.isEmpty ? nil : top.contentsOffset..<end)
             let finished = top.build()
@@ -180,13 +176,9 @@ extension OrgParser {
         // already, and `endOffset` rather than `offset + count` so a final line without a
         // newline is not short by one.
         let extent = 0..<(lines.last?.endOffset ?? 0)
-        return .object([
-            "type": .string("document"),
-            "children": .array(documentChildren),
-            "postBlank": .int(0),
-            OrgParser.spanKey: OrgParser.spanValue(extent.lowerBound, extent.upperBound,
-                                                   contents: extent),
-        ])
+        var document = OrgDocument(children: documentChildren, postBlank: 0)
+        document.span = OrgSpan(extent.lowerBound, extent.upperBound, contents: extent)
+        return document
     }
 
     /// Returns the headline level when `line` is a headline line (stars at column 0 followed by
@@ -232,14 +224,14 @@ extension OrgParser {
     private final class HeadlineBuilder {
         let level: Int
         let trueLevel: Int
-        let todo: OrgJSON
-        let title: [OrgJSON]
-        let priority: OrgJSON
+        let todo: String?
+        let title: [OrgNode]
+        let priority: String?
         let commented: Bool
         let tags: [String]
         var preBlank = 0
         var postBlank = 0
-        var children: [OrgJSON] = []
+        var children: [OrgNode] = []
         /// Where this headline's stars are, and where the line after them starts.
         ///
         /// Both are facts about the headline's OWN line, so the caller sets them the moment the
@@ -254,11 +246,11 @@ extension OrgParser {
         /// exists for that reason - `preBlank`, `postBlank` and `children` are all filled in
         /// later by the same caller - so this joins them rather than introducing a second
         /// deferred-value mechanism.
-        var span: OrgJSON?
+        var span: OrgSpan?
 
         init(
-            level: Int, trueLevel: Int, todo: OrgJSON, title: [OrgJSON],
-            priority: OrgJSON, commented: Bool, tags: [String]
+            level: Int, trueLevel: Int, todo: String?, title: [OrgNode],
+            priority: String?, commented: Bool, tags: [String]
         ) {
             self.level = level
             self.trueLevel = trueLevel
@@ -269,25 +261,15 @@ extension OrgParser {
             self.tags = tags
         }
 
-        func build() -> OrgJSON {
-            var fields: [String: OrgJSON] = [
-                "type": .string("headline"),
-                "level": .int(level),
-                "trueLevel": .int(trueLevel),
-                "todo": todo,
-                "priority": priority,
-                "commented": .bool(commented),
-                "tags": .array(tags.map(OrgJSON.string)),
-                "title": .array(title),
-                "preBlank": .int(preBlank),
-                "children": .array(children),
-                "postBlank": .int(postBlank),
-            ]
-            // Omitted rather than emitted as null when unset. The caller sets it on every
-            // headline it builds, so a nil here is a bug, and a null-valued key would let that
-            // bug travel as data instead of simply being absent.
-            if let span { fields[OrgParser.spanKey] = span }
-            return .object(fields)
+        func build() -> OrgNode {
+            var headline = OrgHeadline(
+                level: level, trueLevel: trueLevel, todo: todo, priority: priority,
+                commented: commented, tags: tags, title: title, preBlank: preBlank,
+                children: children, postBlank: postBlank)
+            // The caller sets `span` on every headline it builds, in `closeTop`, so a nil here
+            // is a bug -- but it travels as an absent position rather than as invented data.
+            headline.span = span
+            return .headline(headline)
         }
     }
 
@@ -343,7 +325,7 @@ extension OrgParser {
         // keywords"); an unrecognized first word is plain title text and stays put with
         // `todo: null`. Oracle-confirmed: `* TODO Buy milk` -> todo "TODO", title "Buy milk";
         // `* REVIEW Buy milk` -> todo null, title "REVIEW Buy milk".
-        var todo: OrgJSON = .null
+        var todo: String?
         var titleStart = 0
 
         /// The whitespace-delimited word at `titleStart`, and where the next one begins.
@@ -359,7 +341,7 @@ extension OrgParser {
 
         let first = word(at: 0)
         if todoSet.contains(first.text) {
-            todo = .string(first.text)
+            todo = first.text
             titleStart = first.next
             // `* TODO` with nothing after it used to throw as an unverified empty-title shape.
             // It is verified now -- see the table at the title construction below -- so it falls
@@ -368,11 +350,11 @@ extension OrgParser {
 
         // PRIORITY: `[#X]`, one character, and it comes AFTER the TODO keyword. The value is the
         // bare character, not the cookie.
-        var priority: OrgJSON = .null
+        var priority: String?
         if titleStart + 3 < titleEnd,
            titleChars[titleStart] == "[", titleChars[titleStart + 1] == "#",
            titleChars[titleStart + 3] == "]" {
-            priority = .string(String(scalars: [titleChars[titleStart + 2]]))
+            priority = String(scalars: [titleChars[titleStart + 2]])
             titleStart += 4
             while titleStart < titleEnd,
                   titleChars[titleStart] == " " || titleChars[titleStart] == "\t" {
@@ -410,19 +392,18 @@ extension OrgParser {
         // last consumed token -- the stars' own separator counts -- and stays unmatched (nil,
         // dumped as []) only when the line ends hard against that token. `parseObjects("")`
         // returns `[]`, the right answer for exactly that hard-ended column.
-        let title: [OrgJSON]
+        let title: [OrgNode]
         if titleStart == titleEnd {
             let lineEndsHardAfterConsumedToken =
                 tags.isEmpty && !hadTrailingWhitespace && titleStart > 0
             title = lineEndsHardAfterConsumedToken
                 ? []
-                : [OrgJSON.object(["type": .string("text"), "value": .string("")])]
+                : [.text(OrgText(value: ""))]
         } else {
             // Two nested contiguous slices of one line: `titleChars` is `line.text[start..<end]`,
             // and the title is `titleChars[titleStart..<titleEnd]`. So the offsets compose.
             title = try parseObjects(titleChars.sub(titleStart..<titleEnd), in: .headline,
                                      at: line.offset + start + titleStart)
-                .map(OrgParser.bridgeJSON)
         }
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title,
