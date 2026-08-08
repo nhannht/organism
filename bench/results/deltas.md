@@ -122,3 +122,37 @@ costs: node-box ARC (indirect-enum allocation + release), per-iteration tree TEA
 (_ContiguousArrayStorage deinit, swift_arrayDestroy - partly the benchmark consumer's own
 cost, every tree must be freed), and leaf String materialization (String.init(scalars:)).
 No single dominant block remains; further wins are likely smaller and spread out.
+
+## The publication sweep, 2026-08-09 (`2026-08-09-all.tsv`)
+
+The deferred quiet-machine re-run, and the numbers BENCHMARKS.md publishes. All five runners,
+all 37 files, one invocation of `run-all.sh` at the default protocol (warmup 3, min-time 1.0s),
+Apple M5, load average ~4 with desktop apps live - the best conditions this campaign has had,
+and every earlier number in this file was taken at load 4-11 with min-time 0.5, so the
+publication sweep supersedes them all.
+
+It took three runs to get one clean TSV, and the story is worth its receipts:
+
+- Run 1 was polluted by this project itself: `swift test` was launched mid-sweep and sat on
+  the cores while syn-outline through syn-tables measured. organism's syn-radio row read 4.24
+  MiB/s against a 3-second-budget re-check of 10.4, syn-tables 20.79 against 30.2. Discarded.
+- Run 2 (same binaries, `SKIP_BUILD=1`) was clean except its FIRST file: a background screen
+  render overlapped syn-emphasis, and go-org's row read 25.77 MiB/s with a 1.55x median/min
+  spread, against a clean 48.43 in run 1. Understating a COMPETITOR 2x is exactly what this
+  leaderboard must never do.
+- Run 3 re-measured syn-emphasis alone, all five runners, same binaries: organism 27.58 /
+  orgize 84.66 / go-org 47.50 / uniorg 0.04 / org-element 0.76 - matching run 1's clean
+  window (27.90 / 86.03 / 48.43 / 0.04 / 0.77) with tight spreads. Those five rows are
+  spliced into the published TSV, noted in its header.
+
+The published TSV is therefore run 2 with run 3's syn-emphasis rows. Cross-run agreement on
+organism's stable rows is within ~2 percent; syn-emphasis's ~10 percent wobble between clean
+runs is the ambient noise scale of this machine and is why the protocol reports medians and
+keeps the minimum column.
+
+Against the Phase 3 dev records (min-time 0.5, higher load, and pre-wave-4 binaries) the
+publication numbers agree within the machine's noise band: syn-radio 10.5 -> 10.26,
+syn-tables 30.9 -> 31.19, syn-prose 24.5 -> 24.30, syn-emphasis 27.5 -> 27.58; the largest
+drift is syn-outline 26.9 -> 23.17. The wave-4 grammar features landed between the two
+measurement sets, so the dev records are history, not a baseline; the publication sweep is
+the citable set.
