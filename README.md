@@ -20,10 +20,10 @@ the Swift package, jump to [Using the Swift library](#using-the-swift-library).
 This suite is real and usable today. The Swift parser is real and, as of 2026-08-07, complete
 over every org-element type its oracle can reach.
 
-- `parseOrg` matches `org-element`'s own tree, node for node, on **120 of 120** conformance
+- `parseOrg` matches `org-element`'s own tree, node for node, on **121 of 121** conformance
   cases and **13 of 13** vendored real-world files. There are no parser-shaped `withKnownIssue`
   wrappers left anywhere in the suite.
-- `renderOrg` re-emits `input.org` byte-for-byte from the checked-in tree on **115 of 120**
+- `renderOrg` re-emits `input.org` byte-for-byte from the checked-in tree on **116 of 121**
   cases. The other 5 are PERMANENT and measured, not pending: each pins bytes that no tree built
   on `org-element` can carry, so its render is correct AND can never equal its input
   (`RendererConformanceTests.schemaLossCases`, SCHEMA.md section 10). Full-file round-trip
@@ -88,15 +88,15 @@ the whole verification story - run them yourself rather than taking this table's
 
 | What | Result |
 |---|---|
-| `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
-| `harness/validate-schema.sh` | 1,442 of 1,442 stored answers valid against the published schema |
+| `harness/verify-corpus.sh` | 121 of 121 cases pass, 0 fail |
+| `harness/validate-schema.sh` | 1,443 of 1,443 stored answers valid against the published schema |
 | `swift test` | 66 tests, 17 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,322 inputs, 0 wrong trees - see `sweep/README.md` |
-| `parseOrg` matches the oracle tree, conformance | 120 of 120 |
+| `parseOrg` matches the oracle tree, conformance | 121 of 121 |
 | `parseOrg` matches the oracle tree, real-world | 13 of 13 |
-| `renderOrg` re-emits `input.org` from the tree | 115 of 120, the other 5 permanent by measurement |
+| `renderOrg` re-emits `input.org` from the tree | 116 of 121, the other 5 permanent by measurement |
 | `renderOrg(parseOrg(text))` round-trip | 13 of 13 (4 byte-exact, 9 modulo annotated losses) |
 | `org-element` types mapped by the oracle | 55 of 56, the 56th unreachable under `-Q` |
 | Mapped types that also have a fixture | 55 of 55 |
@@ -266,7 +266,7 @@ such a field: all 9 other AST tests stayed green and only the drift test went re
 gracefully when `python3` is absent, like the Emacs-backed suites.
 
 What says the typed layer is complete and lossless: `OrgJSON -> OrgNode -> OrgJSON` is asserted
-identical for **all 1,442 stored trees**, and a companion test asserts the corpus exercises every
+identical for **all 1,443 stored trees**, and a companion test asserts the corpus exercises every
 one of the 55 generated types, so a green run is not green because something never ran.
 
 That is deliberately the shape of the published cross-language contract rather than a Swift-native
@@ -354,14 +354,14 @@ Every number below was checked directly in this repository, on this commit, not 
   and that is a measured result rather than a starting state -- it held 30 names, all ORG-28,
   until 2026-08-07. A new entry means a wrong tree was introduced. Read `sweep/README.md` before
   quoting that zero anywhere.
-- `parseOrg` on this commit: 120 of 120 conformance cases produce a tree matching the oracle's,
-  and 13 of 13 real-world files. `renderOrg` on this commit: 115 of 120 conformance cases
+- `parseOrg` on this commit: 121 of 121 conformance cases produce a tree matching the oracle's,
+  and 13 of 13 real-world files. `renderOrg` on this commit: 116 of 121 conformance cases
   re-emitted byte-for-byte from the checked-in tree, and full round-trip on 13 of 13 real files
   (4 byte-exact, 9 modulo their annotated section 10 losses). Measured by reading the per-suite
   known-issue counts off the run, not inferred from the total.
-- `harness/verify-corpus.sh` on this commit: 120/120 conformance cases pass (a runnable
+- `harness/verify-corpus.sh` on this commit: 121/121 conformance cases pass (a runnable
   reference adapter that uses the Emacs oracle itself as the stand-in parser).
-- Every stored answer validates against `schema/org-node.schema.json`: 1,442/1,442 valid, 0
+- Every stored answer validates against `schema/org-node.schema.json`: 1,443/1,443 valid, 0
   invalid -- 120 conformance plus all 1,322 sweep answers, which went unchecked until 2026-08-07
   and were the half holding degenerate trees (see `schema/README.md` for how to run this
   yourself). The

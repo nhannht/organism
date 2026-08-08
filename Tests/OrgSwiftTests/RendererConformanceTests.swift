@@ -238,6 +238,7 @@ struct RendererConformanceTests {
         // pins the placement the refusals said was unpinned.
         "list-item-preblank",
         "list-item-empty",
+        "list-item-emphasis",
         "list-item-greater-block",
         // E: table rule rows. The dash run per column is the widest rendered cell plus 2,
         // and it is reconstructible only because a cell's alignment padding rides its
