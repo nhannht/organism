@@ -12,7 +12,7 @@ org-mode's own reference parser; `OrgSwift` is one implementation that passes it
 the Swift package, jump to [Using the Swift library](#using-the-swift-library).
 
 ```swift
-.package(url: "https://github.com/nhannht/organism.git", from: "0.2.0")
+.package(url: "https://github.com/nhannht/organism.git", from: "0.3.1")
 ```
 
 ## Current state (read this first)
@@ -176,7 +176,7 @@ Add the package:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/nhannht/organism.git", from: "0.2.0")
+    .package(url: "https://github.com/nhannht/organism.git", from: "0.3.1")
 ],
 targets: [
     .target(name: "YourTarget", dependencies: [

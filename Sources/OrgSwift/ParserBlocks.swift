@@ -31,13 +31,26 @@ extension OrgParser {
     /// Recognizes a `#+begin_TYPE` line, returning the lowercased TYPE and the raw rest of the
     /// line after it. Case-insensitive: `#+BEGIN_SRC` and `#+Begin_Src` both parse, measured.
     ///
-    /// Column 0 only. An INDENTED block is real org -- `  #+begin_quote` parses fine, and the
-    /// body keeps its indentation verbatim (`"  hi\n"`, measured). This predicate does not claim
-    /// one, and the note that used to stand here explained that as "indented lines are rejected
-    /// wholesale by `isUnimplementedElementStart`, so they throw". That is no longer true and has
-    /// not been for some time: the indentation branch went when six over-throws were fixed, and
-    /// the predicate itself is now deleted. An indented block opener therefore reaches the
-    /// paragraph path rather than a refusal, which is an over-narrow parse and not a wrong tree.
+    /// INDENTATION IS ACCEPTED, and the note that stood here said the opposite twice over.
+    ///
+    /// It read "Column 0 only", explaining that an indented block "is real org" but that indented
+    /// lines were "rejected wholesale by `isUnimplementedElementStart`, so they throw". Both
+    /// halves were false by the time anyone read them. This function scans from `contentStart`,
+    /// so it has never been column-0 only; the indentation branch of that predicate went when six
+    /// over-throws were fixed, and the predicate itself is now deleted.
+    ///
+    /// Measured against the live oracle, both sides agreeing exactly:
+    ///
+    ///     `  #+begin_quote` / `  hi` / `  #+end_quote`   quote-block > paragraph > `"  hi\n"`
+    ///     `  #+begin_src swift` / `  let x = 1` / ...    src-block, value `"  let x = 1\n"`
+    ///
+    /// The body keeps its indentation verbatim, which is org's own answer. So an indented block
+    /// is neither refused nor over-narrowly parsed: it is simply a block.
+    ///
+    /// Recorded at this length because the correction is a repeat offence. A first pass at this
+    /// comment replaced the stale claim with a fresh one -- that an indented opener "reaches the
+    /// paragraph path rather than a refusal" -- which was asserted rather than measured, and was
+    /// also wrong. Run the oracle before writing what this function does.
     static func blockBeginLine(_ line: Line) -> (type: String, rest: String)? {
         let text = line.text
         let start = line.contentStart
