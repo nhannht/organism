@@ -109,18 +109,34 @@ extension OrgParser {
         "mhe", "w3m", "id", "file",
     ].map { Array($0.unicodeScalars) }
 
+    /// `linkTypes` bucketed by first scalar, derived once. The probe below runs at every
+    /// position where prose could start a plain link, and scanning all 23 names there was a
+    /// measured top-five cost of a whole parse; one folded-scalar index reduces the candidates
+    /// to the bucket's 0-4. Indexed by the LOWERED scalar value; every type name is lowercase
+    /// ASCII, so 128 rows cover the space and a non-ASCII position reads row 0 of nothing.
+    private static let linkTypesByFirstScalar: [[[Unicode.Scalar]]] = {
+        var table = [[[Unicode.Scalar]]](repeating: [], count: 128)
+        for type in linkTypes {
+            table[Int(type[0].value)].append(type)
+        }
+        return table
+    }()
+
     /// Length of the registered link type name starting at `i`, or nil. Case-insensitive via
     /// `asciiLowered`, because Emacs folds nothing non-ASCII onto an ASCII letter (ORG-18).
     ///
     /// Returns the LONGEST match rather than the first. Two prefix pairs make this load-bearing
-    /// -- `http`/`https` and `file`/`file+emacs`/`file+sys` -- and the array happens to list the
-    /// longer member first in both, so a first-match scan gives the right answer today. It would
-    /// stop doing so the moment someone appends a type or sorts the list, and nothing in the
-    /// suite would notice, because both prefixes still parse as SOME link. Depending on array
-    /// order for correctness is the trap ORG-21 was about; taking the longest removes it.
+    /// -- `http`/`https` and `file`/`file+emacs`/`file+sys` -- and the bucket happens to list
+    /// the longer member first in both, so a first-match scan gives the right answer today. It
+    /// would stop doing so the moment someone appends a type or sorts the list, and nothing in
+    /// the suite would notice, because both prefixes still parse as SOME link. Depending on
+    /// array order for correctness is the trap ORG-21 was about; taking the longest removes it.
     static func registeredLinkTypeLength(in chars: ScalarSlice, at i: Int) -> Int? {
+        guard i < chars.count else { return nil }
+        let first = OrgParser.asciiLowered(chars[i]).value
+        guard first < 128 else { return nil }
         var best: Int?
-        for type in linkTypes {
+        for type in linkTypesByFirstScalar[Int(first)] {
             guard i + type.count <= chars.count else { continue }
             if let best, type.count <= best { continue }
             var matched = true
