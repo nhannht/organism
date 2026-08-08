@@ -51,44 +51,12 @@ defaults:
 jobs:
   macos:
     name: macOS - every gate, oracle included
-    runs-on: macos-15
+    # macos-26, not macos-15, and the reason is `PinnedTableDriftTests`. See the note on the
+    # preflight's OS assertion below.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
-# `PinnedTableDriftTests` compares Swift's OWN Unicode case tables against Emacs's, so its
-      # shipped difference sets are a function of both toolchains -- which those tests' doc
-      # comments do not say, because until this workflow existed the suite had only ever run on
-      # one machine. `OrgParser.upcaseDeclined` lists U+A7CF, U+A7D3, U+A7D5 and the
-      # U+16EBB..U+16ED3 Beria Erfe block among the scalars Swift uppercases and Emacs does not;
-      # a Swift whose Unicode data predates them does not uppercase them either, so all 28 read
-      # as "in the shipped table but not the regenerated data" and both tests fail.
-      #
-      # Measured on this runner: /usr/bin/swift is 6.1.2, and the newest installed Xcode (26.3)
-      # gives 6.2.4. The tables were generated on 6.3.3. Emacs matches exactly either way -- 30.2
-      # / org 9.7.11 -- so Swift is the only variable.
-      #
-      # Installing the pinned toolchain rather than touching the tables. The repository already
-      # treats its reference Emacs as a pinned input; the Swift toolchain is the same kind of
-      # input, and those tests print "never edit this expectation to make the run green".
-      - name: Use the newest Xcode, for its SDKs
-        run: |
-          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-          echo "available: $(ls -d /Applications/Xcode*.app | tr '\n' ' ')"
-          echo "selecting: $latest"
-          sudo xcode-select -s "$latest"
-
-      - name: Install the Swift toolchain the pinned tables were generated on
-        run: |
-          set -euo pipefail
-          url=https://download.swift.org/swift-6.3.3-release/xcode/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-osx.pkg
-          curl -fsSL -o "$RUNNER_TEMP/swift.pkg" "$url"
-          sudo installer -pkg "$RUNNER_TEMP/swift.pkg" -target /
-          toolchain=/Library/Developer/Toolchains/swift-6.3.3-RELEASE.xctoolchain
-          if [ ! -d "$toolchain" ]; then
-            echo "expected the toolchain at $toolchain; found:"; ls /Library/Developer/Toolchains
-            exit 1
-          fi
-          echo "$toolchain/usr/bin" >> "$GITHUB_PATH"
 
       - name: Install the oracle's dependencies
         run: |
@@ -124,11 +92,25 @@ jobs:
           emacs --batch -Q --eval '(princ (concat "emacs " emacs-version " / org " (org-version)))'
           echo
           swift --version
-          # Asserted, not just printed. If the toolchain install above silently failed to take
-          # effect, the visible symptom would be two PinnedTableDrift failures about Unicode
-          # scalars -- a long way from the cause. This turns that into one line naming it.
-          if ! swift --version | grep -q "Swift version 6\.3"; then
-            echo "MISMATCH  expected Swift 6.3.x, the toolchain the pinned Unicode tables were built on"
+          sw_vers
+          # The OS version is asserted, and it is the one input here nobody would guess.
+          #
+          # `PinnedTableDriftTests` compares Swift's own Unicode case tables against Emacs's, so
+          # its shipped difference sets depend on where Swift's case data comes from. On macOS
+          # that is the OS, not the toolchain: the standard library has been ABI-stable and
+          # OS-provided since Swift 5, so `uppercased()` answers from whatever Unicode data the
+          # running macOS ships.
+          #
+          # Measured, and it is why this job is macos-26. `OrgParser.upcaseDeclined` lists
+          # U+A7CF, U+A7D3, U+A7D5 and the U+16EBB..U+16ED3 Beria Erfe block among the scalars
+          # Swift uppercases and Emacs does not. On macOS 15 those 28 do not uppercase at all, so
+          # both difference-set tests failed with all 28 "in the shipped table but not the
+          # regenerated data" -- IDENTICALLY under three different toolchains (6.1.2 from
+          # /usr/bin, 6.2.4 from Xcode 26.3, and 6.3.3 installed from swift.org). Three
+          # toolchains, one result: the toolchain was never the variable. Emacs matched exactly
+          # throughout, 30.2 / org 9.7.11.
+          if ! sw_vers -productVersion | grep -q '^26\.'; then
+            echo "MISMATCH  expected macOS 26.x -- the OS whose Unicode data the pinned tables were built against"
             fail=1
           fi
           exit $fail
