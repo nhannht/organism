@@ -55,23 +55,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `PinnedTableDriftTests` compares Swift's own Unicode case tables against Emacs's, and the
-      # shipped difference sets are therefore a function of BOTH toolchains -- which the test's
-      # doc comment does not say, because until this workflow existed the suite had only ever run
-      # on one machine. The runner's default /usr/bin/swift is 6.1.2 against 6.3.3 locally, and
-      # the older Unicode data is missing case mappings for 28 recent scalars (U+A7CE, U+A7D2,
-      # the U+16EA0 Medefaidrin block), so both difference-set tests failed with all 28 "in the
-      # shipped table but not the regenerated data". Emacs was identical, 30.2 / org 9.7.11.
+# `PinnedTableDriftTests` compares Swift's OWN Unicode case tables against Emacs's, so its
+      # shipped difference sets are a function of both toolchains -- which those tests' doc
+      # comments do not say, because until this workflow existed the suite had only ever run on
+      # one machine. `OrgParser.upcaseDeclined` lists U+A7CF, U+A7D3, U+A7D5 and the
+      # U+16EBB..U+16ED3 Beria Erfe block among the scalars Swift uppercases and Emacs does not;
+      # a Swift whose Unicode data predates them does not uppercase them either, so all 28 read
+      # as "in the shipped table but not the regenerated data" and both tests fail.
       #
-      # So this selects the newest Xcode rather than editing the tables. The repository already
-      # pins its reference Emacs; the Swift toolchain is the same kind of pinned input, and the
-      # tables' own failure message says not to edit the expectation to make a run green.
-      - name: Use the newest Xcode, so the Unicode data matches the pinned reference
+      # Measured on this runner: /usr/bin/swift is 6.1.2, and the newest installed Xcode (26.3)
+      # gives 6.2.4. The tables were generated on 6.3.3. Emacs matches exactly either way -- 30.2
+      # / org 9.7.11 -- so Swift is the only variable.
+      #
+      # Installing the pinned toolchain rather than touching the tables. The repository already
+      # treats its reference Emacs as a pinned input; the Swift toolchain is the same kind of
+      # input, and those tests print "never edit this expectation to make the run green".
+      - name: Use the newest Xcode, for its SDKs
         run: |
           latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           echo "available: $(ls -d /Applications/Xcode*.app | tr '\n' ' ')"
           echo "selecting: $latest"
           sudo xcode-select -s "$latest"
+
+      - name: Install the Swift toolchain the pinned tables were generated on
+        run: |
+          set -euo pipefail
+          url=https://download.swift.org/swift-6.3.3-release/xcode/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-osx.pkg
+          curl -fsSL -o "$RUNNER_TEMP/swift.pkg" "$url"
+          sudo installer -pkg "$RUNNER_TEMP/swift.pkg" -target /
+          toolchain=/Library/Developer/Toolchains/swift-6.3.3-RELEASE.xctoolchain
+          if [ ! -d "$toolchain" ]; then
+            echo "expected the toolchain at $toolchain; found:"; ls /Library/Developer/Toolchains
+            exit 1
+          fi
+          echo "$toolchain/usr/bin" >> "$GITHUB_PATH"
 
       - name: Install the oracle's dependencies
         run: |
@@ -107,6 +124,13 @@ jobs:
           emacs --batch -Q --eval '(princ (concat "emacs " emacs-version " / org " (org-version)))'
           echo
           swift --version
+          # Asserted, not just printed. If the toolchain install above silently failed to take
+          # effect, the visible symptom would be two PinnedTableDrift failures about Unicode
+          # scalars -- a long way from the cause. This turns that into one line naming it.
+          if ! swift --version | grep -q "Swift version 6\.3"; then
+            echo "MISMATCH  expected Swift 6.3.x, the toolchain the pinned Unicode tables were built on"
+            fail=1
+          fi
           exit $fail
 
       - name: Layer 1 - the answer key still matches live Emacs
