@@ -21,3 +21,17 @@ publishing any number.
 | syn-prose.org | 4.40 | 3.99-4.70 / ~5.4 |
 | org-manual.org | refused | 3.87-4.74 / ~6.4 |
 | getting_started.org | 4.75 | 5.25 |
+
+## ASCII lanes in the four ICU predicates, 2026-08-08 (quiet machine)
+
+| file | before | after | ratio |
+|---|---|---|---|
+| syn-prose.org | 4.40 | 7.07 | 1.61x |
+| getting_started.org | 4.75 | 7.05 | 1.48x |
+| org-manual.org | ~6.3 | 6.77 | ~1.07x |
+| syn-emphasis.org | ~3.4 (est) | 4.22 | ~1.2x |
+
+Post-change profile: getBinaryProperties is gone from the flat view. New ranking:
+allocation churn ~30%, hashing ~11% (Set<Unicode.Scalar> predicates), iterator ~7%.
+
+Cumulative since session baseline: syn-prose 2.43 -> 7.07 (2.9x), manual refused -> 6.77.

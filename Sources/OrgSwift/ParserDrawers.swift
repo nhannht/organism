@@ -27,6 +27,10 @@ extension OrgParser {
     static func isDrawerNameChar(_ c: Unicode.Scalar) -> Bool {
         if c == "-" || c == "_" { return true }
         if isLetterScalar(c) || isNumberScalar(c) { return true }
+        // ASCII has no marks, so an ASCII scalar that got this far is not a name char - and
+        // the mark check below is an ICU call this line keeps off the hot path. Gated with
+        // the other ASCII lanes by `ScalarClassFastPathTests`.
+        if c.value < 0x80 { return false }
         switch c.properties.generalCategory {
         case .nonspacingMark, .spacingMark, .enclosingMark: return true
         default: return false

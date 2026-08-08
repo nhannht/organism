@@ -152,6 +152,19 @@ extension OrgParser {
     /// deliberately NOT included -- `+`, `=`, `$`, `~`, `|` are symbols, not punctuation, and
     /// treating them as punctuation would truncate `https://e.com/a=b` to `https://e.com/a`.
     static func isPunctuationScalar(_ c: Unicode.Scalar) -> Bool {
+        // ASCII lane, no ICU: the P* members of ASCII are exactly these 23 - `$ + < = > ^ \``
+        // `| ~` are SYMBOLS (Sm/Sc/Sk), which is the distinction the doc comment above is
+        // about. `ScalarClassFastPathTests` holds this list against the pure category test
+        // over every valid scalar.
+        if c.value < 0x80 {
+            switch c {
+            case "!", "\"", "#", "%", "&", "'", "(", ")", "*", ",", "-", ".", "/",
+                 ":", ";", "?", "@", "[", "\\", "]", "_", "{", "}":
+                return true
+            default:
+                return false
+            }
+        }
         switch c.properties.generalCategory {
         case .connectorPunctuation, .dashPunctuation, .openPunctuation, .closePunctuation,
              .initialPunctuation, .finalPunctuation, .otherPunctuation:

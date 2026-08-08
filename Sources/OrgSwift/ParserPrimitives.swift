@@ -211,7 +211,21 @@ extension OrgParser {
     /// from both on 1,784 scalars, since `isAlphabetic` and `isLetter` alike include
     /// Other_Alphabetic (U+0345, U+0363 and the rest of the combining-mark letters) which L* does
     /// not. So this is a behaviour-PRESERVING port, not a widening.
-    static func isLetterScalar(_ s: Unicode.Scalar) -> Bool { s.properties.isAlphabetic }
+    /// The ASCII lane answers without touching ICU: the profile put
+    /// `_swift_stdlib_getBinaryProperties` at 21-25% of a whole parse, almost all of it from
+    /// this predicate and `isNumberScalar` running on ordinary ASCII prose. The lane is
+    /// exactly `Alphabetic` restricted to ASCII (A-Z and a-z, nothing else), and
+    /// `ScalarClassFastPathTests` proves the split agrees with the pure property over every
+    /// valid scalar on every test run.
+    static func isLetterScalar(_ s: Unicode.Scalar) -> Bool {
+        if s.value < 0x80 {
+            switch s.value {
+            case 0x41...0x5A, 0x61...0x7A: return true
+            default: return false
+            }
+        }
+        return s.properties.isAlphabetic
+    }
 
     /// `Character.isNumber`, exactly, evaluated on one scalar.
     ///
@@ -219,7 +233,12 @@ extension OrgParser {
     /// 1,112,064. General category N* is again the wrong answer, differing on 99 scalars -- the
     /// CJK ideographic numerals (U+3405, U+4E00, ...) are `otherLetter` by category yet carry a
     /// numeric type, and `Character.isNumber` counts them.
-    static func isNumberScalar(_ s: Unicode.Scalar) -> Bool { s.properties.numericType != nil }
+    /// Same ASCII lane as `isLetterScalar`, same gate: the only ASCII scalars carrying a
+    /// numeric type are the ten digits.
+    static func isNumberScalar(_ s: Unicode.Scalar) -> Bool {
+        if s.value < 0x80 { return s.value >= 0x30 && s.value <= 0x39 }
+        return s.properties.numericType != nil
+    }
 
     /// ASCII-only case fold: what org actually asks wherever this parser matches document text
     /// against a literal ASCII keyword (`#+begin_`, `#+end_`, `#+call:`, `#+tblfm:`, link types).
