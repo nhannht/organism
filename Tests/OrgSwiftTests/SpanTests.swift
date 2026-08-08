@@ -35,12 +35,19 @@ struct SpanTests {
 
     /// Node types `parseOrg` emits a span for.
     ///
-    /// EMPTY UNTIL THE PARSER THREADS OFFSETS. When it is not empty, the comparison test fails in
-    /// BOTH directions: a listed type whose span is missing or wrong is red, and a type NOT
-    /// listed that emits a span anyway is also red. The second direction is the one that matters
-    /// -- without it this degrades into a permission list that silently grows, which is how
-    /// `knownRefusals` was nearly lost.
-    static let spannedTypes: Set<String> = []
+    /// SIX of the 55 construction sites, chosen to exercise every hard part rather than for
+    /// coverage: `document` and `section` for a plain line range, `headline` for an extent only
+    /// knowable once the NEXT headline is found, `paragraph` for an end that moves after the node
+    /// is built, and the emphasis family for the object layer, where the offset is an arithmetic
+    /// descent through `parseObjects`' base rather than a line lookup.
+    ///
+    /// The comparison fails in BOTH directions: a listed type whose span is missing or wrong is
+    /// red, and a type NOT listed that emits a span anyway is also red. The second direction is
+    /// what stops this becoming a permission list that grows silently as sites are converted.
+    static let spannedTypes: Set<String> = [
+        "document", "section", "headline", "paragraph",
+        "bold", "italic", "underline", "strikethrough",
+    ]
 
     /// `text` is the ONLY position-free node type, measured rather than assumed: 322 text nodes
     /// and 676 positioned nodes across 54 distinct types in the 120 conformance cases, with no
@@ -189,18 +196,50 @@ struct SpanTests {
 
     // MARK: - The comparison half, inert until the parser threads offsets
 
-    /// Every type in `spannedTypes` matches org's span, and no type outside it emits one.
+    /// Our spans equal org's, for the implemented types, on every conformance case.
     ///
-    /// Vacuous while `spannedTypes` is empty AND the parser exposes no spans. Kept in place from
-    /// the start so the first type to be implemented is graded by an existing gate rather than by
-    /// one written to fit it.
-    @Test("spannedTypes is empty until the parser threads offsets")
-    func comparisonHalfIsNotYetLive() {
-        #expect(Self.spannedTypes.isEmpty,
-                """
-                spannedTypes is no longer empty, so the parser is expected to emit spans -- \
-                wire this test to compare parseOrg's spans against runOracleSpanDump's, \
-                failing in BOTH directions, and delete this placeholder.
-                """)
+    /// Compared as canonically sorted RECORDS rather than as two trees walked together. A tree
+    /// comparison needs both sides to agree on a child ORDER, and they demonstrably do not yet:
+    /// see `siblingOrderingHoldsExceptForAffiliatedObjects` for where the oracle's order and a
+    /// consumer's diverge. Sorting by (begin, end, type) removes that question from this gate
+    /// instead of answering it by accident.
+    ///
+    /// What that costs, stated rather than glossed: two nodes of the SAME type with identical
+    /// extents are indistinguishable here, so a span attached to the wrong one of such a pair
+    /// would pass. Nothing in the corpus produces that shape today, and the honest fix is a
+    /// shape-mirroring comparison once the child-order question has its own answer.
+    @Test("our spans equal org's for every implemented type", arguments: cases)
+    func ourSpansMatchTheOracle(_ testCase: CorpusLoader.ConformanceCase) throws {
+        let url = HarnessSupport.conformanceInputURL(for: testCase.name)
+        guard let oracleRoot = try? HarnessSupport.runOracleSpanDump(on: url) else { return }
+        guard let tree = try? parseOrgRetainingSpans(testCase.inputOrg) else {
+            // parseOrg refuses this input. Its refusals are gated by SweepTests in both
+            // directions already; a refusal here is not a span defect.
+            return
+        }
+
+        let ours = OrgParser.spanRecords(in: tree)
+
+        // BOTH DIRECTIONS. Anything we emit outside the declared set is a defect even if its
+        // numbers are right, because the set is what tells a reader how far this work has got.
+        let stray = ours.filter { !Self.spannedTypes.contains($0.type) }
+        #expect(stray.isEmpty,
+                "\(testCase.name): spans emitted for undeclared types \(Set(stray.map(\.type)).sorted())")
+
+        let theirs = oracleRoot.walk()
+            .filter { Self.spannedTypes.contains($0.type) }
+            .compactMap { node -> OrgSpanRecord? in
+                guard let begin = node.begin, let end = node.end else { return nil }
+                return OrgSpanRecord(type: node.type, begin: begin, end: end,
+                                     contentsBegin: node.contentsBegin,
+                                     contentsEnd: node.contentsEnd)
+            }
+            .sorted()
+
+        #expect(ours.filter { Self.spannedTypes.contains($0.type) } == theirs, """
+            \(testCase.name): spans differ from org.
+            ours:   \(ours.filter { Self.spannedTypes.contains($0.type) })
+            theirs: \(theirs)
+            """)
     }
 }

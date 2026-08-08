@@ -1007,10 +1007,16 @@ extension OrgParser {
     ) throws -> OrgJSON {
         // The contents start one past the marker at `i`, so they start at `base + i + 1`.
         let contents = String(scalars: chars[(i + 1)..<match.closer])
+        // The markers are one scalar each, so the node runs from the opener at `i` to just past
+        // the closer, plus the character-counted post-blank org folds into an object's `:end`.
+        let begin = base + i
+        let contentsRange = (base + i + 1)..<(base + match.closer)
         return .object([
             "type": .string(type),
             "children": .array(try parseObjects(contents, in: container, at: base + i + 1)),
             "postBlank": .int(match.postBlank),
+            OrgParser.spanKey: OrgParser.spanValue(
+                begin, base + match.closer + 1 + match.postBlank, contents: contentsRange),
         ])
     }
 

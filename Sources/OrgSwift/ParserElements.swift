@@ -114,13 +114,20 @@ extension OrgParser {
         mayOpenWithPlanning: Bool = false,
         propertyDrawerMode: PropertyDrawerMode = .none
     ) throws -> OrgJSON {
-        .object([
+        let children = try parseElementRun(
+            in: range,
+            mayOpenWithPlanning: mayOpenWithPlanning,
+            propertyDrawerMode: propertyDrawerMode)
+        // A section's own `postBlank` is always 0 (trailing blanks belong to the innermost
+        // element), so unlike a paragraph its extent IS final here: the whole range, contents
+        // identical to it.
+        let extent = lines[range.lowerBound].offset..<lines[range.upperBound - 1].endOffset
+        return .object([
             "type": .string("section"),
-            "children": .array(try parseElementRun(
-                in: range,
-                mayOpenWithPlanning: mayOpenWithPlanning,
-                propertyDrawerMode: propertyDrawerMode)),
+            "children": .array(children),
             "postBlank": .int(0),
+            OrgParser.spanKey: OrgParser.spanValue(extent.lowerBound, extent.upperBound,
+                                                   contents: extent),
         ])
     }
 
@@ -188,6 +195,11 @@ extension OrgParser {
                     throw OrgError.unimplemented("leading blank line inside a greater-block body")
                 }
                 last["postBlank"] = .int(existing + count)
+                // org's `:end` INCLUDES the blank lines it just absorbed, so the element's
+                // extent is only settled here - which is precisely why a span rides in the node
+                // rather than being appended to a side collector when the node was built.
+                // `i` has already advanced past the blank run.
+                last = OrgParser.withSpan(last, endingAt: lines[i - 1].endOffset)
                 elements.append(.object(last))
                 // A blank line ends the chain: org's guard requires the previous line to be
                 // non-blank. Measured both ways -- `# c / <blank> / :PROPERTIES:` is an ordinary
@@ -255,6 +267,11 @@ extension OrgParser {
                     at: runEnd, in: range, propertyDrawerAllowed: false)
                 guard var fields = node.objectValue else { throw OrgError.unimplemented("affiliated keywords attach to a non-object element") }
                 fields["affiliated"] = try affiliatedValue(from: affiliated)
+                // org's `:begin` for a decorated element is the FIRST affiliated keyword line,
+                // not the element's own. The second of the two patch sites where a node's extent
+                // changes after it was built, and the reason `contents` is tracked separately
+                // from `begin` at all: the contents stay where they were, only the node grows.
+                fields = OrgParser.withSpan(fields, beginningAt: lines[i].offset)
                 elements.append(.object(fields))
                 propertyDrawerMode = propertyDrawerMode.afterElement(
                     ofType: fields["type"]?.stringValue)
@@ -763,8 +780,16 @@ extension OrgParser {
             text.append(String(scalars: lines[lineIndex].text))
             if lines[lineIndex].hasNewline { text.append("\n") }
         }
+        // The contents END where the text does. The node's `end` runs further whenever blank
+        // lines follow, and those are consumed by the caller AFTER this returns - see the
+        // `postBlank` patch in `parseElementRun`, which moves this span's end to match. Setting
+        // it equal to the contents end here is the correct answer for a paragraph with nothing
+        // blank after it, and the starting point the patch corrects otherwise.
+        let contents = lines[paragraphStart].offset..<lines[i - 1].endOffset
         return (.object([
             "type": .string("paragraph"),
+            OrgParser.spanKey: OrgParser.spanValue(contents.lowerBound, contents.upperBound,
+                                                   contents: contents),
             // The loop above concatenates `lines[k].text` plus that line's OWN newline, so `text`
             // reproduces the source verbatim over `paragraphStart..<i` and a local index into it
             // is a document offset shifted by the first line's. Measured before it was relied on:

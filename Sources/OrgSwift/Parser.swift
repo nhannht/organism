@@ -97,6 +97,20 @@ public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> 
     // built, and this parse's report is simply not the thing being asked for. Reusing pass 1's
     // would work only because the two agree, which is the invariant above -- relying on it here
     // would make a proof do the job of a variable.
+    return OrgParser.strippingSpans(try parseOrgRetainingSpans(source, todoKeywords: todoKeywords))
+}
+
+/// `parseOrg`'s tree with the internal span key still on it (ORG-32).
+///
+/// Not public, and deliberately so: the shape a consumer should get - flat records, a parallel
+/// tree, positions on a typed node - is the decision the span spike exists to inform, and
+/// freezing one here would answer it by default. The gate reads this through `@testable`.
+func parseOrgRetainingSpans(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
+    let collected = RadioTargetCollector()
+    _ = try OrgParser(
+        source: source, todoKeywords: todoKeywords,
+        radioTargets: [], radioCollector: collected
+    ).parseDocument()
     return try OrgParser(
         source: source, todoKeywords: todoKeywords,
         radioTargets: RadioTarget.compile(collected.values),

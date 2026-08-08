@@ -82,8 +82,21 @@ extension OrgParser {
         // mean something: `parseSection` runs while a builder is on this stack, so element and
         // object nesting inside a headline accumulate on top of the headline depth, and it is
         // their SUM that the tree's depth -- and its teardown -- actually follows.
-        func closeTop() {
-            let finished = stack.removeLast().build()
+        func closeTop(endingAt end: Int) {
+            let top = stack.removeLast()
+            // A headline's extent runs to the end of its whole SUBTREE, not to the next headline
+            // line of any level: measured, `* One` / `** Two` / `* Three` gives the first
+            // headline an end past `** Two`, with `:contents-begin` on the line after its own.
+            // So the span is settled HERE, where the subtree is complete, rather than where the
+            // headline line was read - the third distinct shape of "the extent is not known at
+            // construction" in this parser, after the postBlank and affiliated patches.
+            //
+            // `contents` exists only when the headline has children at all; org reports no pair
+            // for a childless one, and a pair spanning nothing would be a different claim.
+            top.span = OrgParser.spanValue(
+                top.beginOffset, end,
+                contents: top.children.isEmpty ? nil : top.contentsOffset..<end)
+            let finished = top.build()
             nesting.leave()
             if let parent = stack.last {
                 parent.children.append(finished)
@@ -93,19 +106,39 @@ extension OrgParser {
         }
 
         for (position, entry) in headlineIndices.enumerated() {
-            while let top = stack.last, top.trueLevel >= entry.level { closeTop() }
+            // Every headline this one closes ends where this one BEGINS, which is what makes a
+            // parent's span contain its children rather than stopping short of them.
+            while let top = stack.last, top.trueLevel >= entry.level {
+                closeTop(endingAt: lines[entry.index].offset)
+            }
 
             let builder = try parseHeadlineLine(lines[entry.index], level: entry.level)
+            builder.beginOffset = lines[entry.index].offset
 
             let regionEnd = position + 1 < headlineIndices.count
                 ? headlineIndices[position + 1].index
                 : lines.count
             let region = (entry.index + 1)..<regionEnd
 
+
             // `region` opens on the line AFTER the headline, because a headline line never holds
             // its own section. That is this call site's half of the `preBlank` rule; the shared
             // half is in `contentsStart`.
             let (contentStart, leadingBlanks) = OrgParser.contentsStart(in: lines, of: region)
+
+            // org's `:contents-begin` skips the headline's PRE-BLANK lines, so it is the first
+            // non-blank line after the headline - which `contentsStart` has just found. Not
+            // `lines[entry.index].endOffset`: measured on headline-inlinetask-depth, where one
+            // blank line between the headline and its body put the two an offset apart.
+            //
+            // When `region` holds nothing, `contentStart` lands on `regionEnd`, and that is the
+            // NEXT headline's line - the right answer for a headline whose only children are
+            // sub-headlines, since `region` stops at the next headline of any level. The bound
+            // check is for the one case with no next headline at all, where the headline has no
+            // children and this value is never read.
+            builder.contentsOffset = contentStart < lines.count
+                ? lines[contentStart].offset
+                : (lines.last?.endOffset ?? 0)
 
             if contentStart < region.upperBound {
                 // The headline has section content: blanks between the headline line and that
@@ -139,12 +172,20 @@ extension OrgParser {
             try nesting.enter()
             stack.append(builder)
         }
-        while !stack.isEmpty { closeTop() }
+        // Nothing closed these, so they run to the end of the document.
+        let documentEnd = lines.last?.endOffset ?? 0
+        while !stack.isEmpty { closeTop(endingAt: documentEnd) }
 
+        // The whole file. `lines.last` exists because the all-blank guard above returned
+        // already, and `endOffset` rather than `offset + count` so a final line without a
+        // newline is not short by one.
+        let extent = 0..<(lines.last?.endOffset ?? 0)
         return .object([
             "type": .string("document"),
             "children": .array(documentChildren),
             "postBlank": .int(0),
+            OrgParser.spanKey: OrgParser.spanValue(extent.lowerBound, extent.upperBound,
+                                                   contents: extent),
         ])
     }
 
@@ -199,6 +240,21 @@ extension OrgParser {
         var preBlank = 0
         var postBlank = 0
         var children: [OrgJSON] = []
+        /// Where this headline's stars are, and where the line after them starts.
+        ///
+        /// Both are facts about the headline's OWN line, so the caller sets them the moment the
+        /// builder exists - unlike `span`, which waits on the rest of the document.
+        var beginOffset = 0
+        var contentsOffset = 0
+
+        /// The headline's extent, settled in `closeTop` once its whole subtree is closed.
+        ///
+        /// A `var` because a headline's end is not knowable when its own line is read: it runs
+        /// past every descendant, to the next headline at its level or above. The builder already
+        /// exists for that reason - `preBlank`, `postBlank` and `children` are all filled in
+        /// later by the same caller - so this joins them rather than introducing a second
+        /// deferred-value mechanism.
+        var span: OrgJSON?
 
         init(
             level: Int, trueLevel: Int, todo: OrgJSON, title: [OrgJSON],
@@ -214,7 +270,7 @@ extension OrgParser {
         }
 
         func build() -> OrgJSON {
-            .object([
+            var fields: [String: OrgJSON] = [
                 "type": .string("headline"),
                 "level": .int(level),
                 "trueLevel": .int(trueLevel),
@@ -226,7 +282,12 @@ extension OrgParser {
                 "preBlank": .int(preBlank),
                 "children": .array(children),
                 "postBlank": .int(postBlank),
-            ])
+            ]
+            // Omitted rather than emitted as null when unset. The caller sets it on every
+            // headline it builds, so a nil here is a bug, and a null-valued key would let that
+            // bug travel as data instead of simply being absent.
+            if let span { fields[OrgParser.spanKey] = span }
+            return .object(fields)
         }
     }
 
