@@ -124,13 +124,97 @@ def uniorg_markers(tree):
             yield "affiliated keywords on a table"
 
 
+ORGIZE_TYPES = {
+    "entity", "latex-fragment", "latex-environment", "subscript", "superscript",
+    "line-break", "citation", "citation-reference", "diary-sexp",
+}
+
+
+def orgize_markers(tree):
+    for n in _nodes(tree):
+        t = n["type"]
+        if t in ORGIZE_TYPES:
+            yield "node type " + t
+        if t == "link":
+            # orgize 0.9 stores no :type equivalent (pathType) and matches only bracket
+            # links, so angle/plain/radio forms have no slot either
+            yield "link pathType"
+        if t == "timestamp" and n.get("rangeType") is not None:
+            yield "timestamp rangeType"
+        if t == "item":
+            if n.get("checkbox") is not None:
+                yield "item checkbox"
+            if n.get("counter") is not None:
+                yield "item counter"
+            if n.get("tag") is not None:
+                yield "item tag (descriptive list)"
+        if t == "list" and n.get("kind") == "descriptive":
+            yield "descriptive list"
+        if t == "headline" and n.get("commented"):
+            yield "commented headline"
+        if t == "src-block" and n.get("switches") is not None:
+            yield "src-block switches (fused into arguments)"
+        if t == "footnote-definition" and n.get("preBlank"):
+            yield "footnote-definition preBlank"
+        if n.get("affiliated"):
+            yield "affiliated keywords (no attachment in AST)"
+
+
+GO_ORG_TYPES = {
+    "babel-call", "inline-babel-call", "citation", "citation-reference", "entity",
+    "export-snippet", "radio-target", "target", "diary-sexp", "clock", "planning",
+    "dynamic-block",
+}
+
+GO_ORG_AFFILIATED_KEYS = {"CAPTION", "NAME", "ATTR_HTML"}
+
+
+def go_org_markers(tree):
+    for n in _nodes(tree):
+        t = n["type"]
+        if t in GO_ORG_TYPES:
+            yield "node type " + t
+        if t == "timestamp":
+            if n.get("kind") != "active":
+                yield "timestamp kind %s (only the active <...> form is parsed)" % n.get("kind")
+            if n.get("end") is not None:
+                yield "timestamp range"
+            if n.get("delay") is not None:
+                yield "timestamp delay"
+            d = n.get("start")
+            if isinstance(d, dict) and d.get("dayname") is not None:
+                yield "timestamp dayname (normalized through time.Time)"
+        if t == "headline" and n.get("commented"):
+            yield "commented headline"
+        if t == "item" and n.get("counter") is not None:
+            yield "item counter"
+        if t in ("headline", "item", "footnote-definition") and n.get("preBlank"):
+            yield "preBlank"
+        if t == "src-block" and n.get("switches") is not None:
+            yield "src-block switches (fused into the language token)"
+        if t == "table" and "value" in n:
+            yield "table.el table"
+        if t in ("subscript", "superscript") and n.get("useBrackets") is False:
+            yield "bare (unbraced) sub/superscript"
+        if t == "link" and n.get("linkType") == "angle":
+            yield "angle link"
+        for entry in n.get("affiliated") or []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("key") not in GO_ORG_AFFILIATED_KEYS:
+                yield "affiliated key " + str(entry.get("key"))
+            if entry.get("key") == "CAPTION":
+                for v in entry.get("value") or []:
+                    if isinstance(v, dict) and v.get("short") is not None:
+                        yield "dual CAPTION[short]"
+
+
 MARKERS = {
     "organism": lambda tree: iter(()),
     "org-element": lambda tree: iter(()),
     "uniorg": uniorg_markers,
-    # orgize / go-org marker lists are added alongside their adapters.
-    "orgize": lambda tree: iter(()),
-    "go-org": lambda tree: iter(()),
+    "orgize": orgize_markers,
+    "go-org": go_org_markers,
 }
 
 # ---------------------------------------------------------------------------- corpora
