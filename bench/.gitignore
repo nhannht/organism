@@ -8,8 +8,8 @@ corpus/synthetic/
 # Fetched by fetch-bench-corpus.sh - GPL/GFDL content, FETCH-ONLY, never commit.
 corpus/fetched/
 
-# Competitor build artifacts.
+# Competitor build artifacts. Lockfiles (Cargo.lock, pnpm-lock.yaml, go.sum) are COMMITTED -
+# they pin the competitor versions the published numbers were measured against.
 competitors/*/target/
 competitors/*/node_modules/
-competitors/*/go.sum
 competitors/*/*.bin

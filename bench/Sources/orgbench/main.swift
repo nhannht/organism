@@ -5,6 +5,7 @@ import OrgSwift
 //
 //   orgbench gen <dir> [--size BYTES]           write the synthetic corpus (deterministic)
 //   orgbench run [options] <file.org ...>       time parseOrg on each file, TSV to stdout
+//   orgbench sample <file> <warmup> <min-time>  raw ns-per-iteration lines (run-all.sh protocol)
 //
 // run options:
 //   --min-time SECONDS   target measuring time per file (default 1.0)
@@ -78,6 +79,23 @@ case "run":
     }
     FileHandle.standardError.write(Data("sink=\(benchSink)\n".utf8))
     if failed { exit(1) }
+
+case "sample":
+    // The cross-runner contract run-all.sh drives every parser through, this one included:
+    //   sample <file> <warmup> <min-time-seconds>
+    // prints one ns figure per measured iteration to stdout; the orchestrator does the stats.
+    guard args.count == 3, let warmup = Int(args[1]), let minTime = Double(args[2]),
+          warmup >= 0, minTime > 0 else {
+        die("usage: orgbench sample <file.org> <warmup> <min-time-seconds>")
+    }
+    do {
+        for ns in try sampleFile(path: args[0], minTime: minTime, warmup: warmup) {
+            print(Int(ns))
+        }
+    } catch {
+        die("\(args[0]): \(error)")
+    }
+    FileHandle.standardError.write(Data("sink=\(benchSink)\n".utf8))
 
 default:
     die("unknown command \"\(command)\"")

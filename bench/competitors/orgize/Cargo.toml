@@ -1,0 +1,13 @@
+[package]
+name = "orgize-runner"
+version = "0.1.0"
+edition = "2021"
+
+# 0.9 is the latest STABLE release - what `cargo add orgize` resolves to. The 0.10 line is
+# alpha-only on crates.io; if it ever ships stable, re-measure against it before publishing.
+[dependencies]
+orgize = "0.9"
+
+[profile.release]
+lto = true
+codegen-units = 1

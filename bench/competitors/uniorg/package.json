@@ -1,0 +1,8 @@
+{
+  "name": "uniorg-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "uniorg-parse": "^3.0.1"
+  }
+}

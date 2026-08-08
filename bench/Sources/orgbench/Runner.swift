@@ -49,14 +49,13 @@ private func nanoseconds(_ d: Duration) -> Double {
     return Double(c.seconds) * 1_000_000_000 + Double(c.attoseconds) / 1_000_000_000
 }
 
-/// Measures `parseOrg` on one file: `warmup` unmeasured runs, then enough iterations to fill
-/// `minTime` seconds (bounded to [5, maxIterations]), reporting median and MAD - robust
-/// statistics, because a laptop's background load poisons a mean.
+/// The shared timed loop: `warmup` unmeasured runs, then enough iterations to fill `minTime`
+/// seconds (at least 5, at most `maxIterations`), returning the raw per-iteration samples.
 ///
 /// The timed closure is the parse alone: the file is read and decoded once, outside the loop.
-func benchFile(
-    path: String, minTime: Double, warmup: Int, maxIterations: Int
-) throws -> BenchResult {
+func sampleFile(
+    path: String, minTime: Double, warmup: Int, maxIterations: Int = 20_000
+) throws -> [Double] {
     let source = try String(contentsOfFile: path, encoding: .utf8)
     let clock = ContinuousClock()
 
@@ -64,9 +63,8 @@ func benchFile(
         consume(try parseOrg(source))
     }
 
-    var estimate = 0.0
     let estimated = try clock.measure { consume(try parseOrg(source)) }
-    estimate = nanoseconds(estimated) / 1_000_000_000
+    let estimate = nanoseconds(estimated) / 1_000_000_000
     let iterations = min(maxIterations, max(5, Int(minTime / max(estimate, 1e-9))))
 
     var samples: [Double] = []
@@ -75,6 +73,18 @@ func benchFile(
         let d = try clock.measure { consume(try parseOrg(source)) }
         samples.append(nanoseconds(d))
     }
+    return samples
+}
+
+/// Measures `parseOrg` on one file and reduces the samples to median and MAD - robust
+/// statistics, because a laptop's background load poisons a mean.
+func benchFile(
+    path: String, minTime: Double, warmup: Int, maxIterations: Int
+) throws -> BenchResult {
+    let source = try String(contentsOfFile: path, encoding: .utf8)
+    var samples = try sampleFile(
+        path: path, minTime: minTime, warmup: warmup, maxIterations: maxIterations)
+    let iterations = samples.count
     samples.sort()
 
     let med = median(samples)
