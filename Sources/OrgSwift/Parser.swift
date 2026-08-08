@@ -61,8 +61,10 @@
 /// OBJECT, and only then does `org-element-parse-buffer` run with the resulting regexp live.
 ///
 /// So this parses the document TWICE: pass 1 with no targets, purely to find out which
-/// `radio-target` nodes the document actually builds, and pass 2 with those targets. Pass 1's tree
-/// is discarded.
+/// `radio-target` nodes the document actually builds, and pass 2 with those targets. Pass 1's
+/// tree is discarded - unless the document defines no radio target at all, in which case an
+/// empty target set is exactly what pass 1 already ran with, its tree is the answer, and pass 2
+/// is skipped. Most real documents take that single-pass path.
 ///
 /// That is not a workaround for a one-pass design, it is what makes the "where do radio links
 /// form" question disappear. Org's answer is a 34-container table -- collect where a
@@ -96,10 +98,16 @@ public func parseOrg(_ source: String, todoKeywords: [String]? = nil) throws -> 
 /// freezing one here would answer it by default. The gate reads this through `@testable`.
 func parseOrgRetainingSpans(_ source: String, todoKeywords: [String]? = nil) throws -> OrgJSON {
     let collected = RadioTargetCollector()
-    _ = try OrgParser(
+    let firstPass = try OrgParser(
         source: source, todoKeywords: todoKeywords,
         radioTargets: [], radioCollector: collected
     ).parseDocument()
+    // A document that defines no `<<<target>>>` is fully answered by pass 1. The ONLY input
+    // that differs between the passes is the compiled target set, and for this document it
+    // would be empty again - the same value pass 1 just ran with - so pass 2 would rebuild
+    // this exact tree. Most real documents take this path and pay for one parse, not two;
+    // the two-pass shape remains what it always was for the documents that need it.
+    if collected.values.isEmpty { return firstPass }
     return try OrgParser(
         source: source, todoKeywords: todoKeywords,
         radioTargets: RadioTarget.compile(collected.values),
