@@ -90,7 +90,7 @@ the whole verification story - run them yourself rather than taking this table's
 |---|---|
 | `harness/verify-corpus.sh` | 120 of 120 cases pass, 0 fail |
 | `harness/validate-schema.sh` | 1,442 of 1,442 stored answers valid against the published schema |
-| `swift test` | 64 tests, 16 suites, 0 failures, 53 known issues |
+| `swift test` | 66 tests, 17 suites, 0 failures, 53 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
 | Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
 | `sweep/` differential corpus | 1,322 inputs, 0 wrong trees - see `sweep/README.md` |
@@ -347,7 +347,7 @@ Every number below was checked directly in this repository, on this commit, not 
   pair.
 - 13 vendored real-world `.org` files in `real/`, across 2 sources
   (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 64 tests, 16 suites, 0 real failures, 53 known issues: ZERO
+- `swift test` on this commit: 66 tests, 17 suites, 0 real failures, 53 known issues: ZERO
   parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
   `interpret-data` losses.
 - 1,322 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,

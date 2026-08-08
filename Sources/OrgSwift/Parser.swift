@@ -347,7 +347,33 @@ struct OrgParser {
         let text: [Unicode.Scalar]
         let hasNewline: Bool
 
+        /// Where `text[0]` sits in the ROOT document, as a 0-based Unicode scalar offset (ORG-32).
+        ///
+        /// Absolute, never relative to the parser instance holding the line, and that is the
+        /// whole point. A sub-parser is handed an already-built line list, and for an item body
+        /// or a footnote definition the caller ASSEMBLES that list - a sliced first line plus
+        /// copies of a line range - so a per-instance coordinate system would need translating at
+        /// every boundary. Carrying the absolute offset on the line deletes the second coordinate
+        /// system instead of adding a conversion between two, which is what ORG-32's first
+        /// sketch proposed (a base-offset parameter on the sub-parser initializer) before the
+        /// spawn sites were read: both of them have the parent line and the slice index in scope,
+        /// so the arithmetic is available exactly where it is needed and nowhere else.
+        ///
+        /// Scalars because Emacs buffer positions count scalars and this parser already works on
+        /// `[Unicode.Scalar]` throughout - measured, see `harness/oracle-dump.el`'s ORG-32 block.
+        /// NOT a UTF-16 offset: an `NSRange` consumer converts at its own boundary, since this
+        /// library imports nothing, not even Foundation.
+        let offset: Int
+
         var isBlank: Bool { text.allSatisfy { $0 == " " || $0 == "\t" } }
+
+        /// One past this line's last scalar, INCLUDING its newline when it has one.
+        ///
+        /// Equal to the next line's `offset` whenever there is a next line, and still correct
+        /// when there is not - which is the case it exists for. A block body that runs to the end
+        /// of the file has no line after its opener to read an offset from, and
+        /// `lines[i + 1].offset` would be an out-of-bounds read rather than a wrong answer.
+        var endOffset: Int { offset + text.count + (hasNewline ? 1 : 0) }
 
         /// Index of the first non-indent scalar, i.e. where the line's CONTENT begins.
         ///
@@ -413,16 +439,24 @@ struct OrgParser {
 
         var built: [Line] = []
         var current: [Unicode.Scalar] = []
+        // `Line.offset` costs one counter on a scan this loop was already doing, which is why
+        // the root is the right place to establish the coordinate system: every other line in
+        // the parse is either a copy of one of these or a slice of one, so nothing downstream
+        // has to count anything again.
+        var scanned = 0
+        var lineStart = 0
         for ch in source.unicodeScalars {
+            scanned += 1
             if ch == "\n" {
-                built.append(Line(text: current, hasNewline: true))
+                built.append(Line(text: current, hasNewline: true, offset: lineStart))
                 current = []
+                lineStart = scanned
             } else {
                 current.append(ch)
             }
         }
         if !current.isEmpty {
-            built.append(Line(text: current, hasNewline: false))
+            built.append(Line(text: current, hasNewline: false, offset: lineStart))
         }
         self.lines = built
 

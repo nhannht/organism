@@ -247,9 +247,33 @@ extension OrgParser {
     ///     `#+RESULTſ: r`                       NOT affiliated: Emacs does not case-fold U+017F
     ///                                          to `s` here, so this stays keyword `RESULTſ`
     ///                                          (which is also a live check of the F19 table)
-    static func affiliatedParts(
-        of line: Line
-    ) -> (base: String, dual: String?, value: String)? {
+    /// The pieces of one affiliated keyword line, WITH where its parsed parts sit in the
+    /// document.
+    ///
+    /// A struct rather than the `(base, dual, value)` tuple it replaces, and the offsets are the
+    /// reason. `affiliatedValue` re-lexes `value` and `dual` as objects, so those objects need
+    /// document offsets (ORG-32) - but the run of tuples is collected in `parseElementRun`, which
+    /// knows the line index, and consumed in `affiliatedValue`, which does not. ORG-32 predicted
+    /// this exact gap: the origin was available at the source and discarded before use. Returning
+    /// it from here, where the `Line` is already in hand, closes it without threading a line
+    /// index through the collection.
+    ///
+    /// ABSOLUTE, not relative to the line, so no caller has to remember to add `line.offset`.
+    struct AffiliatedParts {
+        let base: String
+        /// The `[short]` form's text AND where it starts, as one optional rather than two.
+        ///
+        /// One field because "there is a dual" and "the dual has an offset" are the same fact.
+        /// Two optionals would make the mismatched state representable, and the only thing a
+        /// consumer could do about a text with no offset is guess or silently drop it - which is
+        /// exactly the shape of guard this parser treats as a defect rather than defensiveness.
+        let dual: (text: String, offset: Int)?
+        let value: String
+        /// Where `value`'s first scalar sits in the document.
+        let valueOffset: Int
+    }
+
+    static func affiliatedParts(of line: Line) -> AffiliatedParts? {
         let text = line.text
         var idx = 0
         while idx < text.count, text[idx] == " " || text[idx] == "\t" { idx += 1 }
@@ -263,7 +287,7 @@ extension OrgParser {
         let name = emacsUpcased(String(scalars: text[idx..<nameEnd]))
         guard isAffiliatedName(name) else { return nil }
 
-        var dual: String?
+        var dual: (text: String, offset: Int)?
         var cursor = nameEnd
         if text[cursor] == "[" {
             guard dualKeywords.contains(name) else { return nil }
@@ -275,7 +299,8 @@ extension OrgParser {
                 scan -= 1
             }
             guard let closeIndex = close else { return nil }
-            dual = String(scalars: text[(cursor + 1)..<closeIndex])
+            dual = (text: String(scalars: text[(cursor + 1)..<closeIndex]),
+                    offset: line.offset + cursor + 1)
             cursor = closeIndex + 1
         }
         guard cursor < text.count, text[cursor] == ":" else { return nil }
@@ -288,7 +313,12 @@ extension OrgParser {
         while valueEnd > valueStart, text[valueEnd - 1] == " " || text[valueEnd - 1] == "\t" {
             valueEnd -= 1
         }
-        return (affiliatedAliases[name] ?? name, dual, String(scalars: text[valueStart..<valueEnd]))
+        return AffiliatedParts(
+            base: affiliatedAliases[name] ?? name,
+            dual: dual,
+            value: String(scalars: text[valueStart..<valueEnd]),
+            valueOffset: line.offset + valueStart
+        )
     }
 
     /// The spellings `org-element` NORMALIZES away before this schema ever sees the tree
@@ -333,7 +363,7 @@ extension OrgParser {
     /// `#+HEADER:` are written says one overwrites and the other appends. It has to be measured
     /// per keyword, which is why each row above is a measurement rather than a generalization.
     func affiliatedValue(
-        from run: [(base: String, dual: String?, value: String)]
+        from run: [AffiliatedParts]
     ) throws -> OrgJSON {
         var order: [String] = []
         var fields: [String: OrgJSON] = [:]
@@ -345,7 +375,7 @@ extension OrgParser {
             case "RESULTS":
                 fields["RESULTS"] = .object([
                     "value": .string(entry.value),
-                    "hash": entry.dual.map(OrgJSON.string) ?? .null,
+                    "hash": entry.dual.map { OrgJSON.string($0.text) } ?? .null,
                 ])
             case "CAPTION":
                 var entries = fields["CAPTION"]?.arrayValue ?? []
@@ -362,7 +392,7 @@ extension OrgParser {
                     // Until this landed, `#+CAPTION: cap\\` fell to the blanket `\` throw and
                     // declined honestly, so the gap was a coverage loss and not a wrong tree.
                     // Links landing is what would have turned it into one.
-                    "long": .array(try parseObjects(entry.value, in: .keyword)),
+                    "long": .array(try parseObjects(entry.value, in: .keyword, at: entry.valueOffset)),
                     "short": try captionShort(entry.dual),
                 ]))
                 fields["CAPTION"] = .array(entries)
@@ -405,9 +435,9 @@ extension OrgParser {
     /// The SHORT form is the same keyword container as `long`, so it carries the same ORG-22
     /// permission: a caption permits `line-break`, org's `keyword` restriction row being the
     /// standard set minus `footnote-reference`.
-    private func captionShort(_ dual: String?) throws -> OrgJSON {
-        guard let dual, !dual.isEmpty else { return .null }
-        return .array(try parseObjects(dual, in: .keyword))
+    private func captionShort(_ dual: (text: String, offset: Int)?) throws -> OrgJSON {
+        guard let dual, !dual.text.isEmpty else { return .null }
+        return .array(try parseObjects(dual.text, in: .keyword, at: dual.offset))
     }
 
     // MARK: File-level settings (the two-pass scan)

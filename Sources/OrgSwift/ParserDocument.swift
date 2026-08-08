@@ -358,7 +358,10 @@ extension OrgParser {
                 ? []
                 : [OrgJSON.object(["type": .string("text"), "value": .string("")])]
         } else {
-            title = try parseObjects(titleText, in: .headline)
+            // Two nested contiguous slices of one line: `titleChars` is `line.text[start..<end]`,
+            // and the title is `titleChars[titleStart..<titleEnd]`. So the offsets compose.
+            title = try parseObjects(titleText, in: .headline,
+                                     at: line.offset + start + titleStart)
         }
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title,

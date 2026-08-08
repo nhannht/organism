@@ -328,7 +328,24 @@ extension OrgParser {
     ///   record of that happening: a new container silently took a permission nobody measured it
     ///   to have. Naming the container at every call site is what makes the wrong answer
     ///   something a person has to type on purpose.
-    func parseObjects(_ s: String, in container: ObjectContainer) throws -> [OrgJSON] {
+    /// - Parameter base: where `s`'s first scalar sits in the ROOT document, as a 0-based scalar
+    ///   offset (ORG-32). `s` is a detached `String`, so without this the object layer has no
+    ///   route back to the source at all and an editor cannot map any inline node to the
+    ///   characters it came from.
+    ///
+    ///   Deliberately has NO DEFAULT, for the reason `container` has none: the value that reads
+    ///   as harmless -- 0, "the start of the document" -- is silently wrong at 16 of the 17 call
+    ///   sites, and wrong in a way no existing gate can see, since `parseOrg`'s tree does not
+    ///   carry offsets. Naming it at every call site is what makes the wrong answer something a
+    ///   person has to type on purpose.
+    ///
+    ///   Every RECURSIVE call passes `base + range.lowerBound`, because each one hands down
+    ///   `String(scalars: chars[range])` with the range explicit at the call site. The entry
+    ///   points are where the real work is, and two of them were measured before this parameter
+    ///   was added: a paragraph's text is the source verbatim (its lines concatenated with their
+    ///   own newlines), so the map is the identity from `lines[start].offset`; a headline's
+    ///   title is two nested contiguous slices of one line.
+    func parseObjects(_ s: String, in container: ObjectContainer, at base: Int) throws -> [OrgJSON] {
         // The OBJECT-layer half of the same funnel `parseElementRun` guards: every nested object
         // -- an emphasis body, a link description, an inline footnote's contents, a citation's
         // prefix -- re-enters here. The deep vector on this side is the inline footnote
@@ -490,7 +507,9 @@ extension OrgParser {
                     "linkType": .string("plain"),
                     "pathType": .string("radio"),
                     "path": .string(matched),
-                    "description": .array(try parseObjects(matched, in: .link)),
+                    // `matched` IS `chars[i..<end]`, so it starts at `i` within this contents
+                    // string and at `base + i` in the document.
+                    "description": .array(try parseObjects(matched, in: .link, at: base + i)),
                     "postBlank": .int(postBlank),
                 ]))
                 i = k
@@ -538,7 +557,7 @@ extension OrgParser {
                         rawTarget: Array(chars[i..<end]),
                         description: nil
                     )
-                    let (node, next) = try linkNode(match, in: chars)
+                    let (node, next) = try linkNode(match, in: chars, at: base)
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -620,7 +639,7 @@ extension OrgParser {
                 // five falls through to the text run -- org's own answer for a bare `[`.
                 if container.permits(.link), let match = try bracketLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let (node, next) = try linkNode(match, in: chars)
+                    let (node, next) = try linkNode(match, in: chars, at: base)
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -657,7 +676,8 @@ extension OrgParser {
                     // empty array, when it is false. The schema enforces that with an if/then.
                     if let body = match.body {
                         fields["children"] = .array(try parseObjects(
-                            String(scalars: chars[body]), in: .footnoteReference
+                            String(scalars: chars[body]), in: .footnoteReference,
+                            at: base + body.lowerBound
                         ))
                     }
                     nodes.append(.object(fields))
@@ -692,7 +712,7 @@ extension OrgParser {
                 if container.permits(.citation),
                    let match = try citationMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let node = try citationNode(match, in: chars)
+                    let node = try citationNode(match, in: chars, at: base)
                     nodes.append(node)
                     var k = match.end
                     while k < chars.count, chars[k] == " " || chars[k] == "\t" { k += 1 }
@@ -709,7 +729,7 @@ extension OrgParser {
                 // opens none of them is proven plain text.
                 if container.permits(.link), let match = try angleLinkMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let (node, next) = try linkNode(match, in: chars)
+                    let (node, next) = try linkNode(match, in: chars, at: base)
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -754,7 +774,8 @@ extension OrgParser {
                     nodes.append(.object([
                         "type": .string("radio-target"),
                         "children": .array(try parseObjects(
-                            String(scalars: chars[match.body]), in: .radioTarget
+                            String(scalars: chars[match.body]), in: .radioTarget,
+                            at: base + match.body.lowerBound
                         )),
                         "postBlank": .int(postBlank),
                     ]))
@@ -804,7 +825,7 @@ extension OrgParser {
                 if c == "_", let match = emphasisMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     nodes.append(try emphasisContainerNode(
-                        "underline", .underline, match, in: chars, openedAt: i))
+                        "underline", .underline, match, in: chars, openedAt: i, at: base))
                     i = match.closer + 1 + match.postBlank
                     textStart = i
                     continue
@@ -826,7 +847,8 @@ extension OrgParser {
                             "useBrackets": .bool(match.useBrackets),
                             "children": .array(try parseObjects(
                                 String(scalars: chars[match.body]),
-                                in: c == "_" ? .subscript : .superscript
+                                in: c == "_" ? .subscript : .superscript,
+                                at: base + match.body.lowerBound
                             )),
                             "postBlank": .int(postBlank),
                         ]))
@@ -950,7 +972,7 @@ extension OrgParser {
                         default: ("strikethrough", .strikeThrough)
                         }
                         objectNode = try emphasisContainerNode(
-                            type, container, match, in: chars, openedAt: i)
+                            type, container, match, in: chars, openedAt: i, at: base)
                     default:
                         // Leaves: value stays completely literal, never re-parsed (SCHEMA.md
                         // section 7, rule 10).
@@ -981,12 +1003,13 @@ extension OrgParser {
     /// cannot drift apart in shape, only in which `ObjectContainer` row restricts them.
     private func emphasisContainerNode(
         _ type: String, _ container: ObjectContainer, _ match: EmphasisMatch,
-        in chars: [Unicode.Scalar], openedAt i: Int
+        in chars: [Unicode.Scalar], openedAt i: Int, at base: Int
     ) throws -> OrgJSON {
+        // The contents start one past the marker at `i`, so they start at `base + i + 1`.
         let contents = String(scalars: chars[(i + 1)..<match.closer])
         return .object([
             "type": .string(type),
-            "children": .array(try parseObjects(contents, in: container)),
+            "children": .array(try parseObjects(contents, in: container, at: base + i + 1)),
             "postBlank": .int(match.postBlank),
         ])
     }
@@ -1169,7 +1192,7 @@ extension OrgParser {
     /// and the `;` itself belongs to neither. `:post-blank` is hardcoded 0 in org, so it is 0
     /// here too rather than measured off the source.
     private func citationReferences(
-        in chars: [Unicode.Scalar], over region: Range<Int>
+        in chars: [Unicode.Scalar], over region: Range<Int>, at base: Int
     ) throws -> [OrgJSON] {
         var nodes: [OrgJSON] = []
         var begin = region.lowerBound
@@ -1187,11 +1210,11 @@ extension OrgParser {
             ]
             fields["prefix"] = begin < key.lowerBound
                 ? .array(try parseObjects(String(scalars: chars[begin..<key.lowerBound]),
-                                          in: .citationReference))
+                                          in: .citationReference, at: base + begin))
                 : .null
             fields["suffix"] = key.upperBound < suffixEnd
                 ? .array(try parseObjects(String(scalars: chars[key.upperBound..<suffixEnd]),
-                                          in: .citationReference))
+                                          in: .citationReference, at: base + key.upperBound))
                 : .null
             nodes.append(.object(fields))
             begin = end
@@ -1212,7 +1235,7 @@ extension OrgParser {
 
     /// The whole `citation` node for a match, references and all.
     func citationNode(
-        _ match: CitationMatch, in chars: [Unicode.Scalar]
+        _ match: CitationMatch, in chars: [Unicode.Scalar], at base: Int
     ) throws -> OrgJSON {
         // The citation's OWN prefix and suffix are lexed under the CITATION-REFERENCE row, not
         // the citation's. org spells it out -- `org-element-citation-parser` binds
@@ -1222,7 +1245,8 @@ extension OrgParser {
         // cross-product, four wrong trees, on its first run.
         func secondary(_ range: Range<Int>?) throws -> OrgJSON {
             guard let range else { return .null }
-            return .array(try parseObjects(String(scalars: chars[range]), in: .citationReference))
+            return .array(try parseObjects(String(scalars: chars[range]),
+                                           in: .citationReference, at: base + range.lowerBound))
         }
         var postBlank = 0
         var k = match.end
@@ -1235,7 +1259,7 @@ extension OrgParser {
             "style": match.style.map(OrgJSON.string) ?? .null,
             "prefix": try secondary(match.prefix),
             "suffix": try secondary(match.suffix),
-            "children": .array(try citationReferences(in: chars, over: match.contents)),
+            "children": .array(try citationReferences(in: chars, over: match.contents, at: base)),
             "postBlank": .int(postBlank),
         ])
     }

@@ -305,7 +305,9 @@ extension OrgParser {
         if !b.ordered, let sep = OrgParser.tagSeparator(in: t, from: idx, upTo: t.count) {
             // `item` is org's row for a descriptive-list TAG, and it refuses `line-break`. The
             // item's BODY is a paragraph and permits one; the two are different containers.
-            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound]), in: .item))
+            // `t` is `lines[head].text`, so the tag starts `idx` scalars into that line.
+            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound]), in: .item,
+                                          at: lines[head].offset + idx))
             idx = sep.upperBound
             descriptive = true
         }
@@ -318,7 +320,12 @@ extension OrgParser {
         // A bullet line with nothing after it contributes no content line at all; `-\n` is an
         // item with an EMPTY body, not an item holding a blank line.
         if !firstRest.isEmpty {
-            bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline))
+            // `t` IS `lines[head].text`, so `idx` is a direct index into that line and the
+            // sliced body line's absolute offset is the bullet line's plus what the bullet,
+            // checkbox, counter and tag consumed. Nothing needs to know that breakdown; `idx` is
+            // already the answer.
+            bodyLines.append(Line(text: firstRest, hasNewline: lines[head].hasNewline,
+                                  offset: lines[head].offset + idx))
         }
         // ORG-24. The bullet line CAN hold the item's first content, unlike a headline line, so
         // this call site's `preBlank` counts from the bullet line itself. When the bullet line

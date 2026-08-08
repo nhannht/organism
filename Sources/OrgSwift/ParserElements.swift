@@ -200,7 +200,7 @@ extension OrgParser {
             // between (SCHEMA.md section 5). Collect the whole consecutive run first, because a
             // run chains onto ONE element: `#+NAME:` then `#+CAPTION:` then a table gives one
             // table carrying both.
-            var affiliated: [(base: String, dual: String?, value: String)] = []
+            var affiliated: [OrgParser.AffiliatedParts] = []
             var runEnd = i
             // Recognized with `affiliatedParts`, org's SEPARATE affiliated regexp -- not with
             // `keywordParts`, whose `\S-+` key cannot span the space in `#+CAPTION[short one]:`.
@@ -386,8 +386,13 @@ extension OrgParser {
                 // paragraph's contents, newlines and all.
                 return (.object([
                     "type": .string("verse-block"),
+                    // Same verbatim-join argument as a paragraph's text, so the body starts
+                    // exactly where the opener line ends. `lines[i].endOffset` rather than
+                    // `lines[i + 1].offset` because an empty body at end of file has no line
+                    // `i + 1` to read.
                     "children": .array(try parseObjects(
-                        blockValue(bodyFrom: i + 1, to: end), in: .verseBlock
+                        blockValue(bodyFrom: i + 1, to: end), in: .verseBlock,
+                        at: lines[i].endOffset
                     )),
                     "postBlank": .int(0),
                 ]), end + 1)
@@ -439,7 +444,11 @@ extension OrgParser {
             }
             let firstRest = Array(line.text[bodyStart...])
             if !firstRest.isEmpty {
-                bodyLines.append(Line(text: firstRest, hasNewline: line.hasNewline))
+                // `bodyStart` indexes `line.text` directly (the label match plus the whitespace
+                // run after `]`), so the sliced line's absolute offset is the label line's plus
+                // it - the same shape as the item's sliced first body line in `parseItem`.
+                bodyLines.append(Line(text: firstRest, hasNewline: line.hasNewline,
+                                      offset: line.offset + bodyStart))
             }
             // The third `:pre-blank` carrier, sharing ORG-24's one derivation. It counts like an
             // ITEM rather than a headline, because the label line CAN hold the first content.
@@ -756,7 +765,14 @@ extension OrgParser {
         }
         return (.object([
             "type": .string("paragraph"),
-            "children": .array(try parseObjects(text, in: .paragraph)),
+            // The loop above concatenates `lines[k].text` plus that line's OWN newline, so `text`
+            // reproduces the source verbatim over `paragraphStart..<i` and a local index into it
+            // is a document offset shifted by the first line's. Measured before it was relied on:
+            // this is the entry point ORG-32 flagged as "settle this first" because a joined
+            // string is where a mapping usually dies, and it survives because the join adds
+            // nothing and drops nothing.
+            "children": .array(try parseObjects(text, in: .paragraph,
+                                                at: lines[paragraphStart].offset)),
             "postBlank": .int(0),
         ]), i)
     }

@@ -231,7 +231,13 @@ extension OrgParser {
         let end: Int            // index just past the link's own text, before postBlank
         let linkType: String    // SCHEMA.md `linkType`: regular | angle | plain
         let rawTarget: [Unicode.Scalar]
-        let description: [Unicode.Scalar]?
+        /// The description's RANGE in the enclosing contents string, not a copy of it.
+        ///
+        /// A copy was enough while the description was only ever re-lexed, and it is not enough
+        /// now: `parseObjects` needs to know where the description STARTED to give its objects
+        /// document offsets (ORG-32), and a detached array has thrown that away. Slicing at the
+        /// one consumer costs nothing, since `linkNode` already receives the same `chars`.
+        let description: Range<Int>?
     }
 
     /// Matches `[[TARGET]]` or `[[TARGET][DESCRIPTION]]` at `i`, or nil.
@@ -289,7 +295,7 @@ extension OrgParser {
         var k = j + 2
         while k + 1 < chars.count, !(chars[k] == "]" && chars[k + 1] == "]") { k += 1 }
         guard k + 1 < chars.count else { return nil }
-        let description = Array(chars[(j + 2)..<k])
+        let description = (j + 2)..<k
         guard !description.isEmpty else { return nil }
 
         return LinkMatch(
@@ -356,7 +362,9 @@ extension OrgParser {
     ///     a <https://e.com>  b    link postBlank 2, then text "b\n"
     ///
     /// Newlines are never consumed, matching emphasis: `[[x]]\nnext` leaves `"\nnext"` as text.
-    func linkNode(_ match: LinkMatch, in chars: [Unicode.Scalar]) throws -> (node: OrgJSON, next: Int) {
+    func linkNode(
+        _ match: LinkMatch, in chars: [Unicode.Scalar], at base: Int
+    ) throws -> (node: OrgJSON, next: Int) {
         var postBlank = 0
         var k = match.end
         while k < chars.count, chars[k] == " " || chars[k] == "\t" {
@@ -386,7 +394,8 @@ extension OrgParser {
             // No input reaches that today: `bracketLinkMatch` throws on any `\` in a description
             // before this runs, so the row is correct but unexercised. Lifting that guard makes
             // it live, which is the point of it already being right.
-            descriptionValue = .array(try parseObjects(String(scalars: description), in: .link))
+            descriptionValue = .array(try parseObjects(
+                String(scalars: chars[description]), in: .link, at: base + description.lowerBound))
         } else {
             descriptionValue = .null
         }
