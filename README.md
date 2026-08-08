@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/organism-banner.png" alt="organism - an org-mode parser for Swift" width="760">
+</p>
+
 # organism
 
 [![CI](https://github.com/nhannht/organism/actions/workflows/ci.yml/badge.svg)](https://github.com/nhannht/organism/actions/workflows/ci.yml)
