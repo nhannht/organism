@@ -39,6 +39,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Every `run` below is bash, stated rather than assumed. Inside the swift:6.1 container the
+# default shell is `sh` (dash), which has no `set -o pipefail` -- so the first Linux run failed
+# with "Illegal option -o pipefail" in the step that checks the suites ran, while the build and
+# the tests it was supposed to be vouching for had both passed. An assertion that dies before it
+# asserts is the failure this workflow exists to catch, and it caught its own.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   macos:
     name: macOS - every gate, oracle included
