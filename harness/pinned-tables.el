@@ -190,6 +190,73 @@ Sources/OrgSwift/PlainLinkBoundary.generated.swift."
     (when start
       (org-swift--pt-emit "SUPPRESS" (format "%X" start) (format "%X" previous)))))
 
+(defvar org-swift--cc-buffer nil)
+
+(defun org-swift--cc-bits (v)
+  "The (alpha alnum word) membership bits for scalar V, asked of a live org buffer.
+
+`[:word:]' is the reason this probes a BUFFER: word syntax comes from the current
+syntax table, org-mode edits that table, and string matching consults the standard
+table instead (measured for the plain-link probe above -- `$ % '' answer
+differently between the two). `[:alpha:]' and `[:alnum:]' are Unicode-property
+classes that should not care, but they are asked in the same buffer anyway so all
+three answers come from the one environment org-element parses in."
+  (unless (buffer-live-p org-swift--cc-buffer)
+    (setq org-swift--cc-buffer (generate-new-buffer " cc-probe"))
+    (with-current-buffer org-swift--cc-buffer (org-mode)))
+  (with-current-buffer org-swift--cc-buffer
+    (erase-buffer)
+    (insert (string v))
+    (goto-char (point-min))
+    (list (looking-at-p "[[:alpha:]]")
+          (looking-at-p "[[:alnum:]]")
+          (looking-at-p "[[:word:]]"))))
+
+(defun org-swift-dump-char-classes ()
+  "BEHAVIOURAL ENUMERATION, full space: `ALPHA/ALNUM/WORD A B' hex ranges to stdout.
+
+Membership of every valid Unicode scalar in Emacs's `[:alpha:]', `[:alnum:]' and
+`[:word:]' regexp classes, probed in a live org-mode buffer. ~90s. Consumed by
+harness/regen-unicode-classes.sh to rewrite
+Sources/OrgSwift/UnicodeClasses.generated.swift."
+  (let ((state (make-vector 3 nil))    ; per class: nil or (start . previous)
+        (tags ["ALPHA" "ALNUM" "WORD"]))
+    (dotimes (v (1+ #x10FFFF))
+      (let ((bits (if (and (>= v #xD800) (<= v #xDFFF))
+                      '(nil nil nil)
+                    (org-swift--cc-bits v))))
+        (dotimes (c 3)
+          (let ((member (nth c bits))
+                (run (aref state c)))
+            (cond
+             ((and member (null run)) (aset state c (cons v v)))
+             ((and member (= v (1+ (cdr run)))) (setcdr run v))
+             (member
+              (org-swift--pt-emit (aref tags c)
+                                  (format "%X" (car run)) (format "%X" (cdr run)))
+              (aset state c (cons v v))))))))
+    (dotimes (c 3)
+      (let ((run (aref state c)))
+        (when run
+          (org-swift--pt-emit (aref tags c)
+                              (format "%X" (car run)) (format "%X" (cdr run))))))))
+
+(defun org-swift-probe-char-classes (scalars)
+  "BEHAVIOURAL ENUMERATION, gate half: one `CC HEX a n w' line per scalar in SCALARS.
+
+The caller (PinnedTableDriftTests) sends the edges of every range in the three
+shipped tables plus their outside neighbours and fixed anchors. Same division of
+labour as the plain-link probe: the full sweep above is the regeneration path,
+this is the per-test-run gate, and a drift that flips only interior scalars while
+leaving every edge in place would pass it."
+  (org-swift--pt-emit "VERSION" emacs-version (org-version nil nil t))
+  (dolist (v scalars)
+    (let ((bits (org-swift--cc-bits v)))
+      (org-swift--pt-emit "CC" (format "%X" v)
+                          (if (nth 0 bits) "1" "0")
+                          (if (nth 1 bits) "1" "0")
+                          (if (nth 2 bits) "1" "0")))))
+
 (defun org-swift-dump-pinned-tables ()
   "Print every dataset above, tab-separated, to stdout."
   (org-swift--pt-emit "VERSION" emacs-version (org-version nil nil t))

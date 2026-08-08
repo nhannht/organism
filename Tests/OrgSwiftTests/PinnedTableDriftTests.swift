@@ -414,4 +414,116 @@ struct PinnedTableDriftTests {
             proves the rule is not "is the previous character a word constituent".
             """)
     }
+
+    // MARK: Behavioural shape, the three Emacs character classes
+
+    /// A THIRD Emacs run, same division of labour as the plain-link probe: the scalars probed
+    /// are derived from the three shipped tables (every range edge and its outside neighbours,
+    /// plus fixed anchors), the full-space sweep is the regeneration path
+    /// (`harness/regen-unicode-classes.sh`), and a drift that flips only interior scalars
+    /// while leaving every edge in place would pass here.
+    static let charClassProbe: (
+        versions: (emacs: String, org: String),
+        bits: [UInt32: (alpha: Bool, alnum: Bool, word: Bool)]
+    )? = {
+        let script = HarnessSupport.repoRoot.appendingPathComponent("harness/pinned-tables.el")
+        guard FileManager.default.fileExists(atPath: script.path) else { return nil }
+
+        var probes: Set<UInt32> = [
+            0x24, 0x25, 0x27,          // $ % ' - ASCII scalars org-mode gives WORD syntax
+            0x5F, 0x2D,                // _ and - , NOT word: the explicit extras in the classes
+            0xB2, 0x2B0,               // ² (word, not alnum) and ʰ (all three)
+            0x301, 0x663, 0x6F22,      // combining acute, Arabic-Indic three, Han
+            0x2212,                    // MINUS SIGN: one of the ~350 non-word scalars
+            0x30, 0x61,                // ASCII anchors
+        ]
+        for table in [OrgParser.emacsAlphaRanges, OrgParser.emacsAlnumRanges,
+                      OrgParser.emacsWordRanges] {
+            for range in table {
+                if range.lowerBound > 0 { probes.insert(range.lowerBound - 1) }
+                probes.insert(range.lowerBound)
+                probes.insert(range.upperBound)
+                probes.insert(range.upperBound + 1)
+            }
+        }
+        let valid = probes.filter { Unicode.Scalar($0) != nil }.sorted()
+        let list = valid.map(String.init).joined(separator: " ")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [
+            "emacs", "--batch", "-Q", "-l", script.path,
+            "--eval", "(org-swift-probe-char-classes '(\(list)))",
+        ]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+
+        var versions = (emacs: "", org: "")
+        var bits: [UInt32: (alpha: Bool, alnum: Bool, word: Bool)] = [:]
+        for line in text.split(separator: "\n") {
+            let field = line.split(separator: "\t").map(String.init)
+            switch field[0] {
+            case "VERSION" where field.count >= 3:
+                versions = (field[1], field[2])
+            case "CC" where field.count >= 5:
+                if let v = UInt32(field[1], radix: 16) {
+                    bits[v] = (field[2] == "1", field[3] == "1", field[4] == "1")
+                }
+            default:
+                continue
+            }
+        }
+        return (versions, bits)
+    }()
+
+    @Test("BEHAVIOURAL: the three character-class tables still match org at every range edge")
+    func charClassesHaveNotDrifted() throws {
+        guard let live = Self.charClassProbe else {
+            Issue.record("harness/pinned-tables.el did not run -- nothing was checked")
+            return
+        }
+        let probed = Set(live.bits.keys)
+        var versions = Regenerated()
+        versions.emacsVersion = live.versions.emacs
+        versions.orgVersion = live.versions.org
+        for (name, shipped, regen) in [
+            ("emacsAlphaRanges", { (s: Unicode.Scalar) in OrgParser.isEmacsAlpha(s) },
+             { (b: (alpha: Bool, alnum: Bool, word: Bool)) in b.alpha }),
+            ("emacsAlnumRanges", { OrgParser.isEmacsAlnum($0) }, { $0.alnum }),
+            ("emacsWordRanges", { OrgParser.isEmacsWord($0) }, { $0.word }),
+        ] {
+            Self.expectSame(
+                "\(name) (at the probed edges)", shape: "behavioural enumeration",
+                shipped: probed.filter { v in Unicode.Scalar(v).map(shipped) == true },
+                regenerated: probed.filter { v in live.bits[v].map(regen) == true },
+                versions)
+        }
+        for (scalar, name) in [(UInt32(0x24), "DOLLAR SIGN"), (UInt32(0x25), "PERCENT SIGN"),
+                               (UInt32(0x27), "APOSTROPHE")] {
+            #expect(live.bits[scalar]?.word == true, """
+                org-mode no longer gives U+\(String(scalar, radix: 16, uppercase: true)) \
+                \(name) word syntax. Those three ASCII scalars are why the word table exists \
+                over the FULL space rather than only above ASCII: they sit inside dynamic-block \
+                names, footnote labels and drawer names, and an ASCII class that ends a name at \
+                punctuation never sees them.
+                """)
+        }
+        #expect(live.bits[0xB2]?.word == true && live.bits[0xB2]?.alnum == false, """
+            U+00B2 SUPERSCRIPT TWO no longer separates `[:word:]` from `[:alnum:]`. It is the \
+            named witness that the two classes are different tables, not one class consulted \
+            twice: a block NAME may contain it while a subscript BODY may not.
+            """)
+        let minus = live.bits[0x2212]
+        #expect(minus?.alpha == false && minus?.alnum == false && minus?.word == false, """
+            U+2212 MINUS SIGN joined a class. It is the CONTROL for the word table: Emacs \
+            defaults most non-ASCII scalars to word syntax, and this scalar is one of the few \
+            hundred that prove membership is measured rather than assumed.
+            """)
+    }
 }

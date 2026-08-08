@@ -570,6 +570,73 @@ extension OrgParser {
         return true
     }
 
+    // MARK: The three Emacs character classes (UnicodeClasses.generated.swift)
+    //
+    // `[:alpha:]`, `[:alnum:]` and `[:word:]`, each a full-space behavioural enumeration in a
+    // live org-mode buffer (harness/regen-unicode-classes.sh), because no Swift predicate
+    // stands in for any of them. Measured: Emacs's `[:alnum:]` is not `[:alpha:]` union
+    // `[:digit:]` (660 scalars apart), and `[:word:]` is SYNTAX, not Unicode -- org-mode gives
+    // `$ % '` word syntax, so a class that ends a name at ASCII punctuation is already wrong
+    // before any non-ASCII scalar arrives. These three retire the "non-ASCII scalar at a
+    // boundary" refusals: with the class enumerated, the boundary is decidable everywhere.
+    //
+    // Consumers, by class:
+    //     alpha    entity-name boundary (`(not letter)`)
+    //     alnum    sub/superscript body + `^` candidate gate, citation style, headline tags
+    //     word     dynamic-block name, footnote label, drawer name, citation key
+    //
+    // Drift gate: PinnedTableDriftTests re-probes every range edge against live Emacs.
+
+    /// One `[Bool]` per class over ASCII, so the common case is an array read.
+    static let emacsAlphaASCII: [Bool] = (UInt32(0)..<128).map { v in
+        emacsAlphaRanges.contains { $0.contains(v) }
+    }
+    static let emacsAlnumASCII: [Bool] = (UInt32(0)..<128).map { v in
+        emacsAlnumRanges.contains { $0.contains(v) }
+    }
+    static let emacsWordASCII: [Bool] = (UInt32(0)..<128).map { v in
+        emacsWordRanges.contains { $0.contains(v) }
+    }
+
+    private static func inRanges(_ v: UInt32, _ ranges: [ClosedRange<UInt32>]) -> Bool {
+        var low = 0
+        var high = ranges.count - 1
+        while low <= high {
+            let mid = (low + high) / 2
+            let range = ranges[mid]
+            if v < range.lowerBound {
+                high = mid - 1
+            } else if v > range.upperBound {
+                low = mid + 1
+            } else {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Emacs `[:alpha:]` membership -- org's `(not letter)` entity boundary is its complement.
+    static func isEmacsAlpha(_ s: Unicode.Scalar) -> Bool {
+        let v = s.value
+        if v < 128 { return emacsAlphaASCII[Int(v)] }
+        return inRanges(v, emacsAlphaRanges)
+    }
+
+    /// Emacs `[:alnum:]` membership -- script bodies, citation styles, headline tags.
+    static func isEmacsAlnum(_ s: Unicode.Scalar) -> Bool {
+        let v = s.value
+        if v < 128 { return emacsAlnumASCII[Int(v)] }
+        return inRanges(v, emacsAlnumRanges)
+    }
+
+    /// Emacs `[:word:]` membership in an org-mode buffer -- block names, footnote labels,
+    /// drawer names, citation keys.
+    static func isEmacsWord(_ s: Unicode.Scalar) -> Bool {
+        let v = s.value
+        if v < 128 { return emacsWordASCII[Int(v)] }
+        return inRanges(v, emacsWordRanges)
+    }
+
     /// The scalars Emacs's case-fold CANON table folds and Swift's per-scalar `lowercased()` does
     /// NOT, with the target Emacs folds each to. 21 entries.
     ///
