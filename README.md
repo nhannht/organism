@@ -51,9 +51,10 @@ over every org-element type its oracle can reach.
   the process with SIGBUS on a 512 KB stack -- the stack a background thread gets, which is where
   an editor parses -- and a document 618 headline levels deep died releasing its tree, in the
   caller, after `parseOrg` had already returned successfully. A crash is the one outcome a
-  `throws` signature cannot express, so it is now a refusal, at a limit sitting between two
-  measured numbers: 9, what the deepest of these 1,427 inputs needs, and 41, where a debug build
-  dies. `DepthLimitTests` holds both sides of it.
+  `throws` signature cannot express, so it is now a refusal. In practice the limit accepts a
+  nested list 22 levels deep and refuses at 23, where an unguarded debug build died at 42 - and
+  the deepest of these 1,427 inputs needs a third of what it allows. `DepthLimitTests` holds
+  both sides of it.
 
   For the throw SITES rather than the cases, read them off the source -- `grep -rn
   'OrgError.unimplemented(' Sources/OrgSwift/` -- and do not trust a number written here for

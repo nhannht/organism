@@ -287,17 +287,37 @@ struct OrgParser {
     /// 4), `a_{a_{...}}` (`org-match-substring-regexp` caps brace depth at 3, org's own limit),
     /// and drawers (org has no nested drawer). A probe input that does not nest measures nothing.
     ///
-    /// **What real documents need is 9**, measured the same way rather than reasoned about: with
+    /// **Two units are in play here and they are not interchangeable.** The table above is INPUT
+    /// nesting. This constant counts GUARD depth, which is larger: one nested list item is a
+    /// list, an item and a paragraph before its text is reached, so guard depth runs about two
+    /// ahead of input depth for that vector. Any margin quoted across the two is meaningless
+    /// unless it is converted first, and an earlier draft of this comment quoted exactly such a
+    /// ratio.
+    ///
+    /// **What real documents need is guard depth 9**, measured rather than reasoned about: with
     /// this constant set to 9 every corpus gate is green, and at 8 three of them fail on
     /// `real/doomemacs-docs/getting_started.org`, deepest of the 1,427 inputs across
-    /// `conformance/`, `real/` and `sweep/`.
+    /// `conformance/`, `real/` and `sweep/`. Against that, 24 is 2.7x headroom, and both numbers
+    /// are guard depth.
     ///
-    /// So the constraints are 9 below and 41 above, and 24 sits between them: 2.7x headroom over
-    /// the deepest real document, 1.7x margin under the debug floor. Neither margin is
-    /// decoration. The lower one absorbs a document deeper than anything in the corpus, and the
-    /// upper one absorbs a toolchain whose frames grow. If frames ever do grow past it,
-    /// `DepthLimitTests` is what says so, because it parses on a 512 KB debug thread -- so the
-    /// crash lands there rather than in a consumer's app.
+    /// Converted into the table's units, this is what a limit of 24 actually accepts -- the
+    /// largest input depth each vector still parses, measured on the same 512 KB debug thread:
+    ///
+    ///     vector                          accepts   debug crash
+    ///     nested list items                    22            42
+    ///     footnote definition over a list      21            41
+    ///     nested greater blocks                22            60
+    ///     nested inline footnote refs          22            42
+    ///     nested headline sections             24           617
+    ///
+    /// So the binding case refuses at 21 where it would have died at 41: the real margin is
+    /// close to 2x, in one unit. It absorbs a toolchain whose frames grow, and if they ever grow
+    /// past it `DepthLimitTests` is what says so, because it parses on a 512 KB debug thread --
+    /// so the crash lands there rather than in a consumer's app.
+    ///
+    /// The other side is just as measured: a 22-level nested list parses, so the deep-but-real
+    /// document this limit has to keep working -- ten nested list levels with emphasis inside the
+    /// innermost item -- is not close to the boundary.
     static let nestingLimit = 24
 
     /// One physical line of the source, without its terminating `"\n"`. `hasNewline` records

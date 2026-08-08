@@ -25,6 +25,12 @@ breaking change moves the MINOR number while the major is 0.
 - Continuous integration (`.github/workflows/ci.yml`), covering macOS with the Emacs oracle and
   Linux without it. Both jobs fail if a gate would silently skip.
 
+  The workflow was not green at the v0.3.0 tag itself - three fixes landed after it, none of
+  them touching the library: bash instead of the container's dash, and `macos-26` rather than
+  `macos-15`, because `PinnedTableDriftTests` compares against Swift's Unicode case data and on
+  Apple platforms that data ships with the OS rather than the toolchain. The tag's library code
+  is the code CI now passes on.
+
 ### Changed
 
 - `parseOrg`'s documentation no longer enumerates the implemented subset. The enumeration had
