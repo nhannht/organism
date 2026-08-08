@@ -219,7 +219,16 @@ class Generator:
         self.w(f"/// {doc}")
         self.w(f"public struct {swift_name}: Equatable, Sendable {{")
         for f in fields:
-            self.w(f"    public let {f['swift']}: {f['type']}{'?' if f['optional'] else ''}")
+            self.w(f"    public var {f['swift']}: {f['type']}{'?' if f['optional'] else ''}")
+        if type_const is not None:
+            self.w()
+            self.w("    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar")
+            self.w("    /// offsets, exclusive end. Populated by the native parser one construction")
+            self.w("    /// site at a time; nil on trees decoded from JSON, and never emitted by")
+            self.w("    /// `toJSON()` -- the published tree strips positions by recorded decision")
+            self.w("    /// (SCHEMA.md section 1). Not part of the memberwise init for the same")
+            self.w("    /// reason: a position is recorded about a node, not a field of its content.")
+            self.w("    public var span: OrgSpan? = nil")
         self.w()
         # memberwise init, explicit so it is public
         args = ", ".join(
@@ -329,6 +338,72 @@ class Generator:
         self.w("        }")
         self.w("    }")
         self.w("}")
+        self.w()
+
+    def emit_patch_helpers(self, names: list[str]) -> None:
+        """The parser's after-the-fact patch points, one copy-with-change helper each.
+
+        Generated because each is a 56-case switch that must stay exact, the `childNodes`
+        argument again. The parser patches a node AFTER building it in exactly three ways --
+        blank-line absorption bumps `postBlank`, an affiliated run attaches, and both of those
+        move the node's span -- so those three are the whole surface, deliberately: a general
+        per-field setter would be hundreds of cases of API nothing needs.
+        """
+        def has_field(n: str, key: str) -> bool:
+            if n == "table":
+                return key in ("postBlank", "affiliated")
+            return any(f["json"] == key for f in self.fields(self.nodes[n], n))
+
+        self.w("""extension OrgNode {
+    /// Where this node lives in the source (ORG-32), or nil when nothing recorded one -- a
+    /// tree decoded from JSON never carries spans, and the native parser threads offsets one
+    /// construction site at a time.
+    public var span: OrgSpan? {
+        switch self {""")
+        for n in names:
+            self.w(f"        case .{case_name(n)}(let x): return x.span")
+        self.w("""        }
+    }
+
+    /// The same node with its span replaced. A patch point rather than construction data,
+    /// because the parser settles an extent AFTER the node is built: absorbed blank lines
+    /// grow `end`, an attaching affiliated run grows `begin`.
+    public func settingSpan(_ span: OrgSpan?) -> OrgNode {
+        switch self {""")
+        for n in names:
+            cn = case_name(n)
+            self.w(f"        case .{cn}(var x): x.span = span; return .{cn}(x)")
+        self.w("""        }
+    }
+
+    /// The same node with `postBlank` replaced. `text` -- the one node type with no such
+    /// field -- returns unchanged; see `postBlank` above for why that absence is real.
+    public func settingPostBlank(_ postBlank: Int) -> OrgNode {
+        switch self {""")
+        for n in names:
+            cn = case_name(n)
+            if has_field(n, "postBlank"):
+                self.w(f"        case .{cn}(var x): x.postBlank = postBlank; return .{cn}(x)")
+            else:
+                self.w(f"        case .{cn}: return self")
+        self.w("""        }
+    }
+
+    /// The same node with `affiliated` attached, or nil for a node type whose schema def has
+    /// no `affiliated` field. Returning nil rather than the node unchanged is deliberate:
+    /// silently dropping an affiliated run would erase source content, and only the caller
+    /// knows whether reaching such a node is impossible or an error.
+    public func settingAffiliated(_ affiliated: OrgAffiliated) -> OrgNode? {
+        switch self {""")
+        for n in names:
+            cn = case_name(n)
+            if has_field(n, "affiliated"):
+                self.w(f"        case .{cn}(var x): x.affiliated = affiliated; return .{cn}(x)")
+            else:
+                self.w(f"        case .{cn}: return nil")
+        self.w("""        }
+    }
+}""")
         self.w()
 
     def assert_coverage(self, emitted: list[str]) -> None:
@@ -722,10 +797,18 @@ public struct OrgTable: Equatable, Sendable {
         case tableEl(value: String)
     }
 
-    public let flavour: Flavour
-    public let tblfm: [String]?
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var flavour: Flavour
+    public var tblfm: [String]?
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(flavour: Flavour, tblfm: [String]?, postBlank: Int,
                 affiliated: OrgAffiliated? = nil) {
@@ -875,6 +958,7 @@ public indirect enum OrgNode: Equatable, Sendable {""")
         self.w("}")
         self.w()
         self.emit_post_blank(names)
+        self.emit_patch_helpers(names)
         # Conform every generated struct to ASTNode.
         self.w("// Every generated node type satisfies the decode/encode contract.")
         for n in names:

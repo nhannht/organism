@@ -5,6 +5,42 @@
 // the "regenerate and diff" drift check stops meaning anything. Ergonomics are judgement calls
 // that no schema implies, so they live here instead.
 
+// MARK: - Spans (ORG-32)
+
+/// One node's extent in the source document.
+///
+/// Offsets are 0-BASED UNICODE SCALARS, matching `Line.offset` and matching what an Emacs buffer
+/// position counts once its 1-based origin is removed - measured, see the ORG-32 block in
+/// `harness/oracle-dump.el`. `end` is EXCLUSIVE and includes whatever org includes: trailing
+/// blank lines for an element, character-counted post-blank for an object. The contents pair is
+/// present exactly when the node has contents of its own.
+///
+/// This is the answer to the question the span spike deliberately left open ("flat records, a
+/// parallel tree, or positions on a typed node"): positions ride ON the typed node, in the
+/// generated structs' `span` slot. The published `OrgJSON` tree still never carries them --
+/// SCHEMA.md section 1 strips positions by recorded decision, and `toJSON()` simply does not
+/// emit the slot, so there is no strip pass and nothing to forget.
+public struct OrgSpan: Equatable, Sendable {
+    public var begin: Int
+    public var end: Int
+    public var contentsBegin: Int?
+    public var contentsEnd: Int?
+
+    public init(begin: Int, end: Int, contentsBegin: Int? = nil, contentsEnd: Int? = nil) {
+        self.begin = begin
+        self.end = end
+        self.contentsBegin = contentsBegin
+        self.contentsEnd = contentsEnd
+    }
+
+    /// The spelling the parser's construction sites use: an extent plus an optional contents
+    /// range, mirroring how the offsets are actually computed there.
+    public init(_ begin: Int, _ end: Int, contents: Range<Int>? = nil) {
+        self.init(begin: begin, end: end,
+                  contentsBegin: contents?.lowerBound, contentsEnd: contents?.upperBound)
+    }
+}
+
 // MARK: - Entry point
 
 extension OrgDocument {

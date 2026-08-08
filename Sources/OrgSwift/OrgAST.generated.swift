@@ -275,12 +275,12 @@ public enum OrgTimestampKind: String, Equatable, Sendable, CaseIterable {
 
 /// A timestamp component. SCHEMA.md, timestamp.
 public struct OrgDate: Equatable, Sendable {
-    public let year: Int
-    public let month: Int
-    public let day: Int
-    public let dayname: String?
-    public let hour: Int?
-    public let minute: Int?
+    public var year: Int
+    public var month: Int
+    public var day: Int
+    public var dayname: String?
+    public var hour: Int?
+    public var minute: Int?
 
     public init(year: Int, month: Int, day: Int, dayname: String?, hour: Int?, minute: Int?) {
         self.year = year
@@ -315,9 +315,9 @@ public struct OrgDate: Equatable, Sendable {
 
 /// A repeater or delay. NOTE its `type` field is a real enum, not a node discriminator.
 public struct OrgRep: Equatable, Sendable {
-    public let type: OrgRepType
-    public let value: Int
-    public let unit: OrgRepUnit
+    public var type: OrgRepType
+    public var value: Int
+    public var unit: OrgRepUnit
 
     public init(type: OrgRepType, value: Int, unit: OrgRepUnit) {
         self.type = type
@@ -435,9 +435,17 @@ public struct OrgAffiliated: Equatable, Sendable {
 
 /// `babel-call`. SCHEMA.md section 4.
 public struct OrgBabelCall: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -465,8 +473,16 @@ public struct OrgBabelCall: Equatable, Sendable {
 
 /// `bold`. SCHEMA.md section 4.
 public struct OrgBold: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -491,9 +507,17 @@ public struct OrgBold: Equatable, Sendable {
 
 /// `center-block`. SCHEMA.md section 4.
 public struct OrgCenterBlock: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -521,11 +545,19 @@ public struct OrgCenterBlock: Equatable, Sendable {
 
 /// `citation`. SCHEMA.md section 4.
 public struct OrgCitation: Equatable, Sendable {
-    public let style: String?
-    public let prefix: [OrgNode]?
-    public let suffix: [OrgNode]?
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var style: String?
+    public var prefix: [OrgNode]?
+    public var suffix: [OrgNode]?
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(style: String?, prefix: [OrgNode]?, suffix: [OrgNode]?, children: [OrgNode], postBlank: Int) {
         self.style = style
@@ -559,10 +591,18 @@ public struct OrgCitation: Equatable, Sendable {
 
 /// `citation-reference`. SCHEMA.md section 4.
 public struct OrgCitationReference: Equatable, Sendable {
-    public let key: String
-    public let prefix: [OrgNode]?
-    public let suffix: [OrgNode]?
-    public let postBlank: Int
+    public var key: String
+    public var prefix: [OrgNode]?
+    public var suffix: [OrgNode]?
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(key: String, prefix: [OrgNode]?, suffix: [OrgNode]?, postBlank: Int) {
         self.key = key
@@ -593,9 +633,17 @@ public struct OrgCitationReference: Equatable, Sendable {
 
 /// `clock`. SCHEMA.md section 4.
 public struct OrgClock: Equatable, Sendable {
-    public let value: OrgTimestamp?
-    public let duration: String?
-    public let postBlank: Int
+    public var value: OrgTimestamp?
+    public var duration: String?
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: OrgTimestamp?, duration: String?, postBlank: Int) {
         self.value = value
@@ -623,8 +671,16 @@ public struct OrgClock: Equatable, Sendable {
 
 /// `code`. SCHEMA.md section 4.
 public struct OrgCode: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -649,9 +705,17 @@ public struct OrgCode: Equatable, Sendable {
 
 /// `comment`. SCHEMA.md section 4.
 public struct OrgComment: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -679,9 +743,17 @@ public struct OrgComment: Equatable, Sendable {
 
 /// `comment-block`. SCHEMA.md section 4.
 public struct OrgCommentBlock: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -709,9 +781,17 @@ public struct OrgCommentBlock: Equatable, Sendable {
 
 /// `diary-sexp`. SCHEMA.md section 4.
 public struct OrgDiarySexp: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -739,8 +819,16 @@ public struct OrgDiarySexp: Equatable, Sendable {
 
 /// `document`. SCHEMA.md section 4.
 public struct OrgDocument: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -765,10 +853,18 @@ public struct OrgDocument: Equatable, Sendable {
 
 /// `drawer`. SCHEMA.md section 4.
 public struct OrgDrawer: Equatable, Sendable {
-    public let name: String
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var name: String
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(name: String, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.name = name
@@ -799,11 +895,19 @@ public struct OrgDrawer: Equatable, Sendable {
 
 /// `dynamic-block`. SCHEMA.md section 4.
 public struct OrgDynamicBlock: Equatable, Sendable {
-    public let blockName: String
-    public let arguments: String?
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var blockName: String
+    public var arguments: String?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(blockName: String, arguments: String?, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.blockName = blockName
@@ -837,9 +941,17 @@ public struct OrgDynamicBlock: Equatable, Sendable {
 
 /// `entity`. SCHEMA.md section 4.
 public struct OrgEntity: Equatable, Sendable {
-    public let name: String
-    public let useBrackets: Bool
-    public let postBlank: Int
+    public var name: String
+    public var useBrackets: Bool
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(name: String, useBrackets: Bool, postBlank: Int) {
         self.name = name
@@ -867,10 +979,18 @@ public struct OrgEntity: Equatable, Sendable {
 
 /// `example-block`. SCHEMA.md section 4.
 public struct OrgExampleBlock: Equatable, Sendable {
-    public let switches: String?
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var switches: String?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(switches: String?, value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.switches = switches
@@ -901,10 +1021,18 @@ public struct OrgExampleBlock: Equatable, Sendable {
 
 /// `export-block`. SCHEMA.md section 4.
 public struct OrgExportBlock: Equatable, Sendable {
-    public let backend: String?
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var backend: String?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(backend: String?, value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.backend = backend
@@ -935,9 +1063,17 @@ public struct OrgExportBlock: Equatable, Sendable {
 
 /// `export-snippet`. SCHEMA.md section 4.
 public struct OrgExportSnippet: Equatable, Sendable {
-    public let backEnd: String
-    public let value: String
-    public let postBlank: Int
+    public var backEnd: String
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(backEnd: String, value: String, postBlank: Int) {
         self.backEnd = backEnd
@@ -965,9 +1101,17 @@ public struct OrgExportSnippet: Equatable, Sendable {
 
 /// `fixed-width`. SCHEMA.md section 4.
 public struct OrgFixedWidth: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -995,11 +1139,19 @@ public struct OrgFixedWidth: Equatable, Sendable {
 
 /// `footnote-definition`. SCHEMA.md section 4.
 public struct OrgFootnoteDefinition: Equatable, Sendable {
-    public let label: String
-    public let preBlank: Int
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var label: String
+    public var preBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(label: String, preBlank: Int, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.label = label
@@ -1033,10 +1185,18 @@ public struct OrgFootnoteDefinition: Equatable, Sendable {
 
 /// `footnote-reference`. SCHEMA.md section 4.
 public struct OrgFootnoteReference: Equatable, Sendable {
-    public let label: String?
-    public let inline: Bool
-    public let children: [OrgNode]?
-    public let postBlank: Int
+    public var label: String?
+    public var inline: Bool
+    public var children: [OrgNode]?
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(label: String?, inline: Bool, children: [OrgNode]? = nil, postBlank: Int) {
         self.label = label
@@ -1067,17 +1227,25 @@ public struct OrgFootnoteReference: Equatable, Sendable {
 
 /// `headline`. SCHEMA.md section 4.
 public struct OrgHeadline: Equatable, Sendable {
-    public let level: Int
-    public let trueLevel: Int
-    public let todo: String?
-    public let priority: String?
-    public let commented: Bool
-    public let tags: [String]
-    public let title: [OrgNode]
-    public let preBlank: Int
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var level: Int
+    public var trueLevel: Int
+    public var todo: String?
+    public var priority: String?
+    public var commented: Bool
+    public var tags: [String]
+    public var title: [OrgNode]
+    public var preBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(level: Int, trueLevel: Int, todo: String?, priority: String?, commented: Bool, tags: [String], title: [OrgNode], preBlank: Int, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.level = level
@@ -1129,8 +1297,16 @@ public struct OrgHeadline: Equatable, Sendable {
 
 /// `horizontal-rule`. SCHEMA.md section 4.
 public struct OrgHorizontalRule: Equatable, Sendable {
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.postBlank = postBlank
@@ -1155,8 +1331,16 @@ public struct OrgHorizontalRule: Equatable, Sendable {
 
 /// `inline-babel-call`. SCHEMA.md section 4.
 public struct OrgInlineBabelCall: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -1181,10 +1365,18 @@ public struct OrgInlineBabelCall: Equatable, Sendable {
 
 /// `inline-src-block`. SCHEMA.md section 4.
 public struct OrgInlineSrcBlock: Equatable, Sendable {
-    public let language: String
-    public let parameters: String?
-    public let value: String
-    public let postBlank: Int
+    public var language: String
+    public var parameters: String?
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(language: String, parameters: String?, value: String, postBlank: Int) {
         self.language = language
@@ -1215,8 +1407,16 @@ public struct OrgInlineSrcBlock: Equatable, Sendable {
 
 /// `italic`. SCHEMA.md section 4.
 public struct OrgItalic: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -1241,14 +1441,22 @@ public struct OrgItalic: Equatable, Sendable {
 
 /// `item`. SCHEMA.md section 4.
 public struct OrgItem: Equatable, Sendable {
-    public let bullet: String
-    public let checkbox: OrgCheckbox?
-    public let counter: Int?
-    public let tag: [OrgNode]?
-    public let preBlank: Int
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var bullet: String
+    public var checkbox: OrgCheckbox?
+    public var counter: Int?
+    public var tag: [OrgNode]?
+    public var preBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(bullet: String, checkbox: OrgCheckbox?, counter: Int?, tag: [OrgNode]?, preBlank: Int, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.bullet = bullet
@@ -1291,10 +1499,18 @@ public struct OrgItem: Equatable, Sendable {
 
 /// `keyword`. SCHEMA.md section 4.
 public struct OrgKeyword: Equatable, Sendable {
-    public let key: String
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var key: String
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(key: String, value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.key = key
@@ -1325,9 +1541,17 @@ public struct OrgKeyword: Equatable, Sendable {
 
 /// `latex-environment`. SCHEMA.md section 4.
 public struct OrgLatexEnvironment: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -1355,8 +1579,16 @@ public struct OrgLatexEnvironment: Equatable, Sendable {
 
 /// `latex-fragment`. SCHEMA.md section 4.
 public struct OrgLatexFragment: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -1381,7 +1613,15 @@ public struct OrgLatexFragment: Equatable, Sendable {
 
 /// `line-break`. SCHEMA.md section 4.
 public struct OrgLineBreak: Equatable, Sendable {
-    public let postBlank: Int
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(postBlank: Int) {
         self.postBlank = postBlank
@@ -1403,11 +1643,19 @@ public struct OrgLineBreak: Equatable, Sendable {
 
 /// `link`. SCHEMA.md section 4.
 public struct OrgLink: Equatable, Sendable {
-    public let linkType: OrgLinkType
-    public let pathType: String
-    public let path: String
-    public let description: [OrgNode]?
-    public let postBlank: Int
+    public var linkType: OrgLinkType
+    public var pathType: String
+    public var path: String
+    public var description: [OrgNode]?
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(linkType: OrgLinkType, pathType: String, path: String, description: [OrgNode]?, postBlank: Int) {
         self.linkType = linkType
@@ -1441,10 +1689,18 @@ public struct OrgLink: Equatable, Sendable {
 
 /// `list`. SCHEMA.md section 4.
 public struct OrgList: Equatable, Sendable {
-    public let kind: OrgListKind
-    public let children: [OrgItem]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var kind: OrgListKind
+    public var children: [OrgItem]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(kind: OrgListKind, children: [OrgItem], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.kind = kind
@@ -1475,8 +1731,16 @@ public struct OrgList: Equatable, Sendable {
 
 /// `macro`. SCHEMA.md section 4.
 public struct OrgMacro: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -1501,10 +1765,18 @@ public struct OrgMacro: Equatable, Sendable {
 
 /// `node-property`. SCHEMA.md section 4.
 public struct OrgNodeProperty: Equatable, Sendable {
-    public let key: String
-    public let value: String?
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var key: String
+    public var value: String?
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(key: String, value: String?, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.key = key
@@ -1535,9 +1807,17 @@ public struct OrgNodeProperty: Equatable, Sendable {
 
 /// `paragraph`. SCHEMA.md section 4.
 public struct OrgParagraph: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -1565,11 +1845,19 @@ public struct OrgParagraph: Equatable, Sendable {
 
 /// `planning`. SCHEMA.md section 4.
 public struct OrgPlanning: Equatable, Sendable {
-    public let scheduled: OrgTimestamp?
-    public let deadline: OrgTimestamp?
-    public let closed: OrgTimestamp?
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var scheduled: OrgTimestamp?
+    public var deadline: OrgTimestamp?
+    public var closed: OrgTimestamp?
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(scheduled: OrgTimestamp?, deadline: OrgTimestamp?, closed: OrgTimestamp?, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.scheduled = scheduled
@@ -1603,9 +1891,17 @@ public struct OrgPlanning: Equatable, Sendable {
 
 /// `property-drawer`. SCHEMA.md section 4.
 public struct OrgPropertyDrawer: Equatable, Sendable {
-    public let children: [OrgNodeProperty]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNodeProperty]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNodeProperty], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -1633,9 +1929,17 @@ public struct OrgPropertyDrawer: Equatable, Sendable {
 
 /// `quote-block`. SCHEMA.md section 4.
 public struct OrgQuoteBlock: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -1663,8 +1967,16 @@ public struct OrgQuoteBlock: Equatable, Sendable {
 
 /// `radio-target`. SCHEMA.md section 4.
 public struct OrgRadioTarget: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -1689,9 +2001,17 @@ public struct OrgRadioTarget: Equatable, Sendable {
 
 /// `section`. SCHEMA.md section 4.
 public struct OrgSection: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -1719,11 +2039,19 @@ public struct OrgSection: Equatable, Sendable {
 
 /// `special-block`. SCHEMA.md section 4.
 public struct OrgSpecialBlock: Equatable, Sendable {
-    public let blockType: String
-    public let parameters: String?
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var blockType: String
+    public var parameters: String?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(blockType: String, parameters: String?, children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.blockType = blockType
@@ -1757,12 +2085,20 @@ public struct OrgSpecialBlock: Equatable, Sendable {
 
 /// `src-block`. SCHEMA.md section 4.
 public struct OrgSrcBlock: Equatable, Sendable {
-    public let language: String?
-    public let switches: String?
-    public let params: String?
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var language: String?
+    public var switches: String?
+    public var params: String?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(language: String?, switches: String?, params: String?, value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.language = language
@@ -1799,9 +2135,17 @@ public struct OrgSrcBlock: Equatable, Sendable {
 
 /// `statistics-cookie`. SCHEMA.md section 4.
 public struct OrgStatisticsCookie: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var value: String
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.value = value
@@ -1829,8 +2173,16 @@ public struct OrgStatisticsCookie: Equatable, Sendable {
 
 /// `strikethrough`. SCHEMA.md section 4.
 public struct OrgStrikethrough: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -1855,9 +2207,17 @@ public struct OrgStrikethrough: Equatable, Sendable {
 
 /// `subscript`. SCHEMA.md section 4.
 public struct OrgSubscript: Equatable, Sendable {
-    public let useBrackets: Bool
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var useBrackets: Bool
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(useBrackets: Bool, children: [OrgNode], postBlank: Int) {
         self.useBrackets = useBrackets
@@ -1885,9 +2245,17 @@ public struct OrgSubscript: Equatable, Sendable {
 
 /// `superscript`. SCHEMA.md section 4.
 public struct OrgSuperscript: Equatable, Sendable {
-    public let useBrackets: Bool
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var useBrackets: Bool
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(useBrackets: Bool, children: [OrgNode], postBlank: Int) {
         self.useBrackets = useBrackets
@@ -1915,8 +2283,16 @@ public struct OrgSuperscript: Equatable, Sendable {
 
 /// `table-cell`. SCHEMA.md section 4.
 public struct OrgTableCell: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -1941,10 +2317,18 @@ public struct OrgTableCell: Equatable, Sendable {
 
 /// `table-row`. SCHEMA.md section 4.
 public struct OrgTableRow: Equatable, Sendable {
-    public let kind: OrgTableRowKind
-    public let children: [OrgTableCell]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var kind: OrgTableRowKind
+    public var children: [OrgTableCell]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(kind: OrgTableRowKind, children: [OrgTableCell], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.kind = kind
@@ -1975,8 +2359,16 @@ public struct OrgTableRow: Equatable, Sendable {
 
 /// `target`. SCHEMA.md section 4.
 public struct OrgTarget: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -2001,7 +2393,15 @@ public struct OrgTarget: Equatable, Sendable {
 
 /// `text`. SCHEMA.md section 4. The only node with NO postBlank: org-element tracks post-blank on proper element/object nodes, and a bare plain-text span is not one.
 public struct OrgText: Equatable, Sendable {
-    public let value: String
+    public var value: String
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String) {
         self.value = value
@@ -2023,14 +2423,22 @@ public struct OrgText: Equatable, Sendable {
 
 /// `timestamp`. SCHEMA.md section 4.
 public struct OrgTimestamp: Equatable, Sendable {
-    public let kind: OrgTimestampKind
-    public let rangeType: OrgRangeType?
-    public let start: OrgDate?
-    public let end: OrgDate?
-    public let repeater: OrgRep?
-    public let delay: OrgRep?
-    public let postBlank: Int
-    public let diarySexp: String?
+    public var kind: OrgTimestampKind
+    public var rangeType: OrgRangeType?
+    public var start: OrgDate?
+    public var end: OrgDate?
+    public var repeater: OrgRep?
+    public var delay: OrgRep?
+    public var postBlank: Int
+    public var diarySexp: String?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(kind: OrgTimestampKind, rangeType: OrgRangeType?, start: OrgDate?, end: OrgDate?, repeater: OrgRep?, delay: OrgRep?, postBlank: Int, diarySexp: String? = nil) {
         self.kind = kind
@@ -2073,8 +2481,16 @@ public struct OrgTimestamp: Equatable, Sendable {
 
 /// `underline`. SCHEMA.md section 4.
 public struct OrgUnderline: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
+    public var children: [OrgNode]
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int) {
         self.children = children
@@ -2099,8 +2515,16 @@ public struct OrgUnderline: Equatable, Sendable {
 
 /// `verbatim`. SCHEMA.md section 4.
 public struct OrgVerbatim: Equatable, Sendable {
-    public let value: String
-    public let postBlank: Int
+    public var value: String
+    public var postBlank: Int
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(value: String, postBlank: Int) {
         self.value = value
@@ -2125,9 +2549,17 @@ public struct OrgVerbatim: Equatable, Sendable {
 
 /// `verse-block`. SCHEMA.md section 4.
 public struct OrgVerseBlock: Equatable, Sendable {
-    public let children: [OrgNode]
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var children: [OrgNode]
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(children: [OrgNode], postBlank: Int, affiliated: OrgAffiliated? = nil) {
         self.children = children
@@ -2166,10 +2598,18 @@ public struct OrgTable: Equatable, Sendable {
         case tableEl(value: String)
     }
 
-    public let flavour: Flavour
-    public let tblfm: [String]?
-    public let postBlank: Int
-    public let affiliated: OrgAffiliated?
+    public var flavour: Flavour
+    public var tblfm: [String]?
+    public var postBlank: Int
+    public var affiliated: OrgAffiliated?
+
+    /// Where this node lives in the source (ORG-32): 0-based Unicode-scalar
+    /// offsets, exclusive end. Populated by the native parser one construction
+    /// site at a time; nil on trees decoded from JSON, and never emitted by
+    /// `toJSON()` -- the published tree strips positions by recorded decision
+    /// (SCHEMA.md section 1). Not part of the memberwise init for the same
+    /// reason: a position is recorded about a node, not a field of its content.
+    public var span: OrgSpan? = nil
 
     public init(flavour: Flavour, tblfm: [String]?, postBlank: Int,
                 affiliated: OrgAffiliated? = nil) {
@@ -2602,6 +3042,260 @@ extension OrgNode {
         case .underline(let x): return x.postBlank
         case .verbatim(let x): return x.postBlank
         case .verseBlock(let x): return x.postBlank
+        }
+    }
+}
+
+extension OrgNode {
+    /// Where this node lives in the source (ORG-32), or nil when nothing recorded one -- a
+    /// tree decoded from JSON never carries spans, and the native parser threads offsets one
+    /// construction site at a time.
+    public var span: OrgSpan? {
+        switch self {
+        case .babelCall(let x): return x.span
+        case .bold(let x): return x.span
+        case .centerBlock(let x): return x.span
+        case .citation(let x): return x.span
+        case .citationReference(let x): return x.span
+        case .clock(let x): return x.span
+        case .code(let x): return x.span
+        case .comment(let x): return x.span
+        case .commentBlock(let x): return x.span
+        case .diarySexp(let x): return x.span
+        case .document(let x): return x.span
+        case .drawer(let x): return x.span
+        case .dynamicBlock(let x): return x.span
+        case .entity(let x): return x.span
+        case .exampleBlock(let x): return x.span
+        case .exportBlock(let x): return x.span
+        case .exportSnippet(let x): return x.span
+        case .fixedWidth(let x): return x.span
+        case .footnoteDefinition(let x): return x.span
+        case .footnoteReference(let x): return x.span
+        case .headline(let x): return x.span
+        case .horizontalRule(let x): return x.span
+        case .inlineBabelCall(let x): return x.span
+        case .inlineSrcBlock(let x): return x.span
+        case .italic(let x): return x.span
+        case .item(let x): return x.span
+        case .keyword(let x): return x.span
+        case .latexEnvironment(let x): return x.span
+        case .latexFragment(let x): return x.span
+        case .lineBreak(let x): return x.span
+        case .link(let x): return x.span
+        case .list(let x): return x.span
+        case .macro(let x): return x.span
+        case .nodeProperty(let x): return x.span
+        case .paragraph(let x): return x.span
+        case .planning(let x): return x.span
+        case .propertyDrawer(let x): return x.span
+        case .quoteBlock(let x): return x.span
+        case .radioTarget(let x): return x.span
+        case .section(let x): return x.span
+        case .specialBlock(let x): return x.span
+        case .srcBlock(let x): return x.span
+        case .statisticsCookie(let x): return x.span
+        case .strikethrough(let x): return x.span
+        case .`subscript`(let x): return x.span
+        case .superscript(let x): return x.span
+        case .table(let x): return x.span
+        case .tableCell(let x): return x.span
+        case .tableRow(let x): return x.span
+        case .target(let x): return x.span
+        case .text(let x): return x.span
+        case .timestamp(let x): return x.span
+        case .underline(let x): return x.span
+        case .verbatim(let x): return x.span
+        case .verseBlock(let x): return x.span
+        }
+    }
+
+    /// The same node with its span replaced. A patch point rather than construction data,
+    /// because the parser settles an extent AFTER the node is built: absorbed blank lines
+    /// grow `end`, an attaching affiliated run grows `begin`.
+    public func settingSpan(_ span: OrgSpan?) -> OrgNode {
+        switch self {
+        case .babelCall(var x): x.span = span; return .babelCall(x)
+        case .bold(var x): x.span = span; return .bold(x)
+        case .centerBlock(var x): x.span = span; return .centerBlock(x)
+        case .citation(var x): x.span = span; return .citation(x)
+        case .citationReference(var x): x.span = span; return .citationReference(x)
+        case .clock(var x): x.span = span; return .clock(x)
+        case .code(var x): x.span = span; return .code(x)
+        case .comment(var x): x.span = span; return .comment(x)
+        case .commentBlock(var x): x.span = span; return .commentBlock(x)
+        case .diarySexp(var x): x.span = span; return .diarySexp(x)
+        case .document(var x): x.span = span; return .document(x)
+        case .drawer(var x): x.span = span; return .drawer(x)
+        case .dynamicBlock(var x): x.span = span; return .dynamicBlock(x)
+        case .entity(var x): x.span = span; return .entity(x)
+        case .exampleBlock(var x): x.span = span; return .exampleBlock(x)
+        case .exportBlock(var x): x.span = span; return .exportBlock(x)
+        case .exportSnippet(var x): x.span = span; return .exportSnippet(x)
+        case .fixedWidth(var x): x.span = span; return .fixedWidth(x)
+        case .footnoteDefinition(var x): x.span = span; return .footnoteDefinition(x)
+        case .footnoteReference(var x): x.span = span; return .footnoteReference(x)
+        case .headline(var x): x.span = span; return .headline(x)
+        case .horizontalRule(var x): x.span = span; return .horizontalRule(x)
+        case .inlineBabelCall(var x): x.span = span; return .inlineBabelCall(x)
+        case .inlineSrcBlock(var x): x.span = span; return .inlineSrcBlock(x)
+        case .italic(var x): x.span = span; return .italic(x)
+        case .item(var x): x.span = span; return .item(x)
+        case .keyword(var x): x.span = span; return .keyword(x)
+        case .latexEnvironment(var x): x.span = span; return .latexEnvironment(x)
+        case .latexFragment(var x): x.span = span; return .latexFragment(x)
+        case .lineBreak(var x): x.span = span; return .lineBreak(x)
+        case .link(var x): x.span = span; return .link(x)
+        case .list(var x): x.span = span; return .list(x)
+        case .macro(var x): x.span = span; return .macro(x)
+        case .nodeProperty(var x): x.span = span; return .nodeProperty(x)
+        case .paragraph(var x): x.span = span; return .paragraph(x)
+        case .planning(var x): x.span = span; return .planning(x)
+        case .propertyDrawer(var x): x.span = span; return .propertyDrawer(x)
+        case .quoteBlock(var x): x.span = span; return .quoteBlock(x)
+        case .radioTarget(var x): x.span = span; return .radioTarget(x)
+        case .section(var x): x.span = span; return .section(x)
+        case .specialBlock(var x): x.span = span; return .specialBlock(x)
+        case .srcBlock(var x): x.span = span; return .srcBlock(x)
+        case .statisticsCookie(var x): x.span = span; return .statisticsCookie(x)
+        case .strikethrough(var x): x.span = span; return .strikethrough(x)
+        case .`subscript`(var x): x.span = span; return .`subscript`(x)
+        case .superscript(var x): x.span = span; return .superscript(x)
+        case .table(var x): x.span = span; return .table(x)
+        case .tableCell(var x): x.span = span; return .tableCell(x)
+        case .tableRow(var x): x.span = span; return .tableRow(x)
+        case .target(var x): x.span = span; return .target(x)
+        case .text(var x): x.span = span; return .text(x)
+        case .timestamp(var x): x.span = span; return .timestamp(x)
+        case .underline(var x): x.span = span; return .underline(x)
+        case .verbatim(var x): x.span = span; return .verbatim(x)
+        case .verseBlock(var x): x.span = span; return .verseBlock(x)
+        }
+    }
+
+    /// The same node with `postBlank` replaced. `text` -- the one node type with no such
+    /// field -- returns unchanged; see `postBlank` above for why that absence is real.
+    public func settingPostBlank(_ postBlank: Int) -> OrgNode {
+        switch self {
+        case .babelCall(var x): x.postBlank = postBlank; return .babelCall(x)
+        case .bold(var x): x.postBlank = postBlank; return .bold(x)
+        case .centerBlock(var x): x.postBlank = postBlank; return .centerBlock(x)
+        case .citation(var x): x.postBlank = postBlank; return .citation(x)
+        case .citationReference(var x): x.postBlank = postBlank; return .citationReference(x)
+        case .clock(var x): x.postBlank = postBlank; return .clock(x)
+        case .code(var x): x.postBlank = postBlank; return .code(x)
+        case .comment(var x): x.postBlank = postBlank; return .comment(x)
+        case .commentBlock(var x): x.postBlank = postBlank; return .commentBlock(x)
+        case .diarySexp(var x): x.postBlank = postBlank; return .diarySexp(x)
+        case .document(var x): x.postBlank = postBlank; return .document(x)
+        case .drawer(var x): x.postBlank = postBlank; return .drawer(x)
+        case .dynamicBlock(var x): x.postBlank = postBlank; return .dynamicBlock(x)
+        case .entity(var x): x.postBlank = postBlank; return .entity(x)
+        case .exampleBlock(var x): x.postBlank = postBlank; return .exampleBlock(x)
+        case .exportBlock(var x): x.postBlank = postBlank; return .exportBlock(x)
+        case .exportSnippet(var x): x.postBlank = postBlank; return .exportSnippet(x)
+        case .fixedWidth(var x): x.postBlank = postBlank; return .fixedWidth(x)
+        case .footnoteDefinition(var x): x.postBlank = postBlank; return .footnoteDefinition(x)
+        case .footnoteReference(var x): x.postBlank = postBlank; return .footnoteReference(x)
+        case .headline(var x): x.postBlank = postBlank; return .headline(x)
+        case .horizontalRule(var x): x.postBlank = postBlank; return .horizontalRule(x)
+        case .inlineBabelCall(var x): x.postBlank = postBlank; return .inlineBabelCall(x)
+        case .inlineSrcBlock(var x): x.postBlank = postBlank; return .inlineSrcBlock(x)
+        case .italic(var x): x.postBlank = postBlank; return .italic(x)
+        case .item(var x): x.postBlank = postBlank; return .item(x)
+        case .keyword(var x): x.postBlank = postBlank; return .keyword(x)
+        case .latexEnvironment(var x): x.postBlank = postBlank; return .latexEnvironment(x)
+        case .latexFragment(var x): x.postBlank = postBlank; return .latexFragment(x)
+        case .lineBreak(var x): x.postBlank = postBlank; return .lineBreak(x)
+        case .link(var x): x.postBlank = postBlank; return .link(x)
+        case .list(var x): x.postBlank = postBlank; return .list(x)
+        case .macro(var x): x.postBlank = postBlank; return .macro(x)
+        case .nodeProperty(var x): x.postBlank = postBlank; return .nodeProperty(x)
+        case .paragraph(var x): x.postBlank = postBlank; return .paragraph(x)
+        case .planning(var x): x.postBlank = postBlank; return .planning(x)
+        case .propertyDrawer(var x): x.postBlank = postBlank; return .propertyDrawer(x)
+        case .quoteBlock(var x): x.postBlank = postBlank; return .quoteBlock(x)
+        case .radioTarget(var x): x.postBlank = postBlank; return .radioTarget(x)
+        case .section(var x): x.postBlank = postBlank; return .section(x)
+        case .specialBlock(var x): x.postBlank = postBlank; return .specialBlock(x)
+        case .srcBlock(var x): x.postBlank = postBlank; return .srcBlock(x)
+        case .statisticsCookie(var x): x.postBlank = postBlank; return .statisticsCookie(x)
+        case .strikethrough(var x): x.postBlank = postBlank; return .strikethrough(x)
+        case .`subscript`(var x): x.postBlank = postBlank; return .`subscript`(x)
+        case .superscript(var x): x.postBlank = postBlank; return .superscript(x)
+        case .table(var x): x.postBlank = postBlank; return .table(x)
+        case .tableCell(var x): x.postBlank = postBlank; return .tableCell(x)
+        case .tableRow(var x): x.postBlank = postBlank; return .tableRow(x)
+        case .target(var x): x.postBlank = postBlank; return .target(x)
+        case .text: return self
+        case .timestamp(var x): x.postBlank = postBlank; return .timestamp(x)
+        case .underline(var x): x.postBlank = postBlank; return .underline(x)
+        case .verbatim(var x): x.postBlank = postBlank; return .verbatim(x)
+        case .verseBlock(var x): x.postBlank = postBlank; return .verseBlock(x)
+        }
+    }
+
+    /// The same node with `affiliated` attached, or nil for a node type whose schema def has
+    /// no `affiliated` field. Returning nil rather than the node unchanged is deliberate:
+    /// silently dropping an affiliated run would erase source content, and only the caller
+    /// knows whether reaching such a node is impossible or an error.
+    public func settingAffiliated(_ affiliated: OrgAffiliated) -> OrgNode? {
+        switch self {
+        case .babelCall(var x): x.affiliated = affiliated; return .babelCall(x)
+        case .bold: return nil
+        case .centerBlock(var x): x.affiliated = affiliated; return .centerBlock(x)
+        case .citation: return nil
+        case .citationReference: return nil
+        case .clock: return nil
+        case .code: return nil
+        case .comment(var x): x.affiliated = affiliated; return .comment(x)
+        case .commentBlock(var x): x.affiliated = affiliated; return .commentBlock(x)
+        case .diarySexp(var x): x.affiliated = affiliated; return .diarySexp(x)
+        case .document: return nil
+        case .drawer(var x): x.affiliated = affiliated; return .drawer(x)
+        case .dynamicBlock(var x): x.affiliated = affiliated; return .dynamicBlock(x)
+        case .entity: return nil
+        case .exampleBlock(var x): x.affiliated = affiliated; return .exampleBlock(x)
+        case .exportBlock(var x): x.affiliated = affiliated; return .exportBlock(x)
+        case .exportSnippet: return nil
+        case .fixedWidth(var x): x.affiliated = affiliated; return .fixedWidth(x)
+        case .footnoteDefinition(var x): x.affiliated = affiliated; return .footnoteDefinition(x)
+        case .footnoteReference: return nil
+        case .headline(var x): x.affiliated = affiliated; return .headline(x)
+        case .horizontalRule(var x): x.affiliated = affiliated; return .horizontalRule(x)
+        case .inlineBabelCall: return nil
+        case .inlineSrcBlock: return nil
+        case .italic: return nil
+        case .item(var x): x.affiliated = affiliated; return .item(x)
+        case .keyword(var x): x.affiliated = affiliated; return .keyword(x)
+        case .latexEnvironment(var x): x.affiliated = affiliated; return .latexEnvironment(x)
+        case .latexFragment: return nil
+        case .lineBreak: return nil
+        case .link: return nil
+        case .list(var x): x.affiliated = affiliated; return .list(x)
+        case .macro: return nil
+        case .nodeProperty(var x): x.affiliated = affiliated; return .nodeProperty(x)
+        case .paragraph(var x): x.affiliated = affiliated; return .paragraph(x)
+        case .planning(var x): x.affiliated = affiliated; return .planning(x)
+        case .propertyDrawer(var x): x.affiliated = affiliated; return .propertyDrawer(x)
+        case .quoteBlock(var x): x.affiliated = affiliated; return .quoteBlock(x)
+        case .radioTarget: return nil
+        case .section(var x): x.affiliated = affiliated; return .section(x)
+        case .specialBlock(var x): x.affiliated = affiliated; return .specialBlock(x)
+        case .srcBlock(var x): x.affiliated = affiliated; return .srcBlock(x)
+        case .statisticsCookie(var x): x.affiliated = affiliated; return .statisticsCookie(x)
+        case .strikethrough: return nil
+        case .`subscript`: return nil
+        case .superscript: return nil
+        case .table(var x): x.affiliated = affiliated; return .table(x)
+        case .tableCell: return nil
+        case .tableRow(var x): x.affiliated = affiliated; return .tableRow(x)
+        case .target: return nil
+        case .text: return nil
+        case .timestamp: return nil
+        case .underline: return nil
+        case .verbatim: return nil
+        case .verseBlock(var x): x.affiliated = affiliated; return .verseBlock(x)
         }
     }
 }
