@@ -479,17 +479,20 @@ extension OrgParser {
             ]), contentEnd)
         }
 
-        // Dynamic blocks, dispatched here for the same reason `#+begin_X` is: the opener is
-        // claimed by `isUnimplementedHashPlusElement` and would otherwise throw.
+        // The dynamic-block opener grammar, consulted ONCE and its answer reused by the keyword
+        // branch below. Two calls would be two chances to disagree about what an opener is, and
+        // the two uses sit on OPPOSITE sides of the same answer: a paired opener builds the
+        // block here, an unpaired one must fall past the keyword branch to the paragraph path.
         //
-        // That claim is deliberately NOT narrowed. An opener reaching this branch and failing to
-        // pair keeps throwing, which is the same over-throw an unterminated `#+begin_example`
-        // already takes -- org makes both ordinary paragraph text, measured, and emitting that
-        // paragraph is a separate decision from implementing the block. Narrowing the claim
-        // WITHOUT emitting the paragraph would be worse than either: `keywordParts` reads
-        // `#+BEGIN: myblock` as key `BEGIN`, value `myblock`, so an unpaired opener would become
-        // a `keyword` node org never builds. The claim is what stands between here and that.
-        if let (name, arguments) = try OrgParser.dynamicBlockBeginLine(line),
+        // Deliberately evaluated at this point rather than at the top of the function, so the
+        // non-ASCII-name refusal `dynamicBlockBeginLine` carries keeps throwing exactly where it
+        // used to.
+        let dynamicOpener = try OrgParser.dynamicBlockBeginLine(line)
+
+        // Dynamic blocks. An opener that PAIRS builds the block; one that does not falls through,
+        // and org's answer for it is ordinary paragraph text -- the same rule `#+begin_example`,
+        // `:PROPERTIES:` and `:LOGBOOK:` already follow, stated once in `pairedCloseIndex`.
+        if let (name, arguments) = dynamicOpener,
            let end = pairedCloseIndex(openedAt: i, upperBound: range.upperBound,
                                       isCloser: OrgParser.isDynamicBlockEndLine) {
             // Children are ELEMENTS, like quote and center: a `#+TODO:` line inside a dynamic
@@ -537,7 +540,17 @@ extension OrgParser {
             ]), i + 1)
         }
 
-        if !OrgParser.isUnimplementedHashPlusElement(line),
+        // A VALID dynamic-block opener is NOT a keyword, even having failed to pair above:
+        // `keywordParts` reads `#+BEGIN: myblock` as key `BEGIN`, value `myblock`, and org builds
+        // no such node -- it is paragraph text. So the opener must fall past this branch.
+        //
+        // The test is the opener GRAMMAR rather than a list of `#+begin` spellings, and that is
+        // the point. Org decides with `org-element-dynamic-block-open-re`, which requires a
+        // `[[:word:]]` name, so `#+BEGIN:`, `#+BEGIN: ` and `#+BEGIN: -lead` are not openers and
+        // really ARE ordinary keywords, key `BEGIN` value `""` (measured, sweep `i1-bare` and
+        // `i1-bare-sp`). A spelling list cannot express that distinction: the one that stood here
+        // claimed every `#+begin:` prefix and so refused those two as well.
+        if dynamicOpener == nil,
            let (key, value) = OrgParser.keywordParts(of: line) {
             // An affiliated keyword reaching HERE is one that attached to nothing, so it stands
             // alone and keeps its SOURCE key -- `parseSection` handles the attaching case before
@@ -776,16 +789,17 @@ extension OrgParser {
 
     private func throwIfUnimplementedElementStart(_ line: Line) throws {
         // The reason string is a live enumeration of what still reaches here, not a historical
-        // note. It named `clock' and `diary sexp' until both landed, at which point the message
-        // described a refusal that could no longer happen -- and the only cost of a stale reason
-        // is paid by whoever debugs the throw. Two families remain:
-        //   `#+BEGIN:' / `#+BEGIN' / `#+BEGIN '   dynamic-block, unimplemented
-        //   `#\t...'                             a comment per spec; SCHEMA.md's strip
-        //                                        convention covers only `# '
-        // Measured against the sweep: 9 of 1312 cases reach this throw, all nine dynamic-block
-        // shapes. Re-derive the list from `isUnimplementedElementStart' before editing it.
+        // note. It named `clock' and `diary sexp' until both landed, and then the dynamic-block
+        // family, at which point the message described a refusal that could no longer happen --
+        // and the only cost of a stale reason is paid by whoever debugs the throw. ONE family
+        // remains:
+        //   `#\t...'   a comment per spec; SCHEMA.md's strip convention covers only `# '
+        // Re-derived from `isUnimplementedElementStart', not edited from memory: the sweep now
+        // sends ZERO of its 1312 cases here, because the nine that used to were all dynamic-block
+        // shapes and those parse. It has no `#\t' case at all, so this throw is currently
+        // unreachable from any gate in the repository -- see ORG-36.
         if isUnimplementedElementStart(line) {
-            throw OrgError.unimplemented("unimplemented element start (dynamic block, or #-tab comment)")
+            throw OrgError.unimplemented("unimplemented element start (#-tab comment)")
         }
     }
 
@@ -911,10 +925,13 @@ extension OrgParser {
         // stood in for a decision this parser could not yet make. It can now: `parseDrawer`
         // returns nil for an unpaired opener, and control falls through to the paragraph path,
         // which is org's own answer for `:NOTADRAWER` and for a bare `:END:` alike.
-        // Dynamic blocks and babel calls; `#+begin_`/`#+end_` left this gate when unpaired
-        // openers became paragraphs. A `#+` line that is neither this nor a keyword is
-        // paragraph text, so there is deliberately no blanket `#+` branch here any more.
-        if OrgParser.isUnimplementedHashPlusElement(line) { return true }
+        // NOTE what is deliberately GONE: the dynamic-block branch, the LAST `#+` branch here.
+        // `#+begin_`/`#+end_` left this gate when unpaired openers became paragraphs, and
+        // `#+BEGIN:` has now left it for exactly the same reason -- an opener that pairs is a
+        // `dynamic-block`, one that does not is paragraph text, and `#+BEGIN` / `#+BEGIN foo`
+        // carry no colon so they were never keywords to be confused with. `parseOneElement` makes
+        // that call from the opener GRAMMAR rather than from a spelling list, so there is no `#+`
+        // branch left here at all.
         // NOTE what is deliberately GONE: the `\begin{NAME}` branch. It stood here while
         // latex-environment was oracle-unmapped (it landed WITH the entity work, because
         // entities are what un-refused `\`); the element now parses, and an UNPAIRED opener

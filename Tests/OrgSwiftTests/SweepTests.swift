@@ -129,32 +129,26 @@ struct SweepTests {
     ///     a MISSING name here    a case that used to refuse now parses -- good news, and the
     ///                            correct fix is to delete the name, never to keep the list loose
     ///
-    /// The 18 fall in three groups, and each group is a decision rather than an accident:
+    /// The 9 fall in two groups, and each group is a decision rather than an accident:
     ///
-    ///     i1-*   (9)   MALFORMED `#+BEGIN` shapes: unterminated, bare `#+BEGIN:`, bare
-    ///                  `#+BEGIN`, `#+END:` carrying junk, and nesting. A WELL-FORMED dynamic
-    ///                  block parses -- `#+BEGIN: clocktable :scope file` / body / `#+END:` is a
-    ///                  `dynamic-block` node, fixtured as `dynamic-block-simple`, in either case.
-    ///                  Do not read this group as "dynamic blocks are unimplemented"; an earlier
-    ///                  version of this comment said exactly that and it was wrong, because it
-    ///                  was written from `isUnimplementedHashPlusElement`'s NAME rather than from
-    ///                  a parse. The gate is on the malformed tail only.
     ///     i3-*   (8)   a non-ASCII scalar at a subscript/superscript body boundary.
     ///     i4-*   (1)   a non-ASCII scalar at a footnote-label boundary.
     ///
-    /// Both non-ASCII groups are the same deliberate policy: org's answer there depends on
-    /// character classes this project has not measured over the non-ASCII space, so it refuses
-    /// instead of guessing. Widening one is real work, not a list edit.
+    /// Both are the same deliberate policy: org's answer there depends on character classes this
+    /// project has not measured over the non-ASCII space, so it refuses instead of guessing.
+    /// Widening one is real work, not a list edit.
+    ///
+    /// **The `i1-*` group is GONE, and how it left matters more than that it did.** Those nine
+    /// were the malformed `#+BEGIN` shapes, and this docstring twice described them wrongly --
+    /// first as "dynamic blocks are unimplemented", corrected once, and then as a gate "on the
+    /// malformed tail only", which was also wrong. Both readings came from
+    /// `isUnimplementedHashPlusElement`'s NAME. Read from org instead, there was no malformed
+    /// tail: `#+BEGIN:` is an ordinary keyword, `#+BEGIN` and `#+BEGIN foo` are paragraphs, and
+    /// an UNPAIRED `#+BEGIN: n` is a paragraph exactly as an unterminated `#+begin_example` is.
+    /// Nine refusals for constructs org had a plain answer for, held up by a list of three
+    /// spellings. Deleting the predicate and asking the opener GRAMMAR instead retired all nine
+    /// at once and moved nothing else.
     static let knownRefusals: Set<String> = [
-        "i1-bare",
-        "i1-bare-sp",
-        "i1-begin-sp",
-        "i1-begin-word",
-        "i1-dyn-unterm",
-        "i1-end-args",
-        "i1-end-under",
-        "i1-headline-brk",
-        "i1-nested",
         "i3-accent",
         "i3-cjk",
         "i3-mix-digit",

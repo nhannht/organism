@@ -79,17 +79,34 @@ struct PublicAPITests {
     /// The README tells a consumer to catch `OrgError.notImplemented` and read its payload. That
     /// instruction is only true if the case is public AND the payload names the construct, so
     /// this asserts both rather than trusting the doc comment.
+    ///
+    /// **The probe used to be `#+BEGIN: myblock` / `unterminated`, and this test caught its own
+    /// obsolescence when that started parsing.** An unpaired dynamic-block opener is a paragraph
+    /// in org, so the refusal it stood on was never a property of org -- it was a property of a
+    /// list of `#+begin` spellings this parser used to carry, and it retired with that list.
+    ///
+    /// The replacement is chosen to be DURABLE rather than convenient. A non-ASCII scalar at a
+    /// footnote-label boundary is one of the nine deliberate policy refusals: org's answer there
+    /// depends on character classes this project has not measured, so it declines rather than
+    /// guessing, and widening it is real work rather than a list edit. It is also `i4-label-uni`
+    /// in the sweep, named in `SweepTests.knownRefusals` -- so the day it does start parsing,
+    /// `refusalsAreExactlyTheNamedSet` goes red in the same run and whoever is holding that
+    /// change finds this test with it, instead of discovering it later out of context.
     @Test("a refusal surfaces as a catchable OrgError with a named reason")
     func refusalIsCatchable() throws {
         do {
-            _ = try parseOrg("#+BEGIN: myblock\nunterminated\n")
-            Issue.record("expected a refusal for an unterminated dynamic block")
+            _ = try parseOrg("[fn:café] y\n")
+            Issue.record("expected a refusal for a non-ASCII footnote label")
         } catch let error as OrgError {
             guard case .notImplemented(let reason) = error else {
                 Issue.record("expected .notImplemented, got \(error)")
                 return
             }
-            #expect(reason.contains("ParserElements.swift"),
+            // The contract is "the payload names its throw site", so the assertion is on the
+            // SHAPE of a site and not on one file. Pinning `ParserElements.swift` is what the
+            // previous version did, and it made an ordinary move of the throw look like a
+            // broken public contract.
+            #expect(reason.contains(".swift:"),
                     "the payload should name the throw site; got: \(reason)")
         }
     }

@@ -77,46 +77,28 @@ extension OrgParser {
         return (key, String(scalars: text[valueStart..<valueEnd]))
     }
 
-    /// True for a `#+` line whose real element type is NOT `keyword` and is not implemented.
-    ///
-    /// This is the "looks like a keyword, is not one" set. Every member would otherwise be
-    /// claimed by `keywordParts` and emitted as a confident `keyword` node, which is a silent
-    /// wrong tree rather than an honest error. All three families are measured:
-    ///
-    /// - **Blocks** (`#+begin_X` / `#+end_X`). These need no colon reasoning -- having no colon
-    ///   they are not keywords by `keywordParts` anyway -- but they are named so the throw is
-    ///   deliberate rather than incidental. Org parses an unterminated `#+begin_src elisp` as a
-    ///   paragraph containing a SUBSCRIPT node (`_src` lexes as one), which is emphatically not
-    ///   something to emit by accident.
-    /// - **Dynamic blocks** (`#+BEGIN:`). With a matching `#+END:` this is a `dynamic-block`;
-    ///   WITHOUT one it is a `paragraph`, NOT a keyword -- org does not fall back to keyword
-    ///   parsing for it. Two different unimplemented answers, so it throws either way.
-    /// **Babel calls are GONE from this set.** `#+CALL:` is a `babel-call` element and now parses
-    /// as one, dispatched by `babelCallValue` before the keyword branch is reached. The exactness
-    /// note below moved there with it: `#+CALLX:` and `#+CALLBACK:` are ordinary keywords.
-    ///
-    /// `#+END:` deliberately sits on the OTHER side of this predicate, which looks like an
-    /// inconsistency and is not: `#+END:` on its own IS an ordinary keyword, key `END`, value
-    /// `""` (measured). It only stops being one when a `#+BEGIN:` above it consumes it, and any
-    /// document containing such a `#+BEGIN:` has already thrown by then.
-    ///
-    /// Also ordinary keywords, all measured: `#+INCLUDE:`, `#+MACRO:`, `#+FILETAGS:`, and a
-    /// `#+TBLFM:` with no table above it -- that last one looks like it should be special and
-    /// genuinely is not.
-    static func isUnimplementedHashPlusElement(_ line: Line) -> Bool {
-        // Case-folds document text against an ASCII keyword: see the case-FOLD note in
-        // ParserPrimitives.swift (U+212A KELVIN SIGN folds to `k` in Swift, never in Emacs).
-        //
-        // `#+begin_` and `#+end_` are deliberately ABSENT. A paired `#+begin_X` dispatches as a
-        // block before this gate is consulted; an UNPAIRED opener and a stray `#+end_X` are
-        // ordinary paragraph text in org -- every block parser falls back to
-        // org-element-paragraph-parser when its closer is missing within the limit, and `#+end_`
-        // matches nothing in `org-element-paragraph-separate` -- so claiming either here
-        // replaced org's paragraph with a refusal.
-        let lower = OrgParser.asciiLowered(String(scalars: line.text[line.contentStart...]))
-        return lower.hasPrefix("#+begin:") || lower.hasPrefix("#+begin ")
-            || lower == "#+begin"
-    }
+    // `isUnimplementedHashPlusElement` USED TO STAND HERE, and its deletion is worth a note
+    // because the shape it had is the shape to avoid.
+    //
+    // It was a list of three literal spellings -- `#+begin:`, `#+begin ` and `#+begin` -- standing
+    // in for "this looks like a keyword and is not one". A spelling list cannot express org's
+    // actual rule, and it got that rule wrong in both directions: `#+BEGIN:` and `#+BEGIN: ` were
+    // refused although org builds an ordinary keyword for them (key `BEGIN`, value `""`), while
+    // `#+BEGIN` and `#+BEGIN foo` were refused although, carrying no colon, `keywordParts` never
+    // claimed them and they were only ever paragraph text.
+    //
+    // Org decides with `org-element-dynamic-block-open-re`, which requires a `[[:word:]]` name.
+    // `dynamicBlockBeginLine` (ParserBlocks.swift) already transcribes that regexp, so
+    // `parseOneElement` now asks IT whether a line is an opener, and the four answers fall out of
+    // the grammar instead of being listed:
+    //
+    //     #+BEGIN: n ... #+END:   opener, paired     -> dynamic-block
+    //     #+BEGIN: n              opener, unpaired   -> paragraph
+    //     #+BEGIN:  /  #+BEGIN:   not an opener      -> keyword BEGIN ""
+    //     #+BEGIN   /  #+BEGIN f  not an opener      -> paragraph, no colon to be a keyword
+    //
+    // Blocks and babel calls had already left the set for their own reasons; the dynamic-block
+    // family was the last member, so the predicate had none left.
 
     /// The `:value` of a `#+CALL:` line, or nil when the line is not one.
     ///
