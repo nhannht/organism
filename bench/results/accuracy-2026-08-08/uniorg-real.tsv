@@ -1,0 +1,29 @@
+case	verdict	note
+doomemacs-docs/appendix.org	pass	
+doomemacs-docs/contributing.org	pass	
+doomemacs-docs/examples.org	pass	
+doomemacs-docs/faq.org	pass-structure	postBlank/preBlank bookkeeping only
+doomemacs-docs/getting_started.org	pass-structure	postBlank/preBlank bookkeeping only
+doomemacs-docs/index.org	pass-structure	postBlank/preBlank bookkeeping only
+go-org-testdata/blocks.org	cannot-represent	example-block switches
+go-org-testdata/captions.org	pass	
+go-org-testdata/east_asian_line_breaks.org	pass	
+go-org-testdata/footnotes.org	pass-structure	postBlank/preBlank bookkeeping only
+go-org-testdata/footnotes_in_headline.org	pass	
+go-org-testdata/headlines.org	pass	
+go-org-testdata/hl-lines.org	pass	
+go-org-testdata/inline.org	cannot-represent	node type inline-src-block; node type macro; timestamp dayname; timestamp repeater
+go-org-testdata/keywords.org	pass	
+go-org-testdata/latex.org	pass	
+go-org-testdata/lists.org	wrong-tree	$.children[0].children[0].children[1].children[0].children[1].postBlank: 0 vs 2
+go-org-testdata/misc.org	wrong-tree	$.children[1].children[11].children[0].children[0].children[0].children[1].postBlank: 0 vs 1
+go-org-testdata/options.org	pass	
+go-org-testdata/paragraphs.org	pass	
+go-org-testdata/tables.org	cannot-represent	affiliated keywords on a table
+org-mode-samples/blocks.org	cannot-represent	node type dynamic-block
+org-mode-samples/headings.org	wrong-tree	$.children[28].children[1].title: length 1 vs 0
+org-mode-samples/keywords.org	wrong-tree	$.children[0].title[0].value: "TODO This is a todo item" vs "This is a todo item"
+org-mode-samples/lists.org	wrong-tree	$.children[0].children[8].children[3].checkbox: null vs "on"
+org-mode-samples/pathological.org	pass	
+org-mode-samples/tags.org	wrong-tree	$.children[8].tags: length 2 vs 0
+org-mode-samples/text.org	wrong-tree	$.children[8].children[0].children[0].children[10].type: "underline" vs "subscript"

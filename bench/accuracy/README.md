@@ -12,7 +12,7 @@ Run it:
 ```bash
 swift build -c release --package-path bench
 (cd bench/competitors/orgize && cargo build --release --bin orgize-adapter)
-(cd bench/competitors/go-org && go build -o go-org-adapter.bin adapter.go)
+(cd bench/competitors/go-org && go build -o go-org-adapter.bin ./adapter)
 python3 bench/accuracy/grade.py            # all parsers, all corpora
 python3 bench/accuracy/grade.py --parser uniorg --corpus conformance
 ```
@@ -32,8 +32,8 @@ build the speed table times:
 |---|---|---|
 | organism | this repo | `bench/Sources/orgbench` (`orgbench json`) |
 | uniorg | uniorg-parse 3.2.2 | `bench/competitors/uniorg/adapt.mjs` |
-| orgize | 0.9.0 | `bench/competitors/orgize/src/bin/adapter.rs` |
-| go-org | 2f088a1 | `bench/competitors/go-org/adapter.go` |
+| orgize | 0.9.0 | `bench/competitors/orgize/src/bin/orgize-adapter.rs` |
+| go-org | v1.7.0 | `bench/competitors/go-org/adapter/main.go` |
 | org-element | Emacs 30.2 / org 9.7.11 | `harness/oracle-dump.el` (the oracle itself) |
 
 org-element is the control row, not a competitor: the reference trees ARE its output
@@ -104,9 +104,18 @@ headline number for every parser is strict passes.
   reference needs the split. Repeater/delay cookies are stored as raw strings (`"+1w"`);
   decomposing that already-isolated token into `{type, value, unit}` is a re-encode, not
   parsing, and is done.
-- **go-org**: see the marker list in `grade.py` beside its adapter.
+- **go-org** captures a list bullet without its trailing whitespace; the adapter emits
+  `bullet + " "` (the dominant source form), so a bare `-` item or unusual spacing fails
+  honestly. Its fused `"language -switches"` token contributes only its first field (the
+  language is by definition the first token); the switch tail is dropped and marker-listed.
+  Comment-block contents, which go-org parses as elements, are rejoined from their text
+  lines. postBlank is 0 everywhere - go-org's AST has no blank-line information at all.
 
-Verdicts were spot-audited by hand: every conformance `wrong-tree` for uniorg was traced
-to a reproducible uniorg parse divergence (lowercase `[x]` accepted as a checkbox,
-`#+STARTUP: odd` not honored, `$...$` accepted where org rejects, trailing newline
-truncated from latex environments, tblfm lines concatenated, ...), not to adapter choices.
+Verdicts were spot-audited by hand: every conformance `wrong-tree` was traced to a
+reproducible parse divergence in the competitor, not to adapter choices. Samples: uniorg
+accepts lowercase `[x]` as a checkbox, ignores `#+STARTUP: odd`, truncates the trailing
+newline from latex environments, and concatenates multiple `#+TBLFM:` lines; orgize
+rejects `<2026-01-01 Thu +1w>` outright (parses it as plain text, despite having repeater
+fields), loses multiple `#+TBLFM:` lines, and cannot parse a document-start property
+drawer; go-org accepts lowercase `[x]`, accepts latex commands org rejects, and keeps
+block-content indentation org strips inside list items.

@@ -1,0 +1,122 @@
+case	verdict	note
+affiliated-attr-hyphenated-backend	pass	
+affiliated-caption-forms	cannot-represent	affiliated keywords on a table
+affiliated-caption-short-empty	cannot-represent	affiliated keywords on a table
+affiliated-caption-short-markup	cannot-represent	affiliated keywords on a table
+affiliated-header-results-attr-plot	pass	
+affiliated-interleaved-repeat	pass	
+babel-call-forms	cannot-represent	node type babel-call
+block-center-parsed	pass	
+block-comment-literal	pass	
+block-example-literal	pass	
+block-example-switches	cannot-represent	example-block switches
+block-export-html	pass	
+block-quote-parsed	pass	
+block-src-literal	pass	
+block-src-switches	pass	
+block-src-with-params	pass	
+block-verse-parsed-objects	pass	
+citation-forms	wrong-tree	$.children[0].children[2].children[1].children[0].prefix: [{"type": "text", "value": " "}] vs null
+clock-forms	cannot-represent	timestamp dayname; timestamp rangeType
+clock-normalization	cannot-represent	timestamp dayname; timestamp rangeType
+diary-sexp-forms	pass	
+drawer-fused-name	wrong-tree	$.children[0].children[0].children[0].children missing
+drawer-simple	pass	
+dynamic-block-simple	cannot-represent	node type dynamic-block
+easy-comment-line	pass	
+easy-commented-headline	pass	
+easy-heading-levels	pass	
+easy-horizontal-rule	pass	
+easy-keyword-simple	pass	
+easy-plain-paragraph-multiline	pass	
+easy-priority-and-tags-headline	pass	
+easy-table-simple	pass	
+emphasis-bold-simple	pass	
+emphasis-border-reject-midword	pass	
+emphasis-border-reject-verbatim-adjacent	pass	
+emphasis-code-simple	pass	
+emphasis-italic-simple	pass	
+emphasis-nested-bold-italic	pass	
+emphasis-reject-space-borders	pass	
+emphasis-strikethrough-simple	pass	
+emphasis-underline-simple	pass	
+emphasis-underline-strike-nested	pass	
+emphasis-verbatim-inside-bold	pass	
+emphasis-verbatim-simple	pass	
+entity-forms	pass	
+export-snippet-forms	pass	
+fixed-width-simple	pass	
+footnote-definition-preblank	pass	
+footnote-definition-simple	pass	
+footnote-reference-simple	pass	
+headline-empty-title	wrong-tree	$.children[0].children[0].title: length 1 vs 0
+headline-inlinetask-depth	pass	
+headline-odd-levels	wrong-tree	$.children[1].children[0].children[0].level: 3 vs 5
+inline-babel-call-forms	cannot-represent	node type inline-babel-call
+inline-src-block-forms	cannot-represent	node type inline-src-block
+keyword-name-attaches-to-table	cannot-represent	affiliated keywords on a table
+keyword-nonaffiliated-does-not-attach	pass	
+keyword-title-document-level	pass	
+latex-environment-forms	wrong-tree	$.children[0].children[0].value: "\\begin{equation}\nx = 1\n\\end{equation}\n" vs "\\begin{equation}\nx = 1\n\\end{equation}"
+latex-fragment-command	pass	
+latex-fragment-dollar-closer-class	wrong-tree	$.children[0].children[0].children[0].postBlank unexpected
+latex-fragment-dollar-display	pass	
+latex-fragment-dollar-rejects	pass	
+latex-fragment-dollar-simple	pass	
+latex-fragment-inline	pass	
+line-break-in-verse	pass	
+line-break-simple	pass	
+link-angle	pass	
+link-description-backslash	pass	
+link-plain	pass	
+link-radio	cannot-represent	node type radio-target; radio link
+link-regular-no-description	pass	
+link-regular-with-description	pass	
+list-checkbox-forms	wrong-tree	$.children[0].children[0].children[2].checkbox: null vs "on"
+list-checkbox-states	pass	
+list-counter-override	pass	
+list-descriptive-term-def	pass	
+list-item-emphasis	pass	
+list-item-empty	pass	
+list-item-greater-block	pass	
+list-item-preblank	pass	
+list-nested-by-indent	pass	
+list-ordered-simple	pass	
+list-unordered-simple	pass	
+macro-forms	cannot-represent	node type macro
+object-angle-plain-text	pass	
+object-bracket-plain-text	pass	
+planning-closed	cannot-represent	timestamp dayname
+planning-scheduled-and-deadline	cannot-represent	timestamp dayname
+planning-scheduled-hugs-headline	cannot-represent	timestamp dayname
+property-drawer-after-planning	cannot-represent	timestamp dayname
+property-drawer-document-start	pass	
+property-drawer-positional-fallback	pass	
+property-drawer-simple	pass	
+skeleton-bare-paragraph	pass	
+skeleton-headline-with-section	pass	
+skeleton-nested-headline	pass	
+special-block-simple	cannot-represent	special-block parameters
+statistics-cookie-fraction	pass	
+statistics-cookie-percent	pass	
+subscript-simple	pass	
+superscript-simple	pass	
+table-el-flavour	pass	
+table-rule-widths	pass	
+table-tblfm-multiple	wrong-tree	$.children[0].children[0].tblfm[0]: "$2=1" vs "$3=$1+$2$2=1"
+target-simple	cannot-represent	node type target
+timestamp-active-range	cannot-represent	timestamp rangeType
+timestamp-active-simple	cannot-represent	timestamp dayname
+timestamp-diary-sexp	cannot-represent	timestamp diary sexp
+timestamp-inactive-range	cannot-represent	timestamp rangeType
+timestamp-inactive-simple	cannot-represent	timestamp dayname
+timestamp-no-dayname	cannot-represent	timestamp rangeType
+timestamp-timerange-contraction	cannot-represent	timestamp rangeType
+timestamp-with-delay	cannot-represent	timestamp delay
+timestamp-with-repeater	cannot-represent	timestamp repeater
+timestamp-with-time	cannot-represent	timestamp dayname
+todo-default-recognized	pass	
+todo-default-unrecognized	pass	
+todo-hidden-by-unterminated-example	wrong-tree	$.children[0].children[0].children missing
+todo-runtime-custom	wrong-tree	$.children[1].title[0].value: "Do thing" vs "NEXT Do thing"
+underline-vs-subscript	wrong-tree	$.children[0].children[0].children[1].type: "underline" vs "subscript"

@@ -1,0 +1,29 @@
+case	verdict	note
+doomemacs-docs/appendix.org	wrong-tree	$.children[0].children[3].postBlank: 1 vs 0
+doomemacs-docs/contributing.org	wrong-tree	$.children[0].children[1].postBlank: 1 vs 0
+doomemacs-docs/examples.org	wrong-tree	$.children[0].children[3].postBlank: 1 vs 0
+doomemacs-docs/faq.org	cannot-represent	preBlank
+doomemacs-docs/getting_started.org	cannot-represent	preBlank
+doomemacs-docs/index.org	wrong-tree	$.children[0].children[1].postBlank: 1 vs 0
+go-org-testdata/blocks.org	cannot-represent	affiliated key RESULTS; bare (unbraced) sub/superscript
+go-org-testdata/captions.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+go-org-testdata/east_asian_line_breaks.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+go-org-testdata/footnotes.org	cannot-represent	preBlank
+go-org-testdata/footnotes_in_headline.org	cannot-represent	preBlank
+go-org-testdata/headlines.org	cannot-represent	bare (unbraced) sub/superscript; commented headline
+go-org-testdata/hl-lines.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+go-org-testdata/inline.org	cannot-represent	node type entity; node type export-snippet; timestamp dayname (normalized through time.Time)
+go-org-testdata/keywords.org	wrong-tree	$.children[1].children[0].children[0].affiliated[0].key: "CAPTION" vs "ATTR_HTML"
+go-org-testdata/latex.org	cannot-represent	bare (unbraced) sub/superscript; node type entity
+go-org-testdata/lists.org	cannot-represent	item counter; preBlank
+go-org-testdata/misc.org	cannot-represent	bare (unbraced) sub/superscript; node type entity; preBlank
+go-org-testdata/options.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+go-org-testdata/paragraphs.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+go-org-testdata/tables.org	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+org-mode-samples/blocks.org	cannot-represent	bare (unbraced) sub/superscript; node type dynamic-block
+org-mode-samples/headings.org	cannot-represent	commented headline; preBlank
+org-mode-samples/keywords.org	cannot-represent	bare (unbraced) sub/superscript
+org-mode-samples/lists.org	wrong-tree	$.children[0].children[8].children[3].children[0].children[0].value: "not a checkbox?\n" vs "[x] not a checkbox?\n"
+org-mode-samples/pathological.org	pass	
+org-mode-samples/tags.org	wrong-tree	$.children[8].tags: length 2 vs 0
+org-mode-samples/text.org	cannot-represent	bare (unbraced) sub/superscript

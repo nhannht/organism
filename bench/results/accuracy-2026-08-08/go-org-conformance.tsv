@@ -1,0 +1,122 @@
+case	verdict	note
+affiliated-attr-hyphenated-backend	cannot-represent	affiliated key ATTR_MY-BACKEND
+affiliated-caption-forms	cannot-represent	dual CAPTION[short]
+affiliated-caption-short-empty	wrong-tree	$.children[0].children[0].affiliated missing
+affiliated-caption-short-markup	cannot-represent	dual CAPTION[short]
+affiliated-header-results-attr-plot	cannot-represent	affiliated key ATTR_LATEX; affiliated key HEADER; affiliated key PLOT; affiliated key RESULTS
+affiliated-interleaved-repeat	cannot-represent	affiliated key HEADER; affiliated key PLOT
+babel-call-forms	cannot-represent	node type babel-call
+block-center-parsed	pass	
+block-comment-literal	pass	
+block-example-literal	pass	
+block-example-switches	pass	
+block-export-html	pass	
+block-quote-parsed	pass	
+block-src-literal	pass	
+block-src-switches	cannot-represent	src-block switches (fused into the language token)
+block-src-with-params	pass	
+block-verse-parsed-objects	pass	
+citation-forms	cannot-represent	node type citation; node type citation-reference
+clock-forms	cannot-represent	node type clock; timestamp dayname (normalized through time.Time); timestamp kind inactive (only the active <...> form is parsed); timestamp kind inactive-range (only the active <...> form is parsed)
+clock-normalization	cannot-represent	node type clock; timestamp dayname (normalized through time.Time); timestamp kind inactive (only the active <...> form is parsed); timestamp kind inactive-range (only the active <...> form is parsed)
+diary-sexp-forms	cannot-represent	node type diary-sexp
+drawer-fused-name	pass	
+drawer-simple	pass	
+dynamic-block-simple	cannot-represent	node type dynamic-block
+easy-comment-line	pass	
+easy-commented-headline	cannot-represent	commented headline
+easy-heading-levels	pass	
+easy-horizontal-rule	pass	
+easy-keyword-simple	pass	
+easy-plain-paragraph-multiline	pass	
+easy-priority-and-tags-headline	pass	
+easy-table-simple	pass	
+emphasis-bold-simple	pass	
+emphasis-border-reject-midword	pass	
+emphasis-border-reject-verbatim-adjacent	pass	
+emphasis-code-simple	pass	
+emphasis-italic-simple	pass	
+emphasis-nested-bold-italic	pass	
+emphasis-reject-space-borders	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+emphasis-strikethrough-simple	pass	
+emphasis-underline-simple	pass	
+emphasis-underline-strike-nested	pass	
+emphasis-verbatim-inside-bold	pass	
+emphasis-verbatim-simple	pass	
+entity-forms	cannot-represent	node type entity
+export-snippet-forms	cannot-represent	node type export-snippet
+fixed-width-simple	pass	
+footnote-definition-preblank	cannot-represent	preBlank
+footnote-definition-simple	pass	
+footnote-reference-simple	pass	
+headline-empty-title	wrong-tree	$.children[0].children[0].title: length 1 vs 0
+headline-inlinetask-depth	cannot-represent	preBlank
+headline-odd-levels	wrong-tree	$.children[1].children[0].children[0].level: 3 vs 5
+inline-babel-call-forms	cannot-represent	bare (unbraced) sub/superscript; node type inline-babel-call
+inline-src-block-forms	cannot-represent	bare (unbraced) sub/superscript
+keyword-name-attaches-to-table	pass	
+keyword-nonaffiliated-does-not-attach	pass	
+keyword-title-document-level	pass	
+latex-environment-forms	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+latex-fragment-command	wrong-tree	$.children[0].children[0].children[0].value: "a " vs "a \\foo{x}[y] b, \\bar* c, path C:\\Users\\me, lone \\5 d\n"
+latex-fragment-dollar-closer-class	wrong-tree	$.children[0].children[0].children[0].postBlank unexpected
+latex-fragment-dollar-display	pass	
+latex-fragment-dollar-rejects	wrong-tree	$.children[0].children[0].children[0].postBlank unexpected
+latex-fragment-dollar-simple	pass	
+latex-fragment-inline	pass	
+line-break-in-verse	pass	
+line-break-simple	pass	
+link-angle	cannot-represent	angle link
+link-description-backslash	cannot-represent	node type entity
+link-plain	pass	
+link-radio	cannot-represent	node type radio-target
+link-regular-no-description	pass	
+link-regular-with-description	pass	
+list-checkbox-forms	wrong-tree	$.children[0].children[0].children[2].children[0].children[0].value: "folded\n" vs "[x] folded\n"
+list-checkbox-states	pass	
+list-counter-override	cannot-represent	item counter
+list-descriptive-term-def	pass	
+list-item-emphasis	wrong-tree	$.children[0].children[0].children[1].children[0].postBlank: 1 vs 0
+list-item-empty	wrong-tree	$.children[0].children[0].children[1].bullet: "-" vs "- "
+list-item-greater-block	wrong-tree	$.children[0].children[0].children[0].children[1].children[0].children[0].value: "  q\n" vs "q\n"
+list-item-preblank	cannot-represent	preBlank
+list-nested-by-indent	pass	
+list-ordered-simple	pass	
+list-unordered-simple	pass	
+macro-forms	wrong-tree	$.children[0].children[0].children[1].value: "{{{title}}}" vs "{{{title}}} b {{{Args(x, y)}}}"
+object-angle-plain-text	pass	
+object-bracket-plain-text	pass	
+planning-closed	cannot-represent	node type planning; timestamp dayname (normalized through time.Time); timestamp kind inactive (only the active <...> form is parsed)
+planning-scheduled-and-deadline	cannot-represent	node type planning; timestamp dayname (normalized through time.Time)
+planning-scheduled-hugs-headline	cannot-represent	node type planning; timestamp dayname (normalized through time.Time)
+property-drawer-after-planning	cannot-represent	node type planning; timestamp dayname (normalized through time.Time)
+property-drawer-document-start	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+property-drawer-positional-fallback	wrong-tree	$.children[0].children[1].children[0].children missing
+property-drawer-simple	pass	
+skeleton-bare-paragraph	pass	
+skeleton-headline-with-section	pass	
+skeleton-nested-headline	pass	
+special-block-simple	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+statistics-cookie-fraction	pass	
+statistics-cookie-percent	pass	
+subscript-simple	cannot-represent	bare (unbraced) sub/superscript
+superscript-simple	cannot-represent	bare (unbraced) sub/superscript
+table-el-flavour	cannot-represent	table.el table
+table-rule-widths	wrong-tree	$.children[0].children[0].postBlank: 1 vs 0
+table-tblfm-multiple	wrong-tree	$.children[0].children[0].tblfm: ["$2=1", "$3=$1+$2"] vs null
+target-simple	cannot-represent	node type target
+timestamp-active-range	cannot-represent	timestamp dayname (normalized through time.Time); timestamp kind active-range (only the active <...> form is parsed); timestamp range
+timestamp-active-simple	cannot-represent	timestamp dayname (normalized through time.Time)
+timestamp-diary-sexp	cannot-represent	timestamp kind diary (only the active <...> form is parsed)
+timestamp-inactive-range	cannot-represent	timestamp dayname (normalized through time.Time); timestamp kind inactive-range (only the active <...> form is parsed); timestamp range
+timestamp-inactive-simple	cannot-represent	timestamp dayname (normalized through time.Time); timestamp kind inactive (only the active <...> form is parsed)
+timestamp-no-dayname	cannot-represent	timestamp kind active-range (only the active <...> form is parsed); timestamp kind inactive (only the active <...> form is parsed); timestamp range
+timestamp-timerange-contraction	cannot-represent	timestamp dayname (normalized through time.Time); timestamp kind active-range (only the active <...> form is parsed); timestamp range
+timestamp-with-delay	cannot-represent	timestamp dayname (normalized through time.Time); timestamp delay
+timestamp-with-repeater	cannot-represent	timestamp dayname (normalized through time.Time)
+timestamp-with-time	cannot-represent	timestamp dayname (normalized through time.Time)
+todo-default-recognized	pass	
+todo-default-unrecognized	pass	
+todo-hidden-by-unterminated-example	cannot-represent	bare (unbraced) sub/superscript
+todo-runtime-custom	pass	
+underline-vs-subscript	cannot-represent	bare (unbraced) sub/superscript

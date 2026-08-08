@@ -1,0 +1,29 @@
+case	verdict	note
+doomemacs-docs/appendix.org	cannot-represent	descriptive list; item tag (descriptive list); link pathType
+doomemacs-docs/contributing.org	cannot-represent	descriptive list; item tag (descriptive list); link pathType
+doomemacs-docs/examples.org	cannot-represent	link pathType
+doomemacs-docs/faq.org	cannot-represent	descriptive list; item tag (descriptive list); link pathType
+doomemacs-docs/getting_started.org	cannot-represent	descriptive list; item tag (descriptive list); link pathType; node type latex-fragment
+doomemacs-docs/index.org	cannot-represent	link pathType
+go-org-testdata/blocks.org	cannot-represent	affiliated keywords (no attachment in AST); link pathType; node type subscript
+go-org-testdata/captions.org	cannot-represent	affiliated keywords (no attachment in AST); link pathType
+go-org-testdata/east_asian_line_breaks.org	pass-structure	postBlank/preBlank bookkeeping only
+go-org-testdata/footnotes.org	cannot-represent	footnote-definition preBlank; link pathType
+go-org-testdata/footnotes_in_headline.org	cannot-represent	link pathType
+go-org-testdata/headlines.org	cannot-represent	commented headline; item checkbox; link pathType; node type subscript
+go-org-testdata/hl-lines.org	pass	
+go-org-testdata/inline.org	cannot-represent	link pathType; node type entity; node type line-break; node type subscript
+go-org-testdata/keywords.org	cannot-represent	affiliated keywords (no attachment in AST); link pathType
+go-org-testdata/latex.org	cannot-represent	node type entity; node type latex-fragment; node type subscript; node type superscript
+go-org-testdata/lists.org	cannot-represent	descriptive list; item checkbox; item counter; item tag (descriptive list)
+go-org-testdata/misc.org	cannot-represent	affiliated keywords (no attachment in AST); link pathType; node type entity; node type line-break
+go-org-testdata/options.org	cannot-represent	link pathType
+go-org-testdata/paragraphs.org	cannot-represent	link pathType
+go-org-testdata/tables.org	cannot-represent	affiliated keywords (no attachment in AST)
+org-mode-samples/blocks.org	cannot-represent	node type subscript
+org-mode-samples/headings.org	cannot-represent	commented headline
+org-mode-samples/keywords.org	cannot-represent	node type subscript
+org-mode-samples/lists.org	cannot-represent	item checkbox
+org-mode-samples/pathological.org	pass	
+org-mode-samples/tags.org	wrong-tree	$.children[8].tags: length 2 vs 0
+org-mode-samples/text.org	cannot-represent	link pathType; node type latex-fragment; node type subscript

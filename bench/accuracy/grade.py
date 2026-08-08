@@ -27,7 +27,7 @@ Build the adapters first (each lives beside its speed runner, sharing the same p
 dependency, so accuracy grades exactly the build the speed table times):
   swift build -c release --package-path bench
   cd bench/competitors/orgize  && cargo build --release --bin orgize-adapter
-  cd bench/competitors/go-org  && go build -o go-org-adapter.bin adapter.go
+  cd bench/competitors/go-org  && go build -o go-org-adapter.bin ./adapter
   (uniorg adapter is bench/competitors/uniorg/adapt.mjs, no build step)
 """
 
