@@ -457,8 +457,10 @@ extension OrgParser {
         var declared: Set<String> = []
         var sawDeclaration = false
         let literal = literalBodyLines(in: lines)
-        for (i, line) in lines.enumerated()
-        where !literal[i] && !isUnimplementedHashPlusElement(line) {
+        // The KEY is the filter, so no `#+BEGIN` guard belongs here and one used to. A dynamic
+        // block opener reaches `keywordParts` as key `BEGIN`, which is not one of the three names
+        // below, so the guard could never change this answer.
+        for (i, line) in lines.enumerated() where !literal[i] {
             guard let (key, value) = keywordParts(of: line),
                   key == "TODO" || key == "SEQ_TODO" || key == "TYP_TODO" else { continue }
             sawDeclaration = true
@@ -480,8 +482,9 @@ extension OrgParser {
     /// tokenized rather than compared whole.
     static func scanOddLevels(in lines: [Line]) -> Bool {
         let literal = literalBodyLines(in: lines)
-        for (i, line) in lines.enumerated()
-        where !literal[i] && !isUnimplementedHashPlusElement(line) {
+        // Key-filtered exactly like `scanTodoKeywords` above, and a `#+BEGIN` guard stood here for
+        // the same non-reason: an opener's key is `BEGIN`, never `STARTUP`.
+        for (i, line) in lines.enumerated() where !literal[i] {
             guard let (key, value) = keywordParts(of: line), key == "STARTUP" else { continue }
             if value.split(whereSeparator: { $0 == " " || $0 == "\t" }).contains("odd") {
                 return true

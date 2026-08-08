@@ -204,8 +204,11 @@ extension OrgParser {
             var runEnd = i
             // Recognized with `affiliatedParts`, org's SEPARATE affiliated regexp -- not with
             // `keywordParts`, whose `\S-+` key cannot span the space in `#+CAPTION[short one]:`.
+            //
+            // No `#+BEGIN` guard is needed here and one used to stand where it bought nothing:
+            // `affiliatedParts` gates on `isAffiliatedName`, and `BEGIN` is neither one of the 13
+            // names nor an `ATTR_` backend, so a dynamic-block opener already returns nil.
             while runEnd < range.upperBound,
-                  !OrgParser.isUnimplementedHashPlusElement(lines[runEnd]),
                   let parts = OrgParser.affiliatedParts(of: lines[runEnd]) {
                 affiliated.append(parts)
                 runEnd += 1
