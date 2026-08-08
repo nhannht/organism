@@ -6,8 +6,9 @@ import Foundation
 ///
 /// ## The gap this closes
 ///
-/// Five constants in `Sources/OrgSwift` are Emacs data transcribed, enumerated or DIFFERENCED
-/// into Swift. Each was measured once and then nothing re-ran the measurement, which their own
+/// Six constants in `Sources/OrgSwift` are Emacs data transcribed, enumerated or DIFFERENCED
+/// into Swift (five through the shared dump; the plain-link boundary table probes separately,
+/// because its gate asks about scalars derived from the shipped table itself). Each was measured once and then nothing re-ran the measurement, which their own
 /// doc comments say in as many words: "staleness is NOT self-detecting", "nothing in this
 /// repository re-runs the enumeration", "re-measuring on a toolchain bump is a manual obligation
 /// on whoever bumps it, not a guard the build enforces".
@@ -321,6 +322,96 @@ struct PinnedTableDriftTests {
         #expect(!live.suppressing.contains("_"), """
             org now suppresses an inline-src-block after '_'. That is the CONTROL: `_` allows \
             while `$` suppresses, which is what proves the rule is not "is it alphanumeric".
+            """)
+    }
+
+    // MARK: Behavioural shape, plain-link word start
+
+    /// A SECOND Emacs run, unlike the five datasets above, because the scalars it probes are
+    /// derived from the shipped table itself: every range edge and its outside neighbours,
+    /// plus fixed anchors. The full-space sweep costs ~50 seconds and is the regeneration
+    /// path (`harness/regen-plain-link-boundary.sh`); the edge probe is the per-run gate.
+    /// What the edge gate tolerates, stated plainly: a drift that flips interior scalars
+    /// while leaving every range boundary in place would pass. Unicode and syntax-table
+    /// changes move boundaries, which is what the edges watch.
+    static let plainLinkProbe: (versions: (emacs: String, org: String), suppresses: [UInt32: Bool])? = {
+        let script = HarnessSupport.repoRoot.appendingPathComponent("harness/pinned-tables.el")
+        guard FileManager.default.fileExists(atPath: script.path) else { return nil }
+
+        var probes: Set<UInt32> = [
+            0x20, 0x2E, 0x2F, 0x3C, 0x5C, 0x5F, 0x7E,       // anchors: space, punctuation, _
+            0xB9, 0x2B0,                                      // ¹ and ʰ - the found wrong trees
+            0x4E38, 0x3042, 0xAC00, 0x1F600,                  // script transitions that LINK
+        ]
+        for range in OrgParser.plainLinkBoundarySuppressRanges {
+            if range.lowerBound > 0 { probes.insert(range.lowerBound - 1) }
+            probes.insert(range.lowerBound)
+            probes.insert(range.upperBound)
+            probes.insert(range.upperBound + 1)
+        }
+        let valid = probes.filter { Unicode.Scalar($0) != nil }.sorted()
+        let list = valid.map(String.init).joined(separator: " ")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [
+            "emacs", "--batch", "-Q", "-l", script.path,
+            "--eval", "(org-swift-probe-plain-link-boundary '(\(list)))",
+        ]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+
+        var versions = (emacs: "", org: "")
+        var suppresses: [UInt32: Bool] = [:]
+        for line in text.split(separator: "\n") {
+            let field = line.split(separator: "\t").map(String.init)
+            switch field[0] {
+            case "VERSION" where field.count >= 3:
+                versions = (field[1], field[2])
+            case "PLB" where field.count >= 3:
+                if let v = UInt32(field[1], radix: 16) { suppresses[v] = field[2] == "1" }
+            default:
+                continue
+            }
+        }
+        return (versions, suppresses)
+    }()
+
+    @Test("BEHAVIOURAL: the plain-link boundary table still matches org at every range edge")
+    func plainLinkBoundaryHasNotDrifted() throws {
+        guard let live = Self.plainLinkProbe else {
+            Issue.record("harness/pinned-tables.el did not run -- nothing was checked")
+            return
+        }
+        let probed = Set(live.suppresses.keys)
+        var versions = Regenerated()
+        versions.emacsVersion = live.versions.emacs
+        versions.orgVersion = live.versions.org
+        Self.expectSame(
+            "plainLinkBoundarySuppressRanges (at the probed edges)", shape: "behavioural enumeration",
+            shipped: probed.filter { v in
+                Unicode.Scalar(v).map(OrgParser.plainLinkBoundarySuppresses) == true
+            },
+            regenerated: probed.filter { live.suppresses[$0] == true },
+            versions)
+        for (scalar, name) in [(UInt32(0xB9), "SUPERSCRIPT ONE"), (UInt32(0x2B0), "MODIFIER LETTER SMALL H")] {
+            #expect(live.suppresses[scalar] == true, """
+                org now forms a plain link after U+\(String(scalar, radix: 16, uppercase: true)) \
+                \(name). That scalar is why this table exists: it is a word constituent no ASCII \
+                test sees and no script transition separates, so it is named here rather than \
+                left to the set comparison.
+                """)
+        }
+        #expect(live.suppresses[0x4E38] == false, """
+            org no longer forms a plain link after U+4E38 (a Han ideograph). That is the \
+            CONTROL: Emacs breaks the word at the script transition and links, which is what \
+            proves the rule is not "is the previous character a word constituent".
             """)
     }
 }

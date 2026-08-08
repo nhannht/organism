@@ -10,8 +10,9 @@
 ;;
 ;; ## Why this file exists (ORG-17)
 ;;
-;; Five constants in `Sources/OrgSwift' are Emacs data transcribed, enumerated or differenced
-;; into Swift. Every one of them was measured once, against Emacs 30.2 / org 9.7.11 and
+;; Six constants in `Sources/OrgSwift' are Emacs data transcribed, enumerated or differenced
+;; into Swift (five in the main dump below, plus the plain-link boundary table, which has its
+;; own probe entry points because its gate asks about scalars derived from the shipped table). Every one of them was measured once, against Emacs 30.2 / org 9.7.11 and
 ;; Swift 6.3.3 / Unicode 17.0, and then NOTHING re-ran the measurement. Their own doc comments
 ;; say so in as many words -- "staleness is NOT self-detecting", "nothing in this repository
 ;; re-runs the enumeration", "re-measuring on a toolchain bump is a manual obligation".
@@ -131,6 +132,63 @@ pinned, because only the outcome is what the parser has to agree with."
           (org-element-map (org-element-parse-buffer) 'inline-src-block
             (lambda (_) (setq found t)))
           (unless found (org-swift--pt-emit "SUPPRESS" (format "%X" v))))))))
+
+(defvar org-swift--plb-buffer nil)
+
+(defun org-swift--plb-suppresses (v)
+  "Non-nil when org forms NO plain link immediately after scalar V.
+
+The probe is `org-link-plain-re' searched in a live org-mode BUFFER, not
+`string-match': org-mode's syntax table gives `$ % ' \\=' and U+00B7 word syntax
+that the standard table consulted for strings does not, and those four scalars
+answer differently between the two (measured over the full space, 2026-08-08).
+One probe type suffices: every registered type begins with an ASCII Latin
+letter, and `\\<' between the preceding scalar and a Latin letter does not
+depend on WHICH letter, so `https' stands for all 23."
+  (unless (buffer-live-p org-swift--plb-buffer)
+    (setq org-swift--plb-buffer (generate-new-buffer " plb-probe"))
+    (with-current-buffer org-swift--plb-buffer (org-mode)))
+  (not (with-current-buffer org-swift--plb-buffer
+         (erase-buffer)
+         (insert (string v) "https://e.com/ab y\n")
+         (goto-char (point-min))
+         (and (re-search-forward org-link-plain-re nil t)
+              (= (match-beginning 0) 2)))))
+
+(defun org-swift-probe-plain-link-boundary (scalars)
+  "BEHAVIOURAL ENUMERATION, gate half: one `PLB HEX 0|1' line per scalar in SCALARS.
+
+The caller (PinnedTableDriftTests) sends the EDGES of every range in the shipped
+table plus their outside neighbours and a fixed anchor set - the designed subset
+the recurring gate re-measures. The full-space sweep lives in
+`org-swift-dump-plain-link-boundary' below and costs ~50 seconds, which is the
+regeneration path, not a per-test-run cost. What the edge gate tolerates, stated
+plainly: a drift that flips interior scalars while leaving every range boundary
+in place would pass; Unicode and syntax-table changes move boundaries, which is
+what the edges watch."
+  (org-swift--pt-emit "VERSION" emacs-version (org-version nil nil t))
+  (dolist (v scalars)
+    (org-swift--pt-emit "PLB" (format "%X" v) (if (org-swift--plb-suppresses v) "1" "0"))))
+
+(defun org-swift-dump-plain-link-boundary ()
+  "BEHAVIOURAL ENUMERATION, full space: `SUPPRESS A B' hex ranges to stdout.
+
+The scalars after which org forms no plain link. ~50s. Consumed by
+harness/regen-plain-link-boundary.sh to rewrite
+Sources/OrgSwift/PlainLinkBoundary.generated.swift."
+  (let ((start nil) (previous nil))
+    (dotimes (v (1+ #x10FFFF))
+      (let ((suppress (and (not (and (>= v #xD800) (<= v #xDFFF)))
+                           (org-swift--plb-suppresses v))))
+        (cond
+         ((and suppress (null start)) (setq start v previous v))
+         ((and suppress (= v (1+ previous))) (setq previous v))
+         (suppress
+          (org-swift--pt-emit "SUPPRESS" (format "%X" start) (format "%X" previous))
+          (setq start v previous v))
+         (t nil))))
+    (when start
+      (org-swift--pt-emit "SUPPRESS" (format "%X" start) (format "%X" previous)))))
 
 (defun org-swift-dump-pinned-tables ()
   "Print every dataset above, tab-separated, to stdout."

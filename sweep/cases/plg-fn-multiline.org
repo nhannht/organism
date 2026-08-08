@@ -1,0 +1,2 @@
+an Org file:[fn:: The
+variable used] end

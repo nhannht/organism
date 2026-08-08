@@ -329,8 +329,8 @@ extension OrgParser {
     /// **No Swift predicate stands in for this, in EITHER direction.** `isLetterScalar ||
     /// isNumberScalar` is wider in places (CJK, kana and fullwidth forms are alphanumeric to both
     /// Emacs and Swift, but carry category `|`, so org treats them as boundaries and links
-    /// anyway) and narrower in others. It is the `plainLinkCouldStart` failure running both ways
-    /// at once, and there one wrong direction cost 16 silent wrong trees.
+    /// anyway) and narrower in others. It is the plain-link boundary failure running both ways
+    /// at once (see `plainLinkEnd`), and there one wrong direction cost 16 silent wrong trees.
     ///
     /// Kept as RANGES rather than a `Set`: ranges are the form the enumeration produced, and a
     /// binary search over 735 entries beats building a 40,985-member `Set`.

@@ -219,87 +219,6 @@ extension OrgParser {
     static let bracketOpenableObjects: Set<ObjectKind> =
         [.link, .timestamp, .footnoteReference, .citation]
 
-    /// True when a PLAIN link could begin at `i` -- the guard that stops a plain link this parser
-    /// cannot DELIMIT from silently flattening into plain text.
-    ///
-    /// Since links landed this is no longer the thing that refuses plain links; `plainLinkEnd` in
-    /// ParserLinks.swift parses them. It is kept, and kept deliberately wider than that parser,
-    /// as the backstop for the gap between them: `plainLinkEnd` implements org's delimitation
-    /// pattern, and any input where this guard fires but that parser returns nil is a form org
-    /// links and this parser cannot, which must throw rather than flatten. See `parseObjects`.
-    ///
-    /// This replaced a `s.contains("://") || s.contains("mailto:")` scan that was not merely
-    /// coarse but UNSOUND, measured: `see file:foo.org and id:abc and doi:10.1/x end` contains
-    /// neither substring, so the old guard passed it through and the parser emitted one flat
-    /// `text` node where org emits three `link` nodes. Three plausible-wrong trees in one line,
-    /// with the suite green. Widening the guard is what fixes that; it is deliberately NOT
-    /// narrowed in the same change, so a `://` inside `code`/`verbatim` (which org keeps literal,
-    /// measured) still throws rather than starting to parse unobserved -- narrowing is invisible
-    /// to the suite for the reason SCHEMA.md section 8 gives, and belongs with real link support.
-    ///
-    /// Deliberately over-throws relative to org's own `org-link-plain-re`, never under-throws.
-    /// Three conditions, each measured against the oracle:
-    ///
-    /// - **Word boundary, and it must be an ASCII letter or digit.** `org-link-plain-re` opens
-    ///   with `\<`, so a type name preceded by a word constituent is not a link -- `I love
-    ///   Madrid: a city` is plain text, and without this the `id` type would fire on `Madrid:`.
-    ///
-    ///   The `isASCII` half is not a refinement, it is a BUG FIX, and the reasoning it replaces
-    ///   was exactly backwards. This condition used to test `isLetter || isNumber` alone, on the
-    ///   stated argument that "a narrower notion than org's can only make this fire MORE often".
-    ///   That argument is sound and its premise was false: Swift's letter and number predicates
-    ///   are fully Unicode-aware, so they are true for `漢`, `α`, `한`, `٣`, `Ⅷ` and
-    ///   the rest, while Emacs breaks the word at a script transition and links anyway. The
-    ///   notion was WIDER than org's, not narrower, so `return false` suppressed the guard
-    ///   exactly where org still produced a link -- 16 measured silent wrong trees, e.g.
-    ///   `漢https://example.com end`, which org parses as text + link + text and this parser
-    ///   flattened into one text node.
-    ///
-    ///   Measured both sides: ASCII `a`, `9`, `Z` before a type genuinely suppress the link, and
-    ///   non-ASCII letters and digits do not. `_` and `-` do not suppress it either, and are
-    ///   already handled by being neither letter nor digit.
-    ///
-    ///   Two known over-throws remain, both deliberate: `¹` (and `² ³`) and `ʰ` are non-ASCII
-    ///   but org does NOT link after them, so this guard throws where org emits plain text.
-    ///   Over-throwing is the safe direction and is suite-visible; under-throwing is the silent
-    ///   one that produced the 16 wrong trees.
-    /// - **A registered type name, matched CASE-INSENSITIVELY.** Measured: `HTTPS://example.com`
-    ///   is a plain link, and its `pathType` comes back as the source's own `"HTTPS"`.
-    /// - **A non-blank character immediately after the colon.** Measured: `a help: see below b`
-    ///   is plain text -- org's path pattern cannot start with a space. The three characters
-    ///   excluded here are exactly space, tab and newline, NOT `isBorderWhitespace`: org's path
-    ///   class `[^][ \t\n()<>]` ACCEPTS U+00A0 and the other border-whitespace members, so
-    ///   rejecting them here would under-throw on `file:<NBSP>x`.
-    ///
-    /// Org additionally requires the path to be at least two characters and to end on a
-    /// non-punctuation character. Both are skipped, which only widens this further, so every
-    /// input org parses as a plain link trips this too.
-    private func plainLinkCouldStart(in chars: [Unicode.Scalar], at i: Int) -> Bool {
-        // `isASCII` first: see the doc comment. Without it this suppressed the guard after every
-        // non-ASCII letter or digit, where org links anyway.
-        if i > 0, chars[i - 1].isASCII,
-           OrgParser.isLetterScalar(chars[i - 1]) || OrgParser.isNumberScalar(chars[i - 1]) {
-            return false
-        }
-        for type in Self.linkTypes {
-            let colon = i + type.count
-            guard colon < chars.count, chars[colon] == ":" else { continue }
-            guard colon + 1 < chars.count else { continue }
-            let afterColon = chars[colon + 1]
-            guard afterColon != " ", afterColon != "\t", afterColon != "\n" else { continue }
-            var matched = true
-            // ASCII-only fold, per `asciiLowered`: Swift's own fold maps U+212A to `k` and
-            // Emacs folds nothing non-ASCII onto an ASCII letter.
-            for (offset, expected) in type.enumerated()
-            where OrgParser.asciiLowered(chars[i + offset]) != expected {
-                matched = false
-                break
-            }
-            if matched { return true }
-        }
-        return false
-    }
-
     /// Parses a contents string (paragraph body, headline title, or emphasis contents) into an
     /// array of object nodes.
     ///
@@ -521,17 +440,22 @@ extension OrgParser {
             // -- they begin with a bare type name, so every one of them would otherwise fall to
             // `default` and be swallowed into a text run.
             //
-            // The two-step is the safety property, not redundancy. `plainLinkEnd` implements
-            // org's delimitation pattern; `plainLinkCouldStart` is the deliberately WIDER guard
-            // that predates it. A position where the wide guard fires and the parser declines is
-            // a form org links and this parser cannot delimit, and it MUST throw: flattening it
-            // into text is the silent wrong tree ORG-19 and ORG-21 were both about, and no gate
-            // would show it.
+            // A position where `plainLinkEnd` declines is ORDINARY TEXT, not a refusal. A wider
+            // "could this be a link" guard used to stand after the delimitation and throw where
+            // the two disagreed. That guard predated `plainLinkEnd` implementing org's full 9.7
+            // pattern, and by the time it was deleted it fired only where org itself emits plain
+            // text -- `file:[fn:: note]` (org-manual.org's own prose), `file:x` (a one-character
+            // path, below org's two-unit minimum), `elisp:(find-file "x")` (a group the space
+            // breaks). The nine `plg-*` sweep cases pin org's answers for exactly the shapes the
+            // guard used to intercept, including the two that really DO link and must keep
+            // linking (`file::x`, `info:(org)Top`). This is the `#+BEGIN` lesson again: a
+            // heuristic listing spellings beside a predicate that consults the grammar can only
+            // ever disagree with it by inventing refusals.
             //
-            // BOTH steps are inside the permission check, and that is ORG-23. A container that
+            // The scan stays inside the permission check, and that is ORG-23. A container that
             // refuses `link` does not merely decline to build the node -- org's lexer never looks
-            // for one, so the characters are ordinary text and the wide guard must not fire
-            // either. Running the scan unconditionally is what shipped five wrong trees:
+            // for one, so the characters are ordinary text. Running the scan unconditionally is
+            // what shipped five wrong trees:
             //
             //     [[http://x][see http://y now]]   org: description is ONE text node
             //                                      us:  text + LINK + text
@@ -563,7 +487,6 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if plainLinkCouldStart(in: chars, at: i) { throw OrgError.unimplemented("text abutting a possible plain-link start") }
             }
 
             switch c {
@@ -2102,7 +2025,7 @@ extension OrgParser {
     /// `isNumberScalar`.** That is not a shortcut, it is the fix for a bug this parser has hit
     /// twice: Swift's number predicate is Unicode-aware and true for `١`, `１`, `²` and `Ⅷ`,
     /// so using it would build cookies out of `[١/٢]` and `[１/２]`, which org leaves as text.
-    /// `plainLinkCouldStart` records 16 silent wrong trees from the same class of gap.
+    /// `plainLinkEnd`'s boundary table records 16 silent wrong trees from the same class of gap.
     private func statisticsCookieEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
         func isASCIIDigit(_ s: Unicode.Scalar) -> Bool { s >= "0" && s <= "9" }
         var j = i + 1

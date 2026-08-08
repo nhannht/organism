@@ -57,6 +57,39 @@ extension OrgParser {
         }
     }
 
+    /// The table's ASCII rows, flattened to one bool per scalar at startup. DERIVED from
+    /// `plainLinkBoundarySuppressRanges`, never written by hand: a hand-copied ASCII switch
+    /// here would be a second copy of the table's first rows that the drift gate does not
+    /// compare, and deriving it makes the gate cover both paths through one source of truth.
+    static let plainLinkBoundarySuppressesASCII: [Bool] = (UInt32(0)..<128).map { v in
+        plainLinkBoundarySuppressRanges.contains { $0.contains(v) }
+    }
+
+    /// Whether org forms NO plain link immediately after `s` - org's `\<` word-start as it
+    /// actually behaves in an org-mode buffer, measured over the whole scalar space.
+    ///
+    /// This runs at every scanner position whose container permits a link, so the common case
+    /// (an ASCII previous scalar) is one array read; everything else is a binary search over
+    /// the 366 sorted ranges.
+    static func plainLinkBoundarySuppresses(_ s: Unicode.Scalar) -> Bool {
+        let v = s.value
+        if v < 128 { return plainLinkBoundarySuppressesASCII[Int(v)] }
+        var lo = 0
+        var hi = plainLinkBoundarySuppressRanges.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            let range = plainLinkBoundarySuppressRanges[mid]
+            if v < range.lowerBound {
+                hi = mid - 1
+            } else if v > range.upperBound {
+                lo = mid + 1
+            } else {
+                return true
+            }
+        }
+        return false
+    }
+
     /// The link types org recognizes, as scalar arrays for direct comparison against the
     /// scanner's own array. MEASURED from a live Emacs, not read off a defcustom, because the set
     /// is `org-modules`-dependent and GROWS once `org-mode` is actually activated in a buffer --
@@ -186,13 +219,19 @@ extension OrgParser {
     /// Greedy means the LAST qualifying end wins, not the first: `https://e.com...` records a
     /// qualifying end at `m` and then three non-qualifying ones, so it reports `m`.
     ///
-    /// Requires a word boundary before the type name, and the boundary test is ASCII-only for
-    /// the reason `plainLinkCouldStart` documents at length: Swift's letter/number predicates are
-    /// Unicode-aware where Emacs breaks the word at a script transition, so a Unicode-aware test
-    /// here suppresses links org actually emits.
+    /// Requires org's word boundary before the type name, and that boundary is a MEASURED TABLE,
+    /// not a predicate over Unicode properties. Every property-based model tried here was wrong
+    /// in one direction or the other: a Unicode-aware letter/number test suppressed links after
+    /// `漢` where Emacs breaks the word at the script transition and links anyway (16 wrong
+    /// trees), and the ASCII-only test that replaced it linked after `¹`, `ʰ`, `$`, `%` and `'`
+    /// where org does not - org-mode's own syntax table gives those word syntax, which no
+    /// Unicode property predicts. `plainLinkBoundarySuppresses` is the behavioural enumeration
+    /// of the real question (does `org-link-plain-re` match after this scalar, in an org-mode
+    /// buffer), 3,559 scalars in 366 ranges, every range edge verified against a live
+    /// `org-element` parse. Pinned by `PinnedTableDriftTests`; sweep cases `plg-*` hold the
+    /// discriminating shapes.
     func plainLinkEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
-        if i > 0, chars[i - 1].isASCII,
-           OrgParser.isLetterScalar(chars[i - 1]) || OrgParser.isNumberScalar(chars[i - 1]) {
+        if i > 0, OrgParser.plainLinkBoundarySuppresses(chars[i - 1]) {
             return nil
         }
         guard let typeLength = OrgParser.registeredLinkTypeLength(in: chars, at: i) else { return nil }
