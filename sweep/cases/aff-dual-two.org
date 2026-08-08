@@ -1,0 +1,3 @@
+#+CAPTION[s1]: l1
+#+CAPTION[s2]: l2
+para

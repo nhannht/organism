@@ -1,0 +1,5 @@
+#+HEADER: :var a=1
+#+HEADER: :var b=2
+#+BEGIN_SRC sh
+x
+#+END_SRC

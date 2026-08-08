@@ -1,0 +1,2 @@
+#+PLOT: set terminal png
+para

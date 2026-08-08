@@ -219,7 +219,14 @@ extension OrgParser {
             // No `#+BEGIN` guard is needed here and one used to stand where it bought nothing:
             // `affiliatedParts` gates on `isAffiliatedName`, and `BEGIN` is neither one of the 13
             // names nor an `ATTR_` backend, so a dynamic-block opener already returns nil.
+            //
+            // The sliced first line of an item is excluded for the same reason every other
+            // opener excludes it: org's affiliated regexp is anchored at a REAL line start, and
+            // an item's first element begins after the bullet, mid-line, where `^[ \t]*#\+` can
+            // never match. `- #+CAPTION: c` is paragraph text opening with a hash, measured
+            // (sweep aff-caption-inside-item).
             while runEnd < range.upperBound,
+                  !(runEnd == 0 && firstLineIsSliced),
                   let parts = OrgParser.affiliatedParts(of: lines[runEnd]) {
                 affiliated.append(parts)
                 runEnd += 1

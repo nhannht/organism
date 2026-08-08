@@ -14,100 +14,310 @@ extension OrgParser {
         let node: OrgTimestamp
     }
 
-    /// One `date` value: `{year, month, day, dayname, hour, minute}`.
+    /// Matches a timestamp at `i`, or nil.
     ///
-    /// `dayname` and the time are BOTH optional and independent, measured:
+    /// **org's matcher is a lax ENVELOPE plus independent field SCRAPES, not a grammar,** and
+    /// this function is that algorithm transcribed. A token walk that validates as it goes --
+    /// the previous implementation here -- diverges from org on every line where the free text
+    /// is not token-shaped, and the wave-4 sweep caught it four times in one run.
     ///
-    ///     <2026-01-01>              dayname null, hour null
-    ///     <2026-01-01 10:30>        dayname null, hour 10     -- no dayname, time present
-    ///     <2026-01-01 Thu>          dayname "Thu", hour null
-    ///     <2026-01-01 Thu 5:00>     dayname "Thu", hour 5     -- single-digit hour is legal
+    /// The envelope is `org-ts-regexp-both` (9.7.11 spelling, dumped from live Emacs, which is
+    /// SIMPLER than the org.el 27-era form quoted around the web):
     ///
-    /// so a parser that treats the token after the date as "the dayname" gets `<2026-01-01 10:30>`
-    /// wrong. The discriminator is whether the token starts with a digit.
-    private struct DateParts {
-        var year = 0, month = 0, day = 0
-        var dayname: String?
-        var hour: Int?
-        var minute: Int?
-        /// The second time of an internal contraction, `10:00-12:00`. Its presence is what makes
-        /// the whole timestamp a `timerange`.
-        var endHour: Int?
-        var endMinute: Int?
-
-        func date(hour h: Int?, minute m: Int?, dayname dn: String?) -> OrgDate {
-            OrgDate(year: year, month: month, day: day, dayname: dn, hour: h, minute: m)
-        }
-    }
-
-    /// Matches a timestamp at `i`, or nil. Throws only for a form that IS a timestamp opener and
-    /// cannot be parsed, so an unrecognized `<`/`[` construct returns nil and its caller decides.
+    ///     [[<]  YYYY-MM-DD  (?: <SPACE> .*? )?  []>]
+    ///
+    /// with four measured consequences the sweep pins by name:
+    ///
+    ///     kind is the OPENER's alone     `[2024-03-05 Tue>` is INACTIVE   (ts-mixed-close-*)
+    ///     the closer class is `]>` BOTH  `<2024-03-05 Tue]` is a timestamp, and a `]` in the
+    ///                                    free text CLOSES it              (ts-bracket-in-text)
+    ///     the separator is a SPACE       `<2024-03-05\tTue>` is text      (ts-tab-sep)
+    ///     junk is tolerated, not parsed  `<... 10:30:45>` keeps 10:30     (ts-seconds)
+    ///
+    /// Fields then come from SEPARATE extractions over the matched text, each transcribed from
+    /// its own regexp in `org-element-timestamp-parser`, and they do not agree about what a
+    /// "dayname" is -- see the two independent extractions in `halfFields`, the contraction
+    /// search in `scrapeTimeRange`, and the repeater / delay scan in `scrapeRep`.
+    ///
+    /// One form the reference has NO answer for: `<99-1-1 +1d>` passes org-element's lexer
+    /// gate (a sloppier third alternative accepts 1+ digit groups when a repeater follows) and
+    /// then CRASHES `org-element-parse-buffer` in `org-parse-time-string`. Measured 2026-08-08.
+    /// This parser requires the strict 4-2-2 envelope, so the form is plain text here -- there
+    /// is no tree to agree with.
     func timestampMatch(in chars: ScalarSlice, at i: Int) -> TimestampMatch? {
         guard i < chars.count else { return nil }
         let open = chars[i]
         guard open == "<" || open == "[" else { return nil }
-        let close: Unicode.Scalar = open == "<" ? ">" : "]"
         let active = open == "<"
 
-        // Diary sexp: `<%%(SEXP)>`. Its node carries `diarySexp` and NOTHING else -- start, end,
-        // repeater and delay are all null, measured.
-        if active, i + 3 < chars.count, chars[i + 1] == "%", chars[i + 2] == "%", chars[i + 3] == "(" {
-            var depth = 0
-            var j = i + 3
-            while j < chars.count {
-                if chars[j] == "(" { depth += 1 }
-                if chars[j] == ")" {
-                    depth -= 1
-                    if depth == 0 { break }
-                }
-                if chars[j] == "\n" { return nil }
-                j += 1
+        // Diary sexp: `<%%( [^>\n]+ ) [^>\n]* >`. GREEDY to the last `)` before the closer, not
+        // balanced -- `<%%(a) b>` is a diary whose sexp is `(a)` with ` b` DROPPED (the junk
+        // group exists in org's regexp and nothing stores it), and `<%%(a(b)c)>` keeps its
+        // nesting because greed reaches the last `)` anyway. Both measured (ts-diary-junk,
+        // ts-diary-nested). The node carries `diarySexp` and NOTHING else -- org does extract
+        // an hour from junk like `<%%(x) 10:30>`, but the schema drops it (ts-diary-time).
+        if active, i + 3 < chars.count, chars[i + 1] == "%", chars[i + 2] == "%",
+           chars[i + 3] == "(" {
+            var gt = i + 4
+            while gt < chars.count, chars[gt] != ">" {
+                if chars[gt] == "\n" { return nil }
+                gt += 1
             }
-            guard j < chars.count, j + 1 < chars.count, chars[j + 1] == ">" else { return nil }
-            let sexp = String(scalars: chars[(i + 3)...j])
-            return TimestampMatch(end: j + 2, node: OrgTimestamp(
+            guard gt < chars.count else { return nil }
+            var rparen = gt - 1
+            while rparen > i + 3, chars[rparen] != ")" { rparen -= 1 }
+            // `([^>\n]+)`: at least one scalar between the parens.
+            guard rparen > i + 4 else { return nil }
+            let sexp = String(scalars: chars[(i + 3)...rparen])
+            return TimestampMatch(end: gt + 1, node: OrgTimestamp(
                 kind: .diary, rangeType: nil, start: nil, end: nil,
                 repeater: nil, delay: nil, postBlank: 0, diarySexp: sexp))
         }
 
-        guard let first = parseTimestampBody(in: chars, from: i + 1, close: close) else { return nil }
+        guard let first = timestampEnvelope(in: chars, openAt: i) else { return nil }
 
-        // A `--` joining two timestamps of the SAME bracket kind is a daterange. Mixed brackets
-        // are not a range in org, so they are left for the caller rather than fused here.
-        if first.end + 1 < chars.count, chars[first.end] == "-", chars[first.end + 1] == "-",
-           first.end + 2 < chars.count, chars[first.end + 2] == open,
-           let second = parseTimestampBody(in: chars, from: first.end + 3, close: close) {
-            return TimestampMatch(end: second.end, node: OrgTimestamp(
+        // The raw-value regexp allows `--` plus a SECOND envelope, and its opener class is
+        // `[[<]` again -- NOT "the same bracket": `<2024-03-05>--[2024-03-07]` is one active
+        // daterange, measured (ts-range-mixed). The kind stays the FIRST opener's.
+        var end = first.end
+        var second: Range<Int>?
+        if end + 2 < chars.count, chars[end] == "-", chars[end + 1] == "-",
+           chars[end + 2] == "<" || chars[end + 2] == "[",
+           let e2 = timestampEnvelope(in: chars, openAt: end + 2) {
+            second = e2.inner
+            end = e2.end
+        }
+
+        // Repeater and delay are scraped from the WHOLE raw value -- both halves and the `--`
+        // between them -- so a repeater written in the END half of a range attaches to the one
+        // node exactly as org attaches it (ts-range-second-rep), and one glued to the dayname
+        // with no space still counts (ts-warn-glued).
+        let repeater = scrapeRep(in: chars, over: i..<end, delay: false)
+        let delay = scrapeRep(in: chars, over: i..<end, delay: true)
+
+        let startFields = halfFields(in: chars, over: first.inner)
+        let timeRange = scrapeTimeRange(in: chars, over: first.inner)
+
+        if let second {
+            let endFields = halfFields(in: chars, over: second)
+            // org's own fallback chain for the end time, transcribed: the end half's own time,
+            // else the first half's `10:00-12:00` contraction, else the start's.
+            return TimestampMatch(end: end, node: OrgTimestamp(
                 kind: active ? .activeRange : .inactiveRange,
                 rangeType: .daterange,
-                start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
-                                        dayname: first.parts.dayname),
-                end: second.parts.date(hour: second.parts.hour, minute: second.parts.minute,
-                                       dayname: second.parts.dayname),
-                repeater: first.repeater, delay: first.delay, postBlank: 0))
+                start: startFields.date(),
+                end: endFields.date(hourFallback: timeRange?.hour ?? startFields.hour,
+                                    minuteFallback: timeRange?.minute ?? startFields.minute),
+                repeater: repeater, delay: delay, postBlank: 0))
         }
 
-        // An internal `10:00-12:00` contraction is a range too, but a `timerange`: ONE timestamp
-        // whose raw value has no `--`, so it carries exactly one dayname token and the end date
-        // repeats the start's. `end.dayname` is therefore null by provenance, not by omission --
-        // SCHEMA.md section 4 spells this out, and it was AUDIT.md finding 16 before that.
-        if let endHour = first.parts.endHour {
-            return TimestampMatch(end: first.end, node: OrgTimestamp(
+        // An internal `10:00-12:00` contraction is a range too, but a `timerange`: ONE
+        // timestamp, so the end date repeats the start's and `end.dayname` is null by
+        // provenance, not by omission -- SCHEMA.md section 4, AUDIT.md finding 16 before that.
+        if let timeRange {
+            var endDate = startFields.date()
+            endDate.dayname = nil
+            endDate.hour = timeRange.hour
+            endDate.minute = timeRange.minute
+            return TimestampMatch(end: end, node: OrgTimestamp(
                 kind: active ? .activeRange : .inactiveRange,
                 rangeType: .timerange,
-                start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
-                                        dayname: first.parts.dayname),
-                end: first.parts.date(hour: endHour, minute: first.parts.endMinute, dayname: nil),
-                repeater: first.repeater, delay: first.delay, postBlank: 0))
+                start: startFields.date(), end: endDate,
+                repeater: repeater, delay: delay, postBlank: 0))
         }
 
-        return TimestampMatch(end: first.end, node: OrgTimestamp(
+        return TimestampMatch(end: end, node: OrgTimestamp(
             kind: active ? .active : .inactive,
             rangeType: nil,
-            start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
-                                    dayname: first.parts.dayname),
-            end: nil,
-            repeater: first.repeater, delay: first.delay, postBlank: 0))
+            start: startFields.date(), end: nil,
+            repeater: repeater, delay: delay, postBlank: 0))
+    }
+
+    // MARK: The envelope and the four scrapes
+
+    private struct TimestampEnvelope {
+        /// The bracket contents: starts at the year digit, ends before the closer.
+        let inner: Range<Int>
+        /// Index just past the closing bracket.
+        let end: Int
+    }
+
+    /// `[[<] YYYY-MM-DD (?: <SPACE> .*? )? []>]` at `openAt`, or nil. The lazy `.*?` means the
+    /// FIRST `]` or `>` closes, whatever the opener was, and a newline kills the match.
+    private func timestampEnvelope(in chars: ScalarSlice, openAt: Int) -> TimestampEnvelope? {
+        var j = openAt + 1
+        func digits(_ count: Int) -> Bool {
+            guard j + count <= chars.count else { return false }
+            for k in j..<(j + count) where chars[k].asciiDigitValue == nil { return false }
+            j += count
+            return true
+        }
+        guard digits(4), j < chars.count, chars[j] == "-" else { return nil }
+        j += 1
+        guard digits(2), j < chars.count, chars[j] == "-" else { return nil }
+        j += 1
+        guard digits(2), j < chars.count else { return nil }
+        if chars[j] == "]" || chars[j] == ">" {
+            return TimestampEnvelope(inner: (openAt + 1)..<j, end: j + 1)
+        }
+        guard chars[j] == " " else { return nil }
+        var k = j + 1
+        while k < chars.count, chars[k] != "]", chars[k] != ">" {
+            if chars[k] == "\n" { return nil }
+            k += 1
+        }
+        guard k < chars.count else { return nil }
+        return TimestampEnvelope(inner: (openAt + 1)..<k, end: k + 1)
+    }
+
+    /// One half's extracted fields. The year/month/day sit at fixed offsets by envelope
+    /// construction; dayname and time come from two extractions that DISAGREE about what a
+    /// dayname is, so both run and neither consults the other.
+    private struct HalfFields {
+        var year = 0, month = 0, day = 0
+        var dayname: String?
+        var hour: Int?
+        var minute: Int?
+
+        func date() -> OrgDate {
+            OrgDate(year: year, month: month, day: day, dayname: dayname,
+                    hour: hour, minute: minute)
+        }
+
+        /// org's end-half fallback: its own value, else the caller's fallback (the first
+        /// half's time-range end, else the start's own time).
+        func date(hourFallback: Int?, minuteFallback: Int?) -> OrgDate {
+            OrgDate(year: year, month: month, day: day, dayname: dayname,
+                    hour: hour ?? hourFallback, minute: minute ?? minuteFallback)
+        }
+    }
+
+    private func halfFields(in chars: ScalarSlice, over r: Range<Int>) -> HalfFields {
+        var fields = HalfFields()
+        func number(_ from: Int, _ count: Int) -> Int {
+            var value = 0
+            for k in from..<(from + count) { value = value * 10 + (chars[k].asciiDigitValue ?? 0) }
+            return value
+        }
+        fields.year = number(r.lowerBound, 4)
+        fields.month = number(r.lowerBound + 5, 2)
+        fields.day = number(r.lowerBound + 8, 2)
+        let dateEnd = r.lowerBound + 10
+
+        // DAYNAME is the oracle's contract, not an org-element property at all: org stores no
+        // dayname, so the schema scrapes `YYYY-MM-DD +([A-Za-z]+)` out of the raw value --
+        // ASCII letters IMMEDIATELY after the date's spaces, nothing else. `Thü` yields `Th`,
+        // `T2e` yields `T`, `!x` yields nothing (ts-dayname-uni, ts-day-digit-split,
+        // ts-day-punct).
+        var s = dateEnd
+        while s < r.upperBound, chars[s] == " " { s += 1 }
+        if s > dateEnd {
+            var e = s
+            while e < r.upperBound, isASCIILetterScalar(chars[e]) { e += 1 }
+            if e > s { fields.dayname = String(scalars: chars[s..<e]) }
+        }
+
+        // TIME is `org-ts-regexp0`'s: date, then optionally spaces + a run of its OWN broad
+        // dayname class (which excludes digits, `-` and `+`, so it is NOT the scrape above),
+        // then spaces + H:MM with a 1-2 digit hour and an exactly-2-digit minute. Trailing
+        // junk after the minute -- `:45`, a stray digit -- is simply never consumed
+        // (ts-seconds). The one regex-backtracking case, a digit right after the date's
+        // spaces, is exact here because the broad run cannot end in a space and the time
+        // requires one in front, so a shorter run never rescues a failed time.
+        var j = dateEnd
+        var k = j
+        while k < r.upperBound, chars[k] == " " { k += 1 }
+        if k > j {
+            var e = k
+            while e < r.upperBound, isTs0DaynameScalar(chars[e]) { e += 1 }
+            if e > k { j = e }
+        }
+        var t = j
+        while t < r.upperBound, chars[t] == " " { t += 1 }
+        if t > j {
+            // 2-digit hour first, then the 1-digit retreat, exactly as `[0-9]\{1,2\}:` backtracks.
+            for hourDigits in [2, 1] {
+                guard t + hourDigits < r.upperBound else { continue }
+                var ok = true
+                for d in t..<(t + hourDigits) where chars[d].asciiDigitValue == nil { ok = false }
+                guard ok, chars[t + hourDigits] == ":" else { continue }
+                let m = t + hourDigits + 1
+                guard m + 2 <= r.upperBound, chars[m].asciiDigitValue != nil,
+                      chars[m + 1].asciiDigitValue != nil else { continue }
+                fields.hour = number(t, hourDigits)
+                fields.minute = number(m, 2)
+                break
+            }
+        }
+        return fields
+    }
+
+    private func isASCIILetterScalar(_ s: Unicode.Scalar) -> Bool {
+        (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
+    }
+
+    /// `[^]+0-9>\r\n -]` -- org-ts-regexp0's dayname class, kept verbatim.
+    private func isTs0DaynameScalar(_ s: Unicode.Scalar) -> Bool {
+        if s.asciiDigitValue != nil { return false }
+        switch s {
+        case "]", "+", ">", "\r", "\n", " ", "-": return false
+        default: return true
+        }
+    }
+
+    /// First match of `[012]?[0-9]:[0-5][0-9]-([012]?[0-9]):([0-5][0-9])` over the FIRST
+    /// half's text -- the `10:00-12:00` contraction, searched independently of everything
+    /// else. Returns the END time; the start time is `ts0Time`'s business.
+    private func scrapeTimeRange(
+        in chars: ScalarSlice, over r: Range<Int>
+    ) -> (hour: Int, minute: Int)? {
+        /// `[012]?[0-9]` then `:` then `[0-5][0-9]` at `p`, with the optional digit's
+        /// backtrack. Returns (value, end) or nil.
+        func clock(at p: Int) -> (hour: Int, minute: Int, end: Int)? {
+            for hourDigits in [2, 1] {
+                guard p + hourDigits + 3 <= r.upperBound else { continue }
+                if hourDigits == 2 {
+                    guard chars[p] >= "0", chars[p] <= "2",
+                          chars[p + 1].asciiDigitValue != nil else { continue }
+                } else {
+                    guard chars[p].asciiDigitValue != nil else { continue }
+                }
+                guard chars[p + hourDigits] == ":" else { continue }
+                let m = p + hourDigits + 1
+                guard chars[m] >= "0", chars[m] <= "5",
+                      chars[m + 1].asciiDigitValue != nil else { continue }
+                var hour = 0
+                for d in p..<(p + hourDigits) { hour = hour * 10 + chars[d].asciiDigitValue! }
+                let minute = (chars[m].asciiDigitValue ?? 0) * 10 + (chars[m + 1].asciiDigitValue ?? 0)
+                return (hour, minute, m + 2)
+            }
+            return nil
+        }
+        var p = r.lowerBound
+        while p < r.upperBound {
+            if let start = clock(at: p), start.end < r.upperBound, chars[start.end] == "-",
+               let end = clock(at: start.end + 1) {
+                return (end.hour, end.minute)
+            }
+            p += 1
+        }
+        return nil
+    }
+
+    /// First match of the repeater rx (`(+|++|.+) digits [hdwmy]`) or the delay one
+    /// (`(-)?- digits [hdwmy]`) over the whole raw value. `parseRep` below is the
+    /// per-position matcher; this is the unanchored search in front of it.
+    private func scrapeRep(in chars: ScalarSlice, over r: Range<Int>, delay: Bool) -> OrgRep? {
+        var p = r.lowerBound
+        while p < r.upperBound {
+            let c = chars[p]
+            if delay ? (c == "-") : (c == "+" || c == "."),
+               let match = parseRep(in: chars, at: p, isDelay: delay, upTo: r.upperBound) {
+                return match.rep
+            }
+            p += 1
+        }
+        return nil
     }
 
     // MARK: The planning line
@@ -211,130 +421,35 @@ extension OrgParser {
         return (node, k)
     }
 
-    private struct TimestampBody {
-        let parts: DateParts
-        let repeater: OrgRep?
-        let delay: OrgRep?
-        let end: Int   // index just past the closing bracket
-    }
-
-    /// Parses `YYYY-MM-DD [dayname] [HH:MM[-HH:MM]] [repeater|delay]*` followed by `close`.
-    ///
-    /// Repeater and delay may appear in EITHER order and both may be present; the node reports
-    /// them in their own fields regardless of source order, measured:
-    ///
-    ///     <2026-01-01 Thu +1w -2d>   repeater +1w, delay -2d
-    ///     <2026-01-01 Thu -2d +1w>   identical tree
-    private func parseTimestampBody(
-        in chars: ScalarSlice, from start: Int, close: Unicode.Scalar
-    ) -> TimestampBody? {
-        var j = start
-        func digits(_ count: Int) -> Int? {
-            guard j + count <= chars.count else { return nil }
-            var value = 0
-            for k in j..<(j + count) {
-                guard let d = chars[k].asciiDigitValue else { return nil }
-                value = value * 10 + d
-            }
-            j += count
-            return value
-        }
-        var parts = DateParts()
-        guard let year = digits(4), j < chars.count, chars[j] == "-" else { return nil }
-        j += 1
-        guard let month = digits(2), j < chars.count, chars[j] == "-" else { return nil }
-        j += 1
-        guard let day = digits(2) else { return nil }
-        parts.year = year; parts.month = month; parts.day = day
-
-        var repeater: OrgRep?
-        var delay: OrgRep?
-
-        while j < chars.count, chars[j] == " " {
-            let tokenStart = j + 1
-            guard tokenStart < chars.count else { break }
-            let c = chars[tokenStart]
-
-            if let d = c.asciiDigitValue {
-                // A token opening with a digit is a TIME, never a dayname. `<2026-01-01 10:30>`
-                // has no dayname at all.
-                j = tokenStart
-                var hour = d
-                var k = j + 1
-                if k < chars.count, let d2 = chars[k].asciiDigitValue { hour = hour * 10 + d2; k += 1 }
-                guard k < chars.count, chars[k] == ":" else { return nil }
-                j = k + 1
-                guard let minute = digits(2) else { return nil }
-                parts.hour = hour; parts.minute = minute
-                // The internal contraction: a second time joined by a bare `-`.
-                if j < chars.count, chars[j] == "-", j + 1 < chars.count,
-                   chars[j + 1].asciiDigitValue != nil {
-                    j += 1
-                    var endHour = 0
-                    var n = 0
-                    while j < chars.count, let d3 = chars[j].asciiDigitValue, n < 2 {
-                        endHour = endHour * 10 + d3; j += 1; n += 1
-                    }
-                    guard j < chars.count, chars[j] == ":" else { return nil }
-                    j += 1
-                    guard let endMinute = digits(2) else { return nil }
-                    parts.endHour = endHour; parts.endMinute = endMinute
-                }
-                continue
-            }
-
-            if c == "+" || c == "." {
-                guard let rep = parseRep(in: chars, at: tokenStart, isDelay: false) else { return nil }
-                repeater = rep.rep
-                j = rep.end
-                continue
-            }
-            if c == "-" {
-                guard let rep = parseRep(in: chars, at: tokenStart, isDelay: true) else { return nil }
-                delay = rep.rep
-                j = rep.end
-                continue
-            }
-            if c == close { break }
-
-            // Anything else is the dayname: a run up to the next space or the closing bracket.
-            var k = tokenStart
-            while k < chars.count, chars[k] != " ", chars[k] != close, chars[k] != "\n" { k += 1 }
-            guard k > tokenStart, parts.dayname == nil else { return nil }
-            parts.dayname = String(scalars: chars[tokenStart..<k])
-            j = k
-        }
-
-        guard j < chars.count, chars[j] == close else { return nil }
-        return TimestampBody(parts: parts, repeater: repeater, delay: delay, end: j + 1)
-    }
-
-    /// `("+"|"++"|".+") N UNIT` for a repeater, `("-"|"--") N UNIT` for a delay.
+    /// `("+"|"++"|".+") N UNIT` for a repeater, `("-"|"--") N UNIT` for a delay, at `start`.
+    /// The repeater's `/N UNIT` deadline tail (org 9.7's habit+deadline form) may follow in
+    /// the text; nothing here consumes it because the schema carries no field for it and org
+    /// itself only reads groups 1-3 into the properties this tree keeps (ts-rep-deadline).
     private func parseRep(
-        in chars: ScalarSlice, at start: Int, isDelay: Bool
+        in chars: ScalarSlice, at start: Int, isDelay: Bool, upTo: Int
     ) -> (rep: OrgRep, end: Int)? {
         var j = start
         var type: OrgRepType
         if isDelay {
             guard chars[j] == "-" else { return nil }
             type = .minus; j += 1
-            if j < chars.count, chars[j] == "-" { type = .minusMinus; j += 1 }
+            if j < upTo, chars[j] == "-" { type = .minusMinus; j += 1 }
         } else {
             if chars[j] == "." {
-                guard j + 1 < chars.count, chars[j + 1] == "+" else { return nil }
+                guard j + 1 < upTo, chars[j + 1] == "+" else { return nil }
                 type = .dotPlus; j += 2
             } else {
                 guard chars[j] == "+" else { return nil }
                 type = .plus; j += 1
-                if j < chars.count, chars[j] == "+" { type = .plusPlus; j += 1 }
+                if j < upTo, chars[j] == "+" { type = .plusPlus; j += 1 }
             }
         }
         var value = 0
         var digitCount = 0
-        while j < chars.count, let d = chars[j].asciiDigitValue {
+        while j < upTo, let d = chars[j].asciiDigitValue {
             value = value * 10 + d; j += 1; digitCount += 1
         }
-        guard digitCount > 0, j < chars.count,
+        guard digitCount > 0, j < upTo,
               let unit = OrgRepUnit(rawValue: String(scalars: [chars[j]])) else { return nil }
         j += 1
         return (OrgRep(type: type, value: value, unit: unit), j)
