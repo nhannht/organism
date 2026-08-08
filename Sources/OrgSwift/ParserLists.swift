@@ -351,7 +351,8 @@ extension OrgParser {
             // item's BODY is a paragraph and permits one; the two are different containers.
             // `t` is `lines[head].text`, so the tag starts `idx` scalars into that line.
             tag = .array(try parseObjects(t.sub(idx..<sep.lowerBound), in: .item,
-                                          at: lines[head].offset + idx))
+                                          at: lines[head].offset + idx)
+                .map(OrgParser.bridgeJSON))
             idx = sep.upperBound
             descriptive = true
         }

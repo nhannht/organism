@@ -99,6 +99,50 @@ extension OrgParser {
     }
 }
 
+extension OrgParser {
+
+    /// TEMPORARY Phase 3 migration bridge: a typed node re-emitted as `OrgJSON` WITH its spans,
+    /// where `toJSON()` deliberately drops them. Lives only while the parser converts to native
+    /// typed construction one layer at a time - each converted layer returns `[OrgNode]` and its
+    /// not-yet-converted caller crosses this bridge; when the document layer converts, the last
+    /// caller disappears and this function is DELETED with the rest of the JSON span machinery.
+    ///
+    /// Only the cases whose fields hold nodes need branches: everything else is a leaf whose
+    /// `toJSON()` is already complete, and the object layer cannot emit element cases at all.
+    static func bridgeJSON(_ node: OrgNode) -> OrgJSON {
+        guard case .object(var o) = node.toJSON() else { return node.toJSON() }
+        switch node {
+        case .bold(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .italic(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .underline(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .strikethrough(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .`subscript`(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .superscript(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .radioTarget(let x): o["children"] = .array(x.children.map(bridgeJSON))
+        case .link(let x):
+            if let d = x.description { o["description"] = .array(d.map(bridgeJSON)) }
+        case .footnoteReference(let x):
+            if let c = x.children { o["children"] = .array(c.map(bridgeJSON)) }
+        case .citation(let x):
+            if let p = x.prefix { o["prefix"] = .array(p.map(bridgeJSON)) }
+            if let s = x.suffix { o["suffix"] = .array(s.map(bridgeJSON)) }
+            o["children"] = .array(x.children.map(bridgeJSON))
+        case .citationReference(let x):
+            if let p = x.prefix { o["prefix"] = .array(p.map(bridgeJSON)) }
+            if let s = x.suffix { o["suffix"] = .array(s.map(bridgeJSON)) }
+        default:
+            break
+        }
+        if let s = node.span {
+            var span: [String: OrgJSON] = ["begin": .int(s.begin), "end": .int(s.end)]
+            if let cb = s.contentsBegin { span["contentsBegin"] = .int(cb) }
+            if let ce = s.contentsEnd { span["contentsEnd"] = .int(ce) }
+            o[spanKey] = .object(span)
+        }
+        return .object(o)
+    }
+}
+
 /// One node's extent, flattened out of a parsed tree.
 ///
 /// FLAT and canonically ordered rather than a mirror of the tree's shape, and that is a

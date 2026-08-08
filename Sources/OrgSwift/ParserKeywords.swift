@@ -394,7 +394,7 @@ extension OrgParser {
                     // Links landing is what would have turned it into one.
                     "long": .array(try parseObjects(
                         ScalarSlice(Array(entry.value.unicodeScalars)),
-                        in: .keyword, at: entry.valueOffset)),
+                        in: .keyword, at: entry.valueOffset).map(OrgParser.bridgeJSON)),
                     "short": try captionShort(entry.dual),
                 ]))
                 fields["CAPTION"] = .array(entries)
@@ -440,7 +440,8 @@ extension OrgParser {
     private func captionShort(_ dual: (text: String, offset: Int)?) throws -> OrgJSON {
         guard let dual, !dual.text.isEmpty else { return .null }
         return .array(try parseObjects(
-            ScalarSlice(Array(dual.text.unicodeScalars)), in: .keyword, at: dual.offset))
+            ScalarSlice(Array(dual.text.unicodeScalars)), in: .keyword, at: dual.offset)
+            .map(OrgParser.bridgeJSON))
     }
 
     // MARK: File-level settings (the two-pass scan)

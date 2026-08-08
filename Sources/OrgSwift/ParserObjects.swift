@@ -346,7 +346,7 @@ extension OrgParser {
     ///   was added: a paragraph's text is the source verbatim (its lines with their
     ///   own newlines - one contiguous run of the buffer), so the map is the identity from
     ///   `lines[start].offset`; a headline's title is two nested contiguous slices of one line.
-    func parseObjects(_ chars: ScalarSlice, in container: ObjectContainer, at base: Int) throws -> [OrgJSON] {
+    func parseObjects(_ chars: ScalarSlice, in container: ObjectContainer, at base: Int) throws -> [OrgNode] {
         // The OBJECT-layer half of the same funnel `parseElementRun` guards: every nested object
         // -- an emphasis body, a link description, an inline footnote's contents, a citation's
         // prefix -- re-enters here. The deep vector on this side is the inline footnote
@@ -361,17 +361,14 @@ extension OrgParser {
         // link at all. Plain links are now found by the main scanner below, which never sees a
         // literal region because the emphasis branch consumes it whole.
 
-        var nodes: [OrgJSON] = []
+        var nodes: [OrgNode] = []
         var textStart = 0
         var i = 0
 
         func flushText(upTo end: Int) {
             guard end > textStart else { return }
-            // A bare text leaf carries NO postBlank key (SCHEMA.md section 1, exception).
-            nodes.append(.object([
-                "type": .string("text"),
-                "value": .string(String(scalars: chars[textStart..<end])),
-            ]))
+            // A bare text leaf carries NO postBlank field (SCHEMA.md section 1, exception).
+            nodes.append(.text(OrgText(value: String(scalars: chars[textStart..<end]))))
         }
         func charBefore(_ index: Int) -> Unicode.Scalar? {
             index > 0 ? chars[index - 1] : nil
@@ -428,11 +425,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("latex-fragment"),
-                        "value": .string(String(scalars: chars[i..<end])),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.latexFragment(OrgLatexFragment(
+                        value: String(scalars: chars[i..<end]), postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -501,18 +495,15 @@ extension OrgParser {
                 // plain-link site below: it is the parser's OTHER zero-width object, and it is
                 // safe only because it passes `description: nil`.
                 let matched = String(scalars: chars[i..<end])
-                nodes.append(.object([
-                    "type": .string("link"),
-                    "linkType": .string("plain"),
-                    "pathType": .string("radio"),
-                    "path": .string(matched),
+                nodes.append(.link(OrgLink(
+                    linkType: .plain,
+                    pathType: "radio",
+                    path: matched,
                     // The description re-lexes `chars[i..<end]` - the region `matched` is the
                     // string of - so it starts at `i` within these contents and `base + i` in
                     // the document.
-                    "description": .array(try parseObjects(chars.sub(i..<end), in: .link,
-                                                           at: base + i)),
-                    "postBlank": .int(postBlank),
-                ]))
+                    description: try parseObjects(chars.sub(i..<end), in: .link, at: base + i),
+                    postBlank: postBlank)))
                 i = k
                 textStart = k
                 continue
@@ -559,7 +550,7 @@ extension OrgParser {
                     // bearing for termination.
                     let match = LinkMatch(
                         end: end,
-                        linkType: "plain",
+                        linkType: .plain,
                         rawTarget: Array(chars.sub(i..<end)),
                         description: nil
                     )
@@ -582,7 +573,7 @@ extension OrgParser {
                     // A leaf with NO `value` and NO `children`, exactly like horizontal-rule:
                     // org-element builds it with only :begin, :end and :post-blank, so the type
                     // carries the whole meaning (SCHEMA.md section 4).
-                    nodes.append(.object(["type": .string("line-break"), "postBlank": .int(0)]))
+                    nodes.append(.lineBreak(OrgLineBreak(postBlank: 0)))
                     i = past
                     textStart = past
                     continue
@@ -598,12 +589,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("entity"),
-                        "name": .string(match.name),
-                        "useBrackets": .bool(match.useBrackets),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.entity(OrgEntity(
+                        name: match.name, useBrackets: match.useBrackets, postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -624,11 +611,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("latex-fragment"),
-                        "value": .string(String(scalars: chars[i..<end])),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.latexFragment(OrgLatexFragment(
+                        value: String(scalars: chars[i..<end]), postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -653,7 +637,7 @@ extension OrgParser {
                 if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = timestampNode(match, in: chars)
-                    nodes.append(node)
+                    nodes.append(.timestamp(node))
                     i = next
                     textStart = next
                     continue
@@ -671,21 +655,18 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    var fields: [String: OrgJSON] = [
-                        "type": .string("footnote-reference"),
-                        "label": match.label.map(OrgJSON.string) ?? .null,
-                        "inline": .bool(match.body != nil),
-                        "postBlank": .int(postBlank),
-                    ]
                     // `children` is present ONLY when inline is true -- absent entirely, not an
                     // empty array, when it is false. The schema enforces that with an if/then.
+                    var children: [OrgNode]?
                     if let body = match.body {
-                        fields["children"] = .array(try parseObjects(
+                        children = try parseObjects(
                             chars.sub(body), in: .footnoteReference,
                             at: base + body.lowerBound
-                        ))
+                        )
                     }
-                    nodes.append(.object(fields))
+                    nodes.append(.footnoteReference(OrgFootnoteReference(
+                        label: match.label, inline: match.body != nil,
+                        children: children, postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -701,11 +682,8 @@ extension OrgParser {
                     }
                     // A LEAF whose `value` is the literal source text, brackets included --
                     // `[1/2]`, not `1/2` and not a parsed numerator/denominator pair.
-                    nodes.append(.object([
-                        "type": .string("statistics-cookie"),
-                        "value": .string(String(scalars: chars[i..<end])),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.statisticsCookie(OrgStatisticsCookie(
+                        value: String(scalars: chars[i..<end]), postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -743,7 +721,7 @@ extension OrgParser {
                 if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let (node, next) = timestampNode(match, in: chars)
-                    nodes.append(node)
+                    nodes.append(.timestamp(node))
                     i = next
                     textStart = next
                     continue
@@ -776,14 +754,12 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("radio-target"),
-                        "children": .array(try parseObjects(
+                    nodes.append(.radioTarget(OrgRadioTarget(
+                        children: try parseObjects(
                             chars.sub(match.body), in: .radioTarget,
                             at: base + match.body.lowerBound
-                        )),
-                        "postBlank": .int(postBlank),
-                    ]))
+                        ),
+                        postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -798,11 +774,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("target"),
-                        "value": .string(String(scalars: chars[match.body])),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.target(OrgTarget(
+                        value: String(scalars: chars[match.body]), postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -830,7 +803,7 @@ extension OrgParser {
                 if c == "_", let match = emphasisMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     nodes.append(try emphasisContainerNode(
-                        "underline", .underline, match, in: chars, openedAt: i, at: base))
+                        .underline, match, in: chars, openedAt: i, at: base))
                     i = match.closer + 1 + match.postBlank
                     textStart = i
                     continue
@@ -847,16 +820,18 @@ extension OrgParser {
                         }
                         // Children are parsed OBJECTS under this script's own row, which is the
                         // full standard set -- the same nesting reset every other container gets.
-                        nodes.append(.object([
-                            "type": .string(c == "_" ? "subscript" : "superscript"),
-                            "useBrackets": .bool(match.useBrackets),
-                            "children": .array(try parseObjects(
-                                chars.sub(match.body),
-                                in: c == "_" ? .subscript : .superscript,
-                                at: base + match.body.lowerBound
-                            )),
-                            "postBlank": .int(postBlank),
-                        ]))
+                        let children = try parseObjects(
+                            chars.sub(match.body),
+                            in: c == "_" ? .subscript : .superscript,
+                            at: base + match.body.lowerBound
+                        )
+                        nodes.append(c == "_"
+                            ? .`subscript`(OrgSubscript(
+                                useBrackets: match.useBrackets, children: children,
+                                postBlank: postBlank))
+                            : .superscript(OrgSuperscript(
+                                useBrackets: match.useBrackets, children: children,
+                                postBlank: postBlank)))
                         i = k
                         textStart = k
                         continue
@@ -897,21 +872,19 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    var fields: [String: OrgJSON] = [
-                        "type": .string(inlineKind.rawValue),
-                        "value": .string(match.value),
-                        "postBlank": .int(postBlank),
-                    ]
                     if let language = match.language {
                         // An inline-src-block is the one leaf here whose `value` is NOT the whole
                         // construct, so language and parameters cannot be derived from it and
                         // must be carried. An inline-babel-call's `value` IS the whole construct,
                         // so its :call/:inside-header/:arguments/:end-header stay derived -- the
                         // same rule `macro` already uses.
-                        fields["language"] = .string(language)
-                        fields["parameters"] = match.parameters.map { OrgJSON.string($0) } ?? .null
+                        nodes.append(.inlineSrcBlock(OrgInlineSrcBlock(
+                            language: language, parameters: match.parameters,
+                            value: match.value, postBlank: postBlank)))
+                    } else {
+                        nodes.append(.inlineBabelCall(OrgInlineBabelCall(
+                            value: match.value, postBlank: postBlank)))
                     }
-                    nodes.append(.object(fields))
                     i = k
                     textStart = k
                     continue
@@ -928,11 +901,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("macro"),
-                        "value": .string(String(scalars: chars[i..<end])),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.macro(OrgMacro(
+                        value: String(scalars: chars[i..<end]), postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -950,12 +920,8 @@ extension OrgParser {
                         postBlank += 1
                         k += 1
                     }
-                    nodes.append(.object([
-                        "type": .string("export-snippet"),
-                        "backEnd": .string(match.backEnd),
-                        "value": .string(match.value),
-                        "postBlank": .int(postBlank),
-                    ]))
+                    nodes.append(.exportSnippet(OrgExportSnippet(
+                        backEnd: match.backEnd, value: match.value, postBlank: postBlank)))
                     i = k
                     textStart = k
                     continue
@@ -963,7 +929,7 @@ extension OrgParser {
             case "*", "/", "+", "=", "~":
                 if let match = emphasisMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let objectNode: OrgJSON
+                    let objectNode: OrgNode
                     switch c {
                     case "*", "/", "+":
                         // Containers: contents re-scanned for nested objects as their own
@@ -971,21 +937,20 @@ extension OrgParser {
                         // container -- a bold's contents are lexed under `bold`'s restrictions,
                         // never under those of whatever holds the bold. See `ObjectContainer`
                         // for the four measured inputs that discriminate the two models.
-                        let (type, container): (String, ObjectContainer) = switch c {
-                        case "*": ("bold", .bold)
-                        case "/": ("italic", .italic)
-                        default: ("strikethrough", .strikeThrough)
+                        let container: ObjectContainer = switch c {
+                        case "*": .bold
+                        case "/": .italic
+                        default: .strikeThrough
                         }
                         objectNode = try emphasisContainerNode(
-                            type, container, match, in: chars, openedAt: i, at: base)
+                            container, match, in: chars, openedAt: i, at: base)
                     default:
                         // Leaves: value stays completely literal, never re-parsed (SCHEMA.md
                         // section 7, rule 10).
-                        objectNode = .object([
-                            "type": .string(c == "~" ? "code" : "verbatim"),
-                            "value": .string(String(scalars: chars[(i + 1)..<match.closer])),
-                            "postBlank": .int(match.postBlank),
-                        ])
+                        let value = String(scalars: chars[(i + 1)..<match.closer])
+                        objectNode = c == "~"
+                            ? .code(OrgCode(value: value, postBlank: match.postBlank))
+                            : .verbatim(OrgVerbatim(value: value, postBlank: match.postBlank))
                     }
                     nodes.append(objectNode)
                     i = match.closer + 1 + match.postBlank
@@ -1007,22 +972,28 @@ extension OrgParser {
     /// region and as their OWN container; keeping a single constructor means the four markers
     /// cannot drift apart in shape, only in which `ObjectContainer` row restricts them.
     private func emphasisContainerNode(
-        _ type: String, _ container: ObjectContainer, _ match: EmphasisMatch,
+        _ container: ObjectContainer, _ match: EmphasisMatch,
         in chars: ScalarSlice, openedAt i: Int, at base: Int
-    ) throws -> OrgJSON {
+    ) throws -> OrgNode {
         // The contents start one past the marker at `i`, so they start at `base + i + 1`.
         let contents = chars.sub((i + 1)..<match.closer)
         // The markers are one scalar each, so the node runs from the opener at `i` to just past
         // the closer, plus the character-counted post-blank org folds into an object's `:end`.
         let begin = base + i
         let contentsRange = (base + i + 1)..<(base + match.closer)
-        return .object([
-            "type": .string(type),
-            "children": .array(try parseObjects(contents, in: container, at: base + i + 1)),
-            "postBlank": .int(match.postBlank),
-            OrgParser.spanKey: OrgParser.spanValue(
-                begin, base + match.closer + 1 + match.postBlank, contents: contentsRange),
-        ])
+        let children = try parseObjects(contents, in: container, at: base + i + 1)
+        let node: OrgNode
+        switch container {
+        case .bold: node = .bold(OrgBold(children: children, postBlank: match.postBlank))
+        case .italic: node = .italic(OrgItalic(children: children, postBlank: match.postBlank))
+        case .underline: node = .underline(OrgUnderline(children: children, postBlank: match.postBlank))
+        case .strikeThrough:
+            node = .strikethrough(OrgStrikethrough(children: children, postBlank: match.postBlank))
+        default:
+            preconditionFailure("emphasisContainerNode: \(container.rawValue) is not an emphasis container")
+        }
+        return node.settingSpan(OrgSpan(
+            begin, base + match.closer + 1 + match.postBlank, contents: contentsRange))
     }
 
     /// A short window of source around a refusal site, embedded in the reason so an
@@ -1205,8 +1176,8 @@ extension OrgParser {
     /// here too rather than measured off the source.
     private func citationReferences(
         in chars: ScalarSlice, over region: Range<Int>, at base: Int
-    ) throws -> [OrgJSON] {
-        var nodes: [OrgJSON] = []
+    ) throws -> [OrgNode] {
+        var nodes: [OrgNode] = []
         var begin = region.lowerBound
         while begin < region.upperBound {
             guard let key = citationKeyRange(
@@ -1215,20 +1186,17 @@ extension OrgParser {
                                        upTo: region.upperBound)
             let end = separator.map { $0 + 1 } ?? region.upperBound
             let suffixEnd = separator ?? end
-            var fields: [String: OrgJSON] = [
-                "type": .string("citation-reference"),
-                "key": .string(String(scalars: chars[(key.lowerBound + 1)..<key.upperBound])),
-                "postBlank": .int(0),
-            ]
-            fields["prefix"] = begin < key.lowerBound
-                ? .array(try parseObjects(chars.sub(begin..<key.lowerBound),
-                                          in: .citationReference, at: base + begin))
-                : .null
-            fields["suffix"] = key.upperBound < suffixEnd
-                ? .array(try parseObjects(chars.sub(key.upperBound..<suffixEnd),
-                                          in: .citationReference, at: base + key.upperBound))
-                : .null
-            nodes.append(.object(fields))
+            nodes.append(.citationReference(OrgCitationReference(
+                key: String(scalars: chars[(key.lowerBound + 1)..<key.upperBound]),
+                prefix: begin < key.lowerBound
+                    ? try parseObjects(chars.sub(begin..<key.lowerBound),
+                                       in: .citationReference, at: base + begin)
+                    : nil,
+                suffix: key.upperBound < suffixEnd
+                    ? try parseObjects(chars.sub(key.upperBound..<suffixEnd),
+                                       in: .citationReference, at: base + key.upperBound)
+                    : nil,
+                postBlank: 0)))
             begin = end
         }
         return nodes
@@ -1248,17 +1216,17 @@ extension OrgParser {
     /// The whole `citation` node for a match, references and all.
     func citationNode(
         _ match: CitationMatch, in chars: ScalarSlice, at base: Int
-    ) throws -> OrgJSON {
+    ) throws -> OrgNode {
         // The citation's OWN prefix and suffix are lexed under the CITATION-REFERENCE row, not
         // the citation's. org spells it out -- `org-element-citation-parser` binds
         // `(types (org-element-restriction 'citation-reference))` once and uses it for both --
         // and the two rows are nothing alike: `citation` permits ONLY citation-reference, which
         // is why using it here made a common prefix plain text. Found by the generated container
         // cross-product, four wrong trees, on its first run.
-        func secondary(_ range: Range<Int>?) throws -> OrgJSON {
-            guard let range else { return .null }
-            return .array(try parseObjects(chars.sub(range),
-                                           in: .citationReference, at: base + range.lowerBound))
+        func secondary(_ range: Range<Int>?) throws -> [OrgNode]? {
+            guard let range else { return nil }
+            return try parseObjects(chars.sub(range),
+                                    in: .citationReference, at: base + range.lowerBound)
         }
         var postBlank = 0
         var k = match.end
@@ -1266,14 +1234,12 @@ extension OrgParser {
             postBlank += 1
             k += 1
         }
-        return .object([
-            "type": .string("citation"),
-            "style": match.style.map(OrgJSON.string) ?? .null,
-            "prefix": try secondary(match.prefix),
-            "suffix": try secondary(match.suffix),
-            "children": .array(try citationReferences(in: chars, over: match.contents, at: base)),
-            "postBlank": .int(postBlank),
-        ])
+        return .citation(OrgCitation(
+            style: match.style,
+            prefix: try secondary(match.prefix),
+            suffix: try secondary(match.suffix),
+            children: try citationReferences(in: chars, over: match.contents, at: base),
+            postBlank: postBlank))
     }
 
     /// Index just past a `<<target>>` at `i`, and the range of its contents, or nil. The

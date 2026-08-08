@@ -422,6 +422,7 @@ extension OrgParser {
             // and the title is `titleChars[titleStart..<titleEnd]`. So the offsets compose.
             title = try parseObjects(titleChars.sub(titleStart..<titleEnd), in: .headline,
                                      at: line.offset + start + titleStart)
+                .map(OrgParser.bridgeJSON)
         }
         return HeadlineBuilder(
             level: reducedLevel(forStars: level), trueLevel: level, todo: todo, title: title,

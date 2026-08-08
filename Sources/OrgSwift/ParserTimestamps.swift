@@ -11,7 +11,7 @@ extension OrgParser {
     /// A parsed timestamp, before it becomes a node.
     struct TimestampMatch {
         let end: Int
-        let node: OrgJSON
+        let node: OrgTimestamp
     }
 
     /// One `date` value: `{year, month, day, dayname, hour, minute}`.
@@ -35,17 +35,10 @@ extension OrgParser {
         var endHour: Int?
         var endMinute: Int?
 
-        func json(hour h: Int?, minute m: Int?, dayname dn: String?) -> OrgJSON {
-            .object([
-                "year": .int(year), "month": .int(month), "day": .int(day),
-                "dayname": dn.map(OrgJSON.string) ?? .null,
-                "hour": h.map(OrgJSON.int) ?? .null,
-                "minute": m.map(OrgJSON.int) ?? .null,
-            ])
+        func date(hour h: Int?, minute m: Int?, dayname dn: String?) -> OrgDate {
+            OrgDate(year: year, month: month, day: day, dayname: dn, hour: h, minute: m)
         }
     }
-
-    private static let timestampUnits: Set<Unicode.Scalar> = ["h", "d", "w", "m", "y"]
 
     /// Matches a timestamp at `i`, or nil. Throws only for a form that IS a timestamp opener and
     /// cannot be parsed, so an unrecognized `<`/`[` construct returns nil and its caller decides.
@@ -72,15 +65,9 @@ extension OrgParser {
             }
             guard j < chars.count, j + 1 < chars.count, chars[j + 1] == ">" else { return nil }
             let sexp = String(scalars: chars[(i + 3)...j])
-            return TimestampMatch(end: j + 2, node: .object([
-                "type": .string("timestamp"),
-                "kind": .string("diary"),
-                "rangeType": .null,
-                "start": .null, "end": .null,
-                "repeater": .null, "delay": .null,
-                "diarySexp": .string(sexp),
-                "postBlank": .int(0),
-            ]))
+            return TimestampMatch(end: j + 2, node: OrgTimestamp(
+                kind: .diary, rangeType: nil, start: nil, end: nil,
+                repeater: nil, delay: nil, postBlank: 0, diarySexp: sexp))
         }
 
         guard let first = parseTimestampBody(in: chars, from: i + 1, close: close) else { return nil }
@@ -90,14 +77,14 @@ extension OrgParser {
         if first.end + 1 < chars.count, chars[first.end] == "-", chars[first.end + 1] == "-",
            first.end + 2 < chars.count, chars[first.end + 2] == open,
            let second = parseTimestampBody(in: chars, from: first.end + 3, close: close) {
-            return TimestampMatch(end: second.end, node: timestampJSON(
-                kind: active ? "active-range" : "inactive-range",
-                rangeType: "daterange",
-                start: first.parts.json(hour: first.parts.hour, minute: first.parts.minute,
+            return TimestampMatch(end: second.end, node: OrgTimestamp(
+                kind: active ? .activeRange : .inactiveRange,
+                rangeType: .daterange,
+                start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
                                         dayname: first.parts.dayname),
-                end: second.parts.json(hour: second.parts.hour, minute: second.parts.minute,
+                end: second.parts.date(hour: second.parts.hour, minute: second.parts.minute,
                                        dayname: second.parts.dayname),
-                repeater: first.repeater, delay: first.delay))
+                repeater: first.repeater, delay: first.delay, postBlank: 0))
         }
 
         // An internal `10:00-12:00` contraction is a range too, but a `timerange`: ONE timestamp
@@ -105,22 +92,22 @@ extension OrgParser {
         // repeats the start's. `end.dayname` is therefore null by provenance, not by omission --
         // SCHEMA.md section 4 spells this out, and it was AUDIT.md finding 16 before that.
         if let endHour = first.parts.endHour {
-            return TimestampMatch(end: first.end, node: timestampJSON(
-                kind: active ? "active-range" : "inactive-range",
-                rangeType: "timerange",
-                start: first.parts.json(hour: first.parts.hour, minute: first.parts.minute,
+            return TimestampMatch(end: first.end, node: OrgTimestamp(
+                kind: active ? .activeRange : .inactiveRange,
+                rangeType: .timerange,
+                start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
                                         dayname: first.parts.dayname),
-                end: first.parts.json(hour: endHour, minute: first.parts.endMinute, dayname: nil),
-                repeater: first.repeater, delay: first.delay))
+                end: first.parts.date(hour: endHour, minute: first.parts.endMinute, dayname: nil),
+                repeater: first.repeater, delay: first.delay, postBlank: 0))
         }
 
-        return TimestampMatch(end: first.end, node: timestampJSON(
-            kind: active ? "active" : "inactive",
+        return TimestampMatch(end: first.end, node: OrgTimestamp(
+            kind: active ? .active : .inactive,
             rangeType: nil,
-            start: first.parts.json(hour: first.parts.hour, minute: first.parts.minute,
+            start: first.parts.date(hour: first.parts.hour, minute: first.parts.minute,
                                     dayname: first.parts.dayname),
             end: nil,
-            repeater: first.repeater, delay: first.delay))
+            repeater: first.repeater, delay: first.delay, postBlank: 0))
     }
 
     // MARK: The planning line
@@ -188,9 +175,9 @@ extension OrgParser {
         var i = line.contentStart
         guard keyword(at: i) != nil else { return nil }
 
-        var scheduled = OrgJSON.null
-        var deadline = OrgJSON.null
-        var closed = OrgJSON.null
+        var scheduled: OrgTimestamp?
+        var deadline: OrgTimestamp?
+        var closed: OrgTimestamp?
 
         while i < chars.count, let key = keyword(at: i) {
             var j = key.end
@@ -207,9 +194,9 @@ extension OrgParser {
 
         return .object([
             "type": .string("planning"),
-            "scheduled": scheduled,
-            "deadline": deadline,
-            "closed": closed,
+            "scheduled": scheduled.map { $0.toJSON() } ?? .null,
+            "deadline": deadline.map { $0.toJSON() } ?? .null,
+            "closed": closed.map { $0.toJSON() } ?? .null,
             "postBlank": .int(0),
         ])
     }
@@ -217,38 +204,22 @@ extension OrgParser {
     /// Attaches `postBlank` and reports where scanning resumes. Same inter-object rule as links
     /// and emphasis: spaces and tabs after the timestamp are CONSUMED onto the node, newlines are
     /// not (SCHEMA.md section 1).
-    func timestampNode(_ match: TimestampMatch, in chars: ScalarSlice) -> (node: OrgJSON, next: Int) {
+    func timestampNode(_ match: TimestampMatch, in chars: ScalarSlice) -> (node: OrgTimestamp, next: Int) {
         var postBlank = 0
         var k = match.end
         while k < chars.count, chars[k] == " " || chars[k] == "\t" {
             postBlank += 1
             k += 1
         }
-        guard var fields = match.node.objectValue else { return (match.node, k) }
-        fields["postBlank"] = .int(postBlank)
-        return (.object(fields), k)
-    }
-
-    private func timestampJSON(
-        kind: String, rangeType: String?, start: OrgJSON, end: OrgJSON?,
-        repeater: OrgJSON?, delay: OrgJSON?
-    ) -> OrgJSON {
-        .object([
-            "type": .string("timestamp"),
-            "kind": .string(kind),
-            "rangeType": rangeType.map(OrgJSON.string) ?? .null,
-            "start": start,
-            "end": end ?? .null,
-            "repeater": repeater ?? .null,
-            "delay": delay ?? .null,
-            "postBlank": .int(0),
-        ])
+        var node = match.node
+        node.postBlank = postBlank
+        return (node, k)
     }
 
     private struct TimestampBody {
         let parts: DateParts
-        let repeater: OrgJSON?
-        let delay: OrgJSON?
+        let repeater: OrgRep?
+        let delay: OrgRep?
         let end: Int   // index just past the closing bracket
     }
 
@@ -281,8 +252,8 @@ extension OrgParser {
         guard let day = digits(2) else { return nil }
         parts.year = year; parts.month = month; parts.day = day
 
-        var repeater: OrgJSON?
-        var delay: OrgJSON?
+        var repeater: OrgRep?
+        var delay: OrgRep?
 
         while j < chars.count, chars[j] == " " {
             let tokenStart = j + 1
@@ -319,13 +290,13 @@ extension OrgParser {
 
             if c == "+" || c == "." {
                 guard let rep = parseRep(in: chars, at: tokenStart, isDelay: false) else { return nil }
-                repeater = rep.json
+                repeater = rep.rep
                 j = rep.end
                 continue
             }
             if c == "-" {
                 guard let rep = parseRep(in: chars, at: tokenStart, isDelay: true) else { return nil }
-                delay = rep.json
+                delay = rep.rep
                 j = rep.end
                 continue
             }
@@ -346,21 +317,21 @@ extension OrgParser {
     /// `("+"|"++"|".+") N UNIT` for a repeater, `("-"|"--") N UNIT` for a delay.
     private func parseRep(
         in chars: ScalarSlice, at start: Int, isDelay: Bool
-    ) -> (json: OrgJSON, end: Int)? {
+    ) -> (rep: OrgRep, end: Int)? {
         var j = start
-        var type = ""
+        var type: OrgRepType
         if isDelay {
             guard chars[j] == "-" else { return nil }
-            type = "-"; j += 1
-            if j < chars.count, chars[j] == "-" { type = "--"; j += 1 }
+            type = .minus; j += 1
+            if j < chars.count, chars[j] == "-" { type = .minusMinus; j += 1 }
         } else {
             if chars[j] == "." {
                 guard j + 1 < chars.count, chars[j + 1] == "+" else { return nil }
-                type = ".+"; j += 2
+                type = .dotPlus; j += 2
             } else {
                 guard chars[j] == "+" else { return nil }
-                type = "+"; j += 1
-                if j < chars.count, chars[j] == "+" { type = "++"; j += 1 }
+                type = .plus; j += 1
+                if j < chars.count, chars[j] == "+" { type = .plusPlus; j += 1 }
             }
         }
         var value = 0
@@ -369,12 +340,9 @@ extension OrgParser {
             value = value * 10 + d; j += 1; digitCount += 1
         }
         guard digitCount > 0, j < chars.count,
-              OrgParser.timestampUnits.contains(chars[j]) else { return nil }
-        let unit = String(scalars: [chars[j]])
+              let unit = OrgRepUnit(rawValue: String(scalars: [chars[j]])) else { return nil }
         j += 1
-        return (.object([
-            "type": .string(type), "value": .int(value), "unit": .string(unit),
-        ]), j)
+        return (OrgRep(type: type, value: value, unit: unit), j)
     }
 }
 
@@ -499,12 +467,9 @@ extension OrgParser {
             // timestamp node, and the space before ` => ` counts too, measured.
             var w = match.end
             while w < t.count, t[w] == " " || t[w] == "\t" { w += 1 }
-            if var timestampFields = match.node.objectValue {
-                timestampFields["postBlank"] = .int(w - match.end)
-                value = .object(timestampFields)
-            } else {
-                value = match.node
-            }
+            var node = match.node
+            node.postBlank = w - match.end
+            value = node.toJSON()
             searchFrom = w
         }
         // org: `search-forward "=> "` -- LITERAL, single trailing space, ONE attempt at the

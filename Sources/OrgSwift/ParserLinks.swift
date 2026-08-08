@@ -297,7 +297,7 @@ extension OrgParser {
     /// A parsed link, before it becomes a node.
     struct LinkMatch {
         let end: Int            // index just past the link's own text, before postBlank
-        let linkType: String    // SCHEMA.md `linkType`: regular | angle | plain
+        let linkType: OrgLinkType    // SCHEMA.md `linkType`: regular | angle | plain
         let rawTarget: [Unicode.Scalar]
         /// The description's RANGE in the enclosing contents string, not a copy of it.
         ///
@@ -350,7 +350,7 @@ extension OrgParser {
         guard j + 1 < chars.count else { return nil }
         if chars[j + 1] == "]" {
             return LinkMatch(
-                end: j + 2, linkType: "regular",
+                end: j + 2, linkType: .regular,
                 rawTarget: collapsingNewlineIndentation(target), description: nil)
         }
         guard chars[j + 1] == "[" else { return nil }
@@ -367,7 +367,7 @@ extension OrgParser {
         guard !description.isEmpty else { return nil }
 
         return LinkMatch(
-            end: k + 2, linkType: "regular",
+            end: k + 2, linkType: .regular,
             rawTarget: collapsingNewlineIndentation(target), description: description)
     }
 
@@ -418,7 +418,7 @@ extension OrgParser {
         if chars[j] == "\n" { throw OrgError.unimplemented("newline before the closing > of an angle link") }
 
         let target = Array(chars.sub((i + 1)..<j))
-        return LinkMatch(end: j + 1, linkType: "angle", rawTarget: target, description: nil)
+        return LinkMatch(end: j + 1, linkType: .angle, rawTarget: target, description: nil)
     }
 
     /// Builds the node. `postBlank` counts the spaces and tabs immediately after the link, which
@@ -432,14 +432,14 @@ extension OrgParser {
     /// Newlines are never consumed, matching emphasis: `[[x]]\nnext` leaves `"\nnext"` as text.
     func linkNode(
         _ match: LinkMatch, in chars: ScalarSlice, at base: Int
-    ) throws -> (node: OrgJSON, next: Int) {
+    ) throws -> (node: OrgNode, next: Int) {
         var postBlank = 0
         var k = match.end
         while k < chars.count, chars[k] == " " || chars[k] == "\t" {
             postBlank += 1
             k += 1
         }
-        let descriptionValue: OrgJSON
+        let descriptionValue: [OrgNode]?
         if let description = match.description {
             // A link description REFUSES `line-break`, and this is the exact container ORG-21 was
             // filed about: it is the third one org restricts, alongside headline title and table
@@ -462,19 +462,17 @@ extension OrgParser {
             // No input reaches that today: `bracketLinkMatch` throws on any `\` in a description
             // before this runs, so the row is correct but unexercised. Lifting that guard makes
             // it live, which is the point of it already being right.
-            descriptionValue = .array(try parseObjects(
-                chars.sub(description), in: .link, at: base + description.lowerBound))
+            descriptionValue = try parseObjects(
+                chars.sub(description), in: .link, at: base + description.lowerBound)
         } else {
-            descriptionValue = .null
+            descriptionValue = nil
         }
-        let node = OrgJSON.object([
-            "type": .string("link"),
-            "linkType": .string(match.linkType),
-            "pathType": .string(OrgParser.pathType(forRawTarget: ScalarSlice(match.rawTarget))),
-            "path": .string(String(scalars: match.rawTarget)),
-            "description": descriptionValue,
-            "postBlank": .int(postBlank),
-        ])
+        let node = OrgNode.link(OrgLink(
+            linkType: match.linkType,
+            pathType: OrgParser.pathType(forRawTarget: ScalarSlice(match.rawTarget)),
+            path: String(scalars: match.rawTarget),
+            description: descriptionValue,
+            postBlank: postBlank))
         return (node, k)
     }
 }

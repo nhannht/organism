@@ -414,7 +414,7 @@ extension OrgParser {
                     "children": i + 1 < end
                         ? .array(try parseObjects(
                             sourceSlice(ofLines: (i + 1)..<end), in: .verseBlock,
-                            at: lines[i].endOffset))
+                            at: lines[i].endOffset).map(OrgParser.bridgeJSON))
                         : .array([]),
                     "postBlank": .int(0),
                 ]), end + 1)
@@ -795,7 +795,8 @@ extension OrgParser {
             // nothing, which is exactly the property that lets the slice replace it.
             "children": .array(try parseObjects(sourceSlice(ofLines: paragraphStart..<i),
                                                 in: .paragraph,
-                                                at: lines[paragraphStart].offset)),
+                                                at: lines[paragraphStart].offset)
+                .map(OrgParser.bridgeJSON)),
             "postBlank": .int(0),
         ]), i)
     }

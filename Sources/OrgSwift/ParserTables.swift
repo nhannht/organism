@@ -251,7 +251,8 @@ extension OrgParser {
                 // of contents would otherwise read as end of line and manufacture a break.
                 "children": .array(try parseObjects(text.sub(lower..<upper),
                                                     in: .tableCell,
-                                                    at: line.offset + lower)),
+                                                    at: line.offset + lower)
+                    .map(OrgParser.bridgeJSON)),
                 "postBlank": .int(0),
             ]))
             // Consuming the `|` is what stops a closing pipe producing a phantom trailing cell.
