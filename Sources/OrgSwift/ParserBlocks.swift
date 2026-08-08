@@ -105,7 +105,7 @@ extension OrgParser {
         where asciiLowered(text[start + i]) != asciiLowered(ch) {
             return false
         }
-        return text[(start + expected.count)...].allSatisfy { $0 == " " || $0 == "\t" }
+        return text.sub((start + expected.count)..<text.count).allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// Index of the line CLOSING a construct opened at `begin`, or `nil` when nothing inside
@@ -250,7 +250,7 @@ extension OrgParser {
         // keyword branch rather than being claimed as a malformed block.
         guard i > nameStart else { return nil }
 
-        let rest = Array(text[i...])
+        let rest = Array(text.sub(i..<text.count))
         var arguments: String?
         if rest.count >= 2, rest[0] == " " || rest[0] == "\t" {
             var leading = 0
@@ -287,7 +287,7 @@ extension OrgParser {
         }
         i += prefix.count
         if i < text.count, text[i] == ":" { i += 1 }
-        return text[i...].allSatisfy { $0 == " " || $0 == "\t" }
+        return text.sub(i..<text.count).allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// Index of the line closing a block of `type` opened at `begin`. A thin naming of

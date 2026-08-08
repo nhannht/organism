@@ -406,14 +406,16 @@ extension OrgParser {
                 // paragraph's contents, newlines and all.
                 return (.object([
                     "type": .string("verse-block"),
-                    // Same verbatim-join argument as a paragraph's text, so the body starts
-                    // exactly where the opener line ends. `lines[i].endOffset` rather than
-                    // `lines[i + 1].offset` because an empty body at end of file has no line
-                    // `i + 1` to read.
-                    "children": .array(try parseObjects(
-                        blockValue(bodyFrom: i + 1, to: end, unescaping: false), in: .verseBlock,
-                        at: lines[i].endOffset
-                    )),
+                    // Same verbatim argument as a paragraph's text - the body is one slice of
+                    // the buffer, starting exactly where the opener line ends. The empty body
+                    // is answered directly rather than sliced: `(i + 1)..<end` has no line to
+                    // read a position from when it is empty, and `parseObjects` of nothing is
+                    // [] by definition.
+                    "children": i + 1 < end
+                        ? .array(try parseObjects(
+                            sourceSlice(ofLines: (i + 1)..<end), in: .verseBlock,
+                            at: lines[i].endOffset))
+                        : .array([]),
                     "postBlank": .int(0),
                 ]), end + 1)
             default:
@@ -778,11 +780,6 @@ extension OrgParser {
             }
             i += 1
         }
-        var text = ""
-        for lineIndex in paragraphStart..<i {
-            text.append(String(scalars: lines[lineIndex].text))
-            if lines[lineIndex].hasNewline { text.append("\n") }
-        }
         // The contents END where the text does. The node's `end` runs further whenever blank
         // lines follow, and those are consumed by the caller AFTER this returns - see the
         // `postBlank` patch in `parseElementRun`, which moves this span's end to match. Setting
@@ -793,13 +790,13 @@ extension OrgParser {
             "type": .string("paragraph"),
             OrgParser.spanKey: OrgParser.spanValue(contents.lowerBound, contents.upperBound,
                                                    contents: contents),
-            // The loop above concatenates `lines[k].text` plus that line's OWN newline, so `text`
-            // reproduces the source verbatim over `paragraphStart..<i` and a local index into it
-            // is a document offset shifted by the first line's. Measured before it was relied on:
-            // this is the entry point ORG-32 flagged as "settle this first" because a joined
-            // string is where a mapping usually dies, and it survives because the join adds
-            // nothing and drops nothing.
-            "children": .array(try parseObjects(text, in: .paragraph,
+            // A paragraph's text is the source verbatim over `paragraphStart..<i` - each line
+            // with its own newline - so the contents are ONE slice of the buffer and a local
+            // index into it is a document offset shifted by the first line's. This used to be
+            // a per-line String join; ORG-32 measured that the join added nothing and dropped
+            // nothing, which is exactly the property that lets the slice replace it.
+            "children": .array(try parseObjects(sourceSlice(ofLines: paragraphStart..<i),
+                                                in: .paragraph,
                                                 at: lines[paragraphStart].offset)),
             "postBlank": .int(0),
         ]), i)
@@ -848,7 +845,7 @@ extension OrgParser {
         var dashes = 0
         while i < line.text.count, line.text[i] == "-" { dashes += 1; i += 1 }
         guard dashes >= 5 else { return false }
-        return line.text[i...].allSatisfy { $0 == " " || $0 == "\t" }
+        return line.text.sub(i..<line.text.count).allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// `#` alone, or `#` followed by a space. (`#+` is rejected as an unimplemented element

@@ -25,7 +25,7 @@ extension OrgParser {
     /// source's own spelling rather than a folded one: `HTTPS://example.com` is a link whose
     /// `pathType` comes back `"HTTPS"`, measured. That is why this returns a slice of the input
     /// instead of a canonical constant.
-    static func pathType(forRawTarget raw: [Unicode.Scalar]) -> String {
+    static func pathType(forRawTarget raw: ScalarSlice) -> String {
         if let typeLength = registeredLinkTypeLength(in: raw, at: 0),
            typeLength < raw.count, raw[typeLength] == ":" {
             let name = String(scalars: raw[0..<typeLength])
@@ -118,7 +118,7 @@ extension OrgParser {
     /// stop doing so the moment someone appends a type or sorts the list, and nothing in the
     /// suite would notice, because both prefixes still parse as SOME link. Depending on array
     /// order for correctness is the trap ORG-21 was about; taking the longest removes it.
-    static func registeredLinkTypeLength(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    static func registeredLinkTypeLength(in chars: ScalarSlice, at i: Int) -> Int? {
         var best: Int?
         for type in linkTypes {
             guard i + type.count <= chars.count else { continue }
@@ -187,7 +187,7 @@ extension OrgParser {
     /// `https://e.com/a(b]` is as valid to org as `a(b)`. That is org's own shape, not a
     /// simplification: measured, `https://e.com<x>` keeps `<x>` in the path even though `<` and
     /// `>` are outside the `non-space-bracket` class.
-    static func parenGroupEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    static func parenGroupEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         func isOpener(_ c: Unicode.Scalar) -> Bool { c == "<" || c == "(" || c == "[" }
         func isCloser(_ c: Unicode.Scalar) -> Bool { c == "]" || c == ")" || c == ">" }
 
@@ -243,7 +243,7 @@ extension OrgParser {
     /// buffer), 3,559 scalars in 366 ranges, every range edge verified against a live
     /// `org-element` parse. Pinned by `PinnedTableDriftTests`; sweep cases `plg-*` hold the
     /// discriminating shapes.
-    func plainLinkEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    func plainLinkEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         if i > 0, OrgParser.plainLinkBoundarySuppresses(chars[i - 1]) {
             return nil
         }
@@ -319,14 +319,14 @@ extension OrgParser {
     /// a `\` in a description is ordinary object content (an entity, a latex fragment, or plain
     /// text), handled by the object layer since those landed. The old blanket refusal stood
     /// only while `\` had no object-level answer.
-    func bracketLinkMatch(in chars: [Unicode.Scalar], at i: Int) throws -> LinkMatch? {
+    func bracketLinkMatch(in chars: ScalarSlice, at i: Int) throws -> LinkMatch? {
         guard i + 1 < chars.count, chars[i] == "[", chars[i + 1] == "[" else { return nil }
 
         // Target runs to the first `]`. A `[` inside it is not legal in org's own pattern either.
         var j = i + 2
         while j < chars.count, chars[j] != "]", chars[j] != "[" { j += 1 }
         guard j < chars.count, chars[j] == "]" else { return nil }
-        let target = Array(chars[(i + 2)..<j])
+        let target = Array(chars.sub((i + 2)..<j))
         guard !target.isEmpty else { return nil }
         if target.contains("\\") { throw OrgError.unimplemented("backslash in a bracket-link target") }
 
@@ -390,7 +390,7 @@ extension OrgParser {
     /// org's `org-link-angle-re` permits the inner text to span lines. This does not: a newline
     /// inside throws rather than guessing at the continuation rule, which folds leading
     /// whitespace on the next line.
-    func angleLinkMatch(in chars: [Unicode.Scalar], at i: Int) throws -> LinkMatch? {
+    func angleLinkMatch(in chars: ScalarSlice, at i: Int) throws -> LinkMatch? {
         guard chars[i] == "<" else { return nil }
         guard let typeLength = OrgParser.registeredLinkTypeLength(in: chars, at: i + 1) else { return nil }
         let colon = i + 1 + typeLength
@@ -401,7 +401,7 @@ extension OrgParser {
         guard j < chars.count else { return nil }
         if chars[j] == "\n" { throw OrgError.unimplemented("newline before the closing > of an angle link") }
 
-        let target = Array(chars[(i + 1)..<j])
+        let target = Array(chars.sub((i + 1)..<j))
         return LinkMatch(end: j + 1, linkType: "angle", rawTarget: target, description: nil)
     }
 
@@ -415,7 +415,7 @@ extension OrgParser {
     ///
     /// Newlines are never consumed, matching emphasis: `[[x]]\nnext` leaves `"\nnext"` as text.
     func linkNode(
-        _ match: LinkMatch, in chars: [Unicode.Scalar], at base: Int
+        _ match: LinkMatch, in chars: ScalarSlice, at base: Int
     ) throws -> (node: OrgJSON, next: Int) {
         var postBlank = 0
         var k = match.end
@@ -447,14 +447,14 @@ extension OrgParser {
             // before this runs, so the row is correct but unexercised. Lifting that guard makes
             // it live, which is the point of it already being right.
             descriptionValue = .array(try parseObjects(
-                String(scalars: chars[description]), in: .link, at: base + description.lowerBound))
+                chars.sub(description), in: .link, at: base + description.lowerBound))
         } else {
             descriptionValue = .null
         }
         let node = OrgJSON.object([
             "type": .string("link"),
             "linkType": .string(match.linkType),
-            "pathType": .string(OrgParser.pathType(forRawTarget: match.rawTarget)),
+            "pathType": .string(OrgParser.pathType(forRawTarget: ScalarSlice(match.rawTarget))),
             "path": .string(String(scalars: match.rawTarget)),
             "description": descriptionValue,
             "postBlank": .int(postBlank),

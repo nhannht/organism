@@ -60,4 +60,37 @@ struct ScalarSlice: RandomAccessCollection, Sendable {
     func sub(_ r: Range<Int>) -> ScalarSlice {
         ScalarSlice(buffer: buffer, base: base + r.lowerBound, count: r.count)
     }
+
+    /// Hands bulk consumers (`Array.init`, `append(contentsOf:)`) the buffer's own storage so
+    /// they copy with one `memcpy` instead of iterating. Without this the default answer is nil
+    /// and every bulk operation falls back to one-scalar-at-a-time through the iterator.
+    func withContiguousStorageIfAvailable<R>(
+        _ body: (UnsafeBufferPointer<Unicode.Scalar>) throws -> R
+    ) rethrows -> R? {
+        try buffer.withUnsafeBufferPointer { whole in
+            try body(UnsafeBufferPointer(rebasing: whole[base..<base + count]))
+        }
+    }
+}
+
+extension String {
+    /// CONCRETE overloads of `String(scalars:)` for the two shapes the parser's hot paths
+    /// produce. These exist because of a measured regression, not as convenience: the generic
+    /// `some Sequence` initializer in Parser.swift, applied to `Slice<ScalarSlice>`, ran
+    /// UNSPECIALIZED - every scalar paid a protocol-witness `next()`, a `Slice.subscript`
+    /// through the stdlib dylib, and runtime metadata lookups (`swift_getAssociatedTypeWitness`
+    /// and the metadata caches were all top-of-profile, and syn-prose dropped 7.7 -> 5.9
+    /// MiB/s). Overload resolution prefers a concrete parameter over a generic one, so every
+    /// existing `String(scalars: text[a..<b])` site binds here at compile time and the generic
+    /// path keeps serving everything else.
+    init(scalars slice: ScalarSlice) {
+        var view = String.UnicodeScalarView()
+        view.reserveCapacity(slice.count)
+        for i in 0..<slice.count { view.append(slice[i]) }
+        self.init(view)
+    }
+
+    init(scalars slice: Slice<ScalarSlice>) {
+        self.init(scalars: slice.base.sub(slice.startIndex..<slice.endIndex))
+    }
 }

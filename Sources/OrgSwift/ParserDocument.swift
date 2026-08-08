@@ -410,9 +410,8 @@ extension OrgParser {
         // last consumed token -- the stars' own separator counts -- and stays unmatched (nil,
         // dumped as []) only when the line ends hard against that token. `parseObjects("")`
         // returns `[]`, the right answer for exactly that hard-ended column.
-        let titleText = String(scalars: titleChars[titleStart..<titleEnd])
         let title: [OrgJSON]
-        if titleText.isEmpty {
+        if titleStart == titleEnd {
             let lineEndsHardAfterConsumedToken =
                 tags.isEmpty && !hadTrailingWhitespace && titleStart > 0
             title = lineEndsHardAfterConsumedToken
@@ -421,7 +420,7 @@ extension OrgParser {
         } else {
             // Two nested contiguous slices of one line: `titleChars` is `line.text[start..<end]`,
             // and the title is `titleChars[titleStart..<titleEnd]`. So the offsets compose.
-            title = try parseObjects(titleText, in: .headline,
+            title = try parseObjects(titleChars.sub(titleStart..<titleEnd), in: .headline,
                                      at: line.offset + start + titleStart)
         }
         return HeadlineBuilder(

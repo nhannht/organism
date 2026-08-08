@@ -350,7 +350,7 @@ extension OrgParser {
             // `item` is org's row for a descriptive-list TAG, and it refuses `line-break`. The
             // item's BODY is a paragraph and permits one; the two are different containers.
             // `t` is `lines[head].text`, so the tag starts `idx` scalars into that line.
-            tag = .array(try parseObjects(String(scalars: t[idx..<sep.lowerBound]), in: .item,
+            tag = .array(try parseObjects(t.sub(idx..<sep.lowerBound), in: .item,
                                           at: lines[head].offset + idx))
             idx = sep.upperBound
             descriptive = true

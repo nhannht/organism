@@ -247,32 +247,31 @@ extension OrgParser {
     ///   record of that happening: a new container silently took a permission nobody measured it
     ///   to have. Naming the container at every call site is what makes the wrong answer
     ///   something a person has to type on purpose.
-    /// - Parameter base: where `s`'s first scalar sits in the ROOT document, as a 0-based scalar
-    ///   offset (ORG-32). `s` is a detached `String`, so without this the object layer has no
-    ///   route back to the source at all and an editor cannot map any inline node to the
-    ///   characters it came from.
+    /// - Parameter base: where `chars[0]` sits in the ROOT document, as a 0-based scalar
+    ///   offset (ORG-32). For a slice of the document buffer this EQUALS `chars.base`, but the
+    ///   parameter stays explicit rather than being read off the slice: the two keyword-caption
+    ///   sites lex a detached string (wrapped into its own buffer, base 0) whose document
+    ///   position only the caller knows, and one silent wrong answer there would be invisible
+    ///   to every gate, since `parseOrg`'s tree does not carry offsets.
     ///
     ///   Deliberately has NO DEFAULT, for the reason `container` has none: the value that reads
     ///   as harmless -- 0, "the start of the document" -- is silently wrong at 16 of the 17 call
-    ///   sites, and wrong in a way no existing gate can see, since `parseOrg`'s tree does not
-    ///   carry offsets. Naming it at every call site is what makes the wrong answer something a
+    ///   sites. Naming it at every call site is what makes the wrong answer something a
     ///   person has to type on purpose.
     ///
     ///   Every RECURSIVE call passes `base + range.lowerBound`, because each one hands down
-    ///   `String(scalars: chars[range])` with the range explicit at the call site. The entry
+    ///   `chars.sub(range)` with the range explicit at the call site. The entry
     ///   points are where the real work is, and two of them were measured before this parameter
-    ///   was added: a paragraph's text is the source verbatim (its lines concatenated with their
-    ///   own newlines), so the map is the identity from `lines[start].offset`; a headline's
-    ///   title is two nested contiguous slices of one line.
-    func parseObjects(_ s: String, in container: ObjectContainer, at base: Int) throws -> [OrgJSON] {
+    ///   was added: a paragraph's text is the source verbatim (its lines with their
+    ///   own newlines - one contiguous run of the buffer), so the map is the identity from
+    ///   `lines[start].offset`; a headline's title is two nested contiguous slices of one line.
+    func parseObjects(_ chars: ScalarSlice, in container: ObjectContainer, at base: Int) throws -> [OrgJSON] {
         // The OBJECT-layer half of the same funnel `parseElementRun` guards: every nested object
         // -- an emphasis body, a link description, an inline footnote's contents, a citation's
         // prefix -- re-enters here. The deep vector on this side is the inline footnote
         // reference, which unlike emphasis has no marker alphabet to run out of.
         try nesting.enter()
         defer { nesting.leave() }
-
-        let chars = Array(s.unicodeScalars)
 
         // The up-front plain-link rejection scan that used to stand here is GONE, and its removal
         // is the narrowing its own comment asked for. It ran over the whole contents string
@@ -426,9 +425,11 @@ extension OrgParser {
                     "linkType": .string("plain"),
                     "pathType": .string("radio"),
                     "path": .string(matched),
-                    // `matched` IS `chars[i..<end]`, so it starts at `i` within this contents
-                    // string and at `base + i` in the document.
-                    "description": .array(try parseObjects(matched, in: .link, at: base + i)),
+                    // The description re-lexes `chars[i..<end]` - the region `matched` is the
+                    // string of - so it starts at `i` within these contents and `base + i` in
+                    // the document.
+                    "description": .array(try parseObjects(chars.sub(i..<end), in: .link,
+                                                           at: base + i)),
                     "postBlank": .int(postBlank),
                 ]))
                 i = k
@@ -478,7 +479,7 @@ extension OrgParser {
                     let match = LinkMatch(
                         end: end,
                         linkType: "plain",
-                        rawTarget: Array(chars[i..<end]),
+                        rawTarget: Array(chars.sub(i..<end)),
                         description: nil
                     )
                     let (node, next) = try linkNode(match, in: chars, at: base)
@@ -568,9 +569,9 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if container.permits(.timestamp), let match = timestampMatch(in: ScalarSlice(chars), at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let (node, next) = timestampNode(match, in: ScalarSlice(chars))
+                    let (node, next) = timestampNode(match, in: chars)
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -581,7 +582,7 @@ extension OrgParser {
                 // plain text. Without this gate increment 4 would have added a wrong tree of
                 // exactly the class ORG-23 closed.
                 if container.permits(.footnoteReference),
-                   let match = try footnoteMatch(in: ScalarSlice(chars), at: i) {
+                   let match = try footnoteMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     var postBlank = 0
                     var k = match.end
@@ -599,7 +600,7 @@ extension OrgParser {
                     // empty array, when it is false. The schema enforces that with an if/then.
                     if let body = match.body {
                         fields["children"] = .array(try parseObjects(
-                            String(scalars: chars[body]), in: .footnoteReference,
+                            chars.sub(body), in: .footnoteReference,
                             at: base + body.lowerBound
                         ))
                     }
@@ -658,9 +659,9 @@ extension OrgParser {
                     textStart = next
                     continue
                 }
-                if container.permits(.timestamp), let match = timestampMatch(in: ScalarSlice(chars), at: i) {
+                if container.permits(.timestamp), let match = timestampMatch(in: chars, at: i) {
                     flushText(upTo: i)
-                    let (node, next) = timestampNode(match, in: ScalarSlice(chars))
+                    let (node, next) = timestampNode(match, in: chars)
                     nodes.append(node)
                     i = next
                     textStart = next
@@ -697,7 +698,7 @@ extension OrgParser {
                     nodes.append(.object([
                         "type": .string("radio-target"),
                         "children": .array(try parseObjects(
-                            String(scalars: chars[match.body]), in: .radioTarget,
+                            chars.sub(match.body), in: .radioTarget,
                             at: base + match.body.lowerBound
                         )),
                         "postBlank": .int(postBlank),
@@ -769,7 +770,7 @@ extension OrgParser {
                             "type": .string(c == "_" ? "subscript" : "superscript"),
                             "useBrackets": .bool(match.useBrackets),
                             "children": .array(try parseObjects(
-                                String(scalars: chars[match.body]),
+                                chars.sub(match.body),
                                 in: c == "_" ? .subscript : .superscript,
                                 at: base + match.body.lowerBound
                             )),
@@ -926,10 +927,10 @@ extension OrgParser {
     /// cannot drift apart in shape, only in which `ObjectContainer` row restricts them.
     private func emphasisContainerNode(
         _ type: String, _ container: ObjectContainer, _ match: EmphasisMatch,
-        in chars: [Unicode.Scalar], openedAt i: Int, at base: Int
+        in chars: ScalarSlice, openedAt i: Int, at base: Int
     ) throws -> OrgJSON {
         // The contents start one past the marker at `i`, so they start at `base + i + 1`.
-        let contents = String(scalars: chars[(i + 1)..<match.closer])
+        let contents = chars.sub((i + 1)..<match.closer)
         // The markers are one scalar each, so the node runs from the opener at `i` to just past
         // the closer, plus the character-counted post-blank org folds into an object's `:end`.
         let begin = base + i
@@ -945,7 +946,7 @@ extension OrgParser {
 
     /// A short window of source around a refusal site, embedded in the reason so an
     /// object-layer refusal names WHICH construct it hit, not just which rule.
-    static func refusalSnippet(_ chars: [Unicode.Scalar], at i: Int) -> String {
+    static func refusalSnippet(_ chars: ScalarSlice, at i: Int) -> String {
         let lo = max(0, i - 12), hi = min(chars.count, i + 18)
         return String(String(scalars: chars[lo..<hi]).map { $0 == "\n" ? " " : $0 })
     }
@@ -988,10 +989,10 @@ extension OrgParser {
     /// The style class is `[/_-alnum]+` with Emacs's UNICODE-aware `alnum`, so a non-ASCII
     /// scalar where the style could continue is undecidable and THROWS -- the same shape as the
     /// dynamic-block name, the footnote label and the sub/superscript body.
-    func citationMatch(in chars: [Unicode.Scalar], at i: Int) throws -> CitationMatch? {
+    func citationMatch(in chars: ScalarSlice, at i: Int) throws -> CitationMatch? {
         guard let afterPrefix = try citationPrefixEnd(in: chars, at: i) else { return nil }
         guard let closing = balancedEnd(
-            in: ScalarSlice(chars), openAt: i, opener: "[", closer: "]", maxDepth: Int.max)
+            in: chars, openAt: i, opener: "[", closer: "]", maxDepth: Int.max)
         else { return nil }
         let style = afterPrefix.style
         let start = afterPrefix.end
@@ -1028,7 +1029,7 @@ extension OrgParser {
     /// The `[cite` / `/style` / `:` / blanks opener, or nil. Also the decline proof: after
     /// `[cite`, org accepts exactly `:` or `/`, so any other scalar means no citation.
     private func citationPrefixEnd(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) throws -> (style: String?, end: Int)? {
         var j = i + 1
         for expected in "cite".unicodeScalars {
@@ -1077,7 +1078,7 @@ extension OrgParser {
     /// this parser would have to enumerate to do better. Recorded here because the other four
     /// sites throw and this one deliberately does not.
     private func citationKeyRange(
-        in chars: [Unicode.Scalar], from: Int, upTo: Int
+        in chars: ScalarSlice, from: Int, upTo: Int
     ) -> Range<Int>? {
         var j = from
         while j < upTo {
@@ -1104,7 +1105,7 @@ extension OrgParser {
     }
 
     private func lastIndex(
-        of needle: Unicode.Scalar, in chars: [Unicode.Scalar], from: Int, upTo: Int
+        of needle: Unicode.Scalar, in chars: ScalarSlice, from: Int, upTo: Int
     ) -> Int? {
         var j = upTo - 1
         while j >= from {
@@ -1122,7 +1123,7 @@ extension OrgParser {
     /// and the `;` itself belongs to neither. `:post-blank` is hardcoded 0 in org, so it is 0
     /// here too rather than measured off the source.
     private func citationReferences(
-        in chars: [Unicode.Scalar], over region: Range<Int>, at base: Int
+        in chars: ScalarSlice, over region: Range<Int>, at base: Int
     ) throws -> [OrgJSON] {
         var nodes: [OrgJSON] = []
         var begin = region.lowerBound
@@ -1139,11 +1140,11 @@ extension OrgParser {
                 "postBlank": .int(0),
             ]
             fields["prefix"] = begin < key.lowerBound
-                ? .array(try parseObjects(String(scalars: chars[begin..<key.lowerBound]),
+                ? .array(try parseObjects(chars.sub(begin..<key.lowerBound),
                                           in: .citationReference, at: base + begin))
                 : .null
             fields["suffix"] = key.upperBound < suffixEnd
-                ? .array(try parseObjects(String(scalars: chars[key.upperBound..<suffixEnd]),
+                ? .array(try parseObjects(chars.sub(key.upperBound..<suffixEnd),
                                           in: .citationReference, at: base + key.upperBound))
                 : .null
             nodes.append(.object(fields))
@@ -1153,7 +1154,7 @@ extension OrgParser {
     }
 
     private func firstIndex(
-        of needle: Unicode.Scalar, in chars: [Unicode.Scalar], from: Int, upTo: Int
+        of needle: Unicode.Scalar, in chars: ScalarSlice, from: Int, upTo: Int
     ) -> Int? {
         var j = from
         while j < upTo {
@@ -1165,7 +1166,7 @@ extension OrgParser {
 
     /// The whole `citation` node for a match, references and all.
     func citationNode(
-        _ match: CitationMatch, in chars: [Unicode.Scalar], at base: Int
+        _ match: CitationMatch, in chars: ScalarSlice, at base: Int
     ) throws -> OrgJSON {
         // The citation's OWN prefix and suffix are lexed under the CITATION-REFERENCE row, not
         // the citation's. org spells it out -- `org-element-citation-parser` binds
@@ -1175,7 +1176,7 @@ extension OrgParser {
         // cross-product, four wrong trees, on its first run.
         func secondary(_ range: Range<Int>?) throws -> OrgJSON {
             guard let range else { return .null }
-            return .array(try parseObjects(String(scalars: chars[range]),
+            return .array(try parseObjects(chars.sub(range),
                                            in: .citationReference, at: base + range.lowerBound))
         }
         var postBlank = 0
@@ -1200,7 +1201,7 @@ extension OrgParser {
     /// `<`/`>`/newline exclusion, at least one scalar. A `<<<` opening never matches, because
     /// its contents would begin with `<`.
     private func targetMatch(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) -> (end: Int, body: Range<Int>)? {
         func isEdgeScalar(_ s: Unicode.Scalar) -> Bool {
             s != "<" && s != ">" && s != "\n" && s != " " && s != "\t"
@@ -1248,7 +1249,7 @@ extension OrgParser {
     ///     <<<>>>       plain TEXT     empty
     ///     <<<a\nb>>>   plain TEXT     no newline inside
     func radioTargetMatch(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) -> (end: Int, body: Range<Int>)? {
         func isEdgeScalar(_ s: Unicode.Scalar) -> Bool {
             s != "<" && s != ">" && s != "\n" && s != " " && s != "\t"
@@ -1285,7 +1286,7 @@ extension OrgParser {
     /// into `\s-+`, so a shorter target, or a shorter whitespace run, can still match at the same
     /// position. That is why the boundary test lives at the bottom of `matchItems` rather than
     /// after it.
-    func radioMatchEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    func radioMatchEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         guard !radioTargets.isEmpty else { return nil }
         guard i == 0 || OrgParser.isRadioBoundary(chars[i - 1]) else { return nil }
 
@@ -1374,7 +1375,7 @@ extension OrgParser {
     ///     call_f()[e            an inline-babel-call whose value STOPS at `)`: the trailing
     ///                           [..] is optional, so failing to balance costs only itself
     private func inlineCallableMatch(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) -> InlineCallableMatch? {
         /// Contents of a balanced pair at `j`, and the index just past it, or nil.
         func paired(
@@ -1382,7 +1383,7 @@ extension OrgParser {
         ) -> (contents: String, end: Int)? {
             guard j < chars.count, chars[j] == opener,
                   let past = balancedEnd(
-                      in: ScalarSlice(chars), openAt: j, opener: opener, closer: closer,
+                      in: chars, openAt: j, opener: opener, closer: closer,
                       maxDepth: Int.max)
             else { return nil }
             return (String(scalars: chars[(j + 1)..<(past - 1)]), past)
@@ -1516,7 +1517,7 @@ extension OrgParser {
     /// and the sub/superscript body; all of them narrow together the day the class is enumerated
     /// over Unicode. The cost is bounded to inputs that are already a grammatical match, because
     /// the caller asks the grammar first.
-    static func inlineCallableSuppressed(before i: Int, in chars: [Unicode.Scalar]) throws -> Bool {
+    static func inlineCallableSuppressed(before i: Int, in chars: ScalarSlice) throws -> Bool {
         guard i > 0 else { return false }
         let s = chars[i - 1]
         guard s.isASCII else {
@@ -1663,7 +1664,7 @@ extension OrgParser {
     /// undecidable shape as the dynamic-block name: too narrow a class truncates the body, too
     /// wide a class over-runs it, and NEITHER direction is a safe over-throw. Declining is the
     /// only honest answer until the class is enumerated the way `upcaseDeclined` was.
-    private func scriptMatch(in chars: [Unicode.Scalar], at i: Int) throws -> ScriptMatch? {
+    private func scriptMatch(in chars: ScalarSlice, at i: Int) throws -> ScriptMatch? {
         func isASCIIAlnum(_ s: Unicode.Scalar) -> Bool {
             (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
         }
@@ -1689,14 +1690,14 @@ extension OrgParser {
 
         if chars[i + 1] == "{" {
             guard let end = balancedEnd(
-                in: ScalarSlice(chars), openAt: i + 1, opener: "{", closer: "}", maxDepth: 3
+                in: chars, openAt: i + 1, opener: "{", closer: "}", maxDepth: 3
             ) else { return nil }
             // Braces are stripped: the contents are what sits BETWEEN them.
             return ScriptMatch(end: end, body: (i + 2)..<(end - 1), useBrackets: true)
         }
         if chars[i + 1] == "(" {
             guard let end = balancedEnd(
-                in: ScalarSlice(chars), openAt: i + 1, opener: "(", closer: ")", maxDepth: 3
+                in: chars, openAt: i + 1, opener: "(", closer: ")", maxDepth: 3
             ) else { return nil }
             // Parentheses are KEPT: the contents include them.
             return ScriptMatch(end: end, body: (i + 1)..<end, useBrackets: false)
@@ -1742,7 +1743,7 @@ extension OrgParser {
     ///     a \(x<nl>y\) b     spans a newline
     ///     a \(f(x)\) b       a bare `(` inside is ordinary content
     ///     a \[x \(y\) z\] b  ONE fragment: `\(` does not close a `\[`
-    private func latexFragmentEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    private func latexFragmentEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         guard i + 1 < chars.count else { return nil }
         let closer: Unicode.Scalar
         switch chars[i + 1] {
@@ -1775,7 +1776,7 @@ extension OrgParser {
     /// the lookup misses. A non-ASCII scalar at the boundary is the one undecidable spot
     /// (Emacs's `(not letter)` is a Unicode category test) and throws.
     private func entityMatch(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) throws -> (name: String, useBrackets: Bool, end: Int)? {
         let j = i + 1
         guard j < chars.count else { return nil }
@@ -1833,7 +1834,7 @@ extension OrgParser {
     /// whose contents exclude brackets, braces and newlines; an unclosed group is simply not
     /// consumed (the `*` stops before it). Tried after `entityMatch`, so `\alpha` is an entity
     /// and `\alphax` -- whose boundary check fails the entity -- is this fragment.
-    private func commandLatexFragmentEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    private func commandLatexFragmentEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         func isASCIILetter(_ s: Unicode.Scalar) -> Bool {
             (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
         }
@@ -1866,7 +1867,7 @@ extension OrgParser {
     /// present-but-never-closed group fails the whole match (the optional path would need
     /// `}}}` at the `(` itself), so `{{{a(b}}}` is plain text, and so is `{{{9x}}}` (digit
     /// first). `{{{a}}}}` is a macro followed by one literal `}`.
-    private func macroEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    private func macroEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         guard i + 2 < chars.count, chars[i + 1] == "{", chars[i + 2] == "{" else { return nil }
         var j = i + 3
         guard j < chars.count,
@@ -1903,7 +1904,7 @@ extension OrgParser {
     /// anywhere after means no snippet at all: `@@html:x` unclosed, `@@html x@@` (no colon)
     /// and `@@:x@@` (empty backend) are all plain text, measured.
     private func exportSnippetMatch(
-        in chars: [Unicode.Scalar], at i: Int
+        in chars: ScalarSlice, at i: Int
     ) -> (backEnd: String, value: String, end: Int)? {
         guard i + 1 < chars.count, chars[i] == "@", chars[i + 1] == "@" else { return nil }
         var j = i + 2
@@ -1956,7 +1957,7 @@ extension OrgParser {
     /// No fragment forms mid-word from the CLOSER side only; the OPENER side is unguarded, and
     /// `word$x$ done` really is a fragment, measured. `$5 and $6` is plain text (space before
     /// the candidate closer), which is what keeps ordinary currency out.
-    private func dollarLatexMatch(in chars: [Unicode.Scalar], at i: Int) throws -> Int? {
+    private func dollarLatexMatch(in chars: ScalarSlice, at i: Int) throws -> Int? {
         guard i + 1 < chars.count else { return nil }
         if chars[i + 1] == "$" {
             var j = i + 2
@@ -2028,7 +2029,7 @@ extension OrgParser {
     /// twice: Swift's number predicate is Unicode-aware and true for `١`, `１`, `²` and `Ⅷ`,
     /// so using it would build cookies out of `[١/٢]` and `[１/２]`, which org leaves as text.
     /// `plainLinkEnd`'s boundary table records 16 silent wrong trees from the same class of gap.
-    private func statisticsCookieEnd(in chars: [Unicode.Scalar], at i: Int) -> Int? {
+    private func statisticsCookieEnd(in chars: ScalarSlice, at i: Int) -> Int? {
         func isASCIIDigit(_ s: Unicode.Scalar) -> Bool { s >= "0" && s <= "9" }
         var j = i + 1
         while j < chars.count, isASCIIDigit(chars[j]) { j += 1 }
@@ -2065,7 +2066,7 @@ extension OrgParser {
     /// requires on the object, never on the following text run. Newlines are never consumed:
     /// they stay as literal text (oracle-confirmed: `*bold* \nrest` parses as bold `postBlank` 1
     /// + text `"\nrest\n"`).
-    private func emphasisMatch(in chars: [Unicode.Scalar], at i: Int) -> EmphasisMatch? {
+    private func emphasisMatch(in chars: ScalarSlice, at i: Int) -> EmphasisMatch? {
         let marker = chars[i]
 
         if i > 0, !isPreChar(chars[i - 1]) {

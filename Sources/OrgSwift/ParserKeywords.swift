@@ -392,7 +392,9 @@ extension OrgParser {
                     // Until this landed, `#+CAPTION: cap\\` fell to the blanket `\` throw and
                     // declined honestly, so the gap was a coverage loss and not a wrong tree.
                     // Links landing is what would have turned it into one.
-                    "long": .array(try parseObjects(entry.value, in: .keyword, at: entry.valueOffset)),
+                    "long": .array(try parseObjects(
+                        ScalarSlice(Array(entry.value.unicodeScalars)),
+                        in: .keyword, at: entry.valueOffset)),
                     "short": try captionShort(entry.dual),
                 ]))
                 fields["CAPTION"] = .array(entries)
@@ -437,7 +439,8 @@ extension OrgParser {
     /// standard set minus `footnote-reference`.
     private func captionShort(_ dual: (text: String, offset: Int)?) throws -> OrgJSON {
         guard let dual, !dual.text.isEmpty else { return .null }
-        return .array(try parseObjects(dual.text, in: .keyword, at: dual.offset))
+        return .array(try parseObjects(
+            ScalarSlice(Array(dual.text.unicodeScalars)), in: .keyword, at: dual.offset))
     }
 
     // MARK: File-level settings (the two-pass scan)

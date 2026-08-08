@@ -522,5 +522,35 @@ struct OrgParser {
         self.radioCollector = radioCollector
         self.nesting = nesting
         self.firstLineIsSliced = firstLineIsSliced
+        // The invariant `sourceSlice(ofLines:)` stands on, checked where a line list is BUILT:
+        // consecutive lines are source-adjacent, each ending exactly where the next begins.
+        // True of both spawn sites by construction - an item body and a footnote definition
+        // each start with (at most) a sliced TAIL of the parent's first line, whose `endOffset`
+        // is the parent line's own, followed by a contiguous run of the parent's lines - but
+        // "by construction" is a claim about today's two call sites, and this is what makes a
+        // third call site that breaks it fail its first debug run instead of shipping
+        // scrambled paragraph text.
+        assert(zip(lines, lines.dropFirst()).allSatisfy { $0.endOffset == $1.offset },
+               "sub-parser line list is not source-contiguous")
+    }
+
+    /// The verbatim source over `r`'s lines - each line WITH its own newline - as one zero-copy
+    /// slice of the document buffer.
+    ///
+    /// This exists because the two places that used to rebuild that text as a `String` (the
+    /// paragraph join, the verse-block body) were doing per-line appends of something the
+    /// buffer already holds contiguously: lines are adjacent in the source, and a line's
+    /// newline is the byte before the next line's `offset`. The join added nothing and dropped
+    /// nothing - measured before ORG-32 relied on it - so the slice IS the joined text.
+    ///
+    /// `r` must be non-empty: an empty range has no line to read the buffer from, and every
+    /// caller has a cheaper answer for "no lines" than an empty slice ([] children, "" value).
+    func sourceSlice(ofLines r: Range<Int>) -> ScalarSlice {
+        let first = lines[r.lowerBound]
+        let last = lines[r.upperBound - 1]
+        return ScalarSlice(
+            buffer: first.text.buffer,
+            base: first.offset,
+            count: last.endOffset - first.offset)
     }
 }
