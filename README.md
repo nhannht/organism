@@ -1,5 +1,6 @@
 # organism
 
+[![CI](https://github.com/nhannht/organism/actions/workflows/ci.yml/badge.svg)](https://github.com/nhannht/organism/actions/workflows/ci.yml)
 [![Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fnhannht%2Forganism%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/nhannht/organism)
 [![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fnhannht%2Forganism%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/nhannht/organism)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
