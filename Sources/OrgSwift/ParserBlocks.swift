@@ -205,17 +205,17 @@ extension OrgParser {
     ///     #+BEGIN: -lead      NO BLOCK      a name must OPEN on a word character
     ///
     /// `[[:word:]]` is the trap. It is not `\S-`, and it is not `[-_[:alnum:]]` either: `-`,
-    /// `_`, `.` and `:` all END the name, measured. It IS Unicode-aware, and measured WIDE --
-    /// `café`, `漢字`, `한글`, `αβ`, `ß` are names, and so are `Ⅷ`, `٣`, `²` and `ʰ`, which are
-    /// exactly the scalars where Swift's `isLetterScalar` / `isNumberScalar` and Emacs's word
-    /// syntax have diverged twice before in this parser (see `plainLinkEnd`'s boundary table,
-    /// 16 silent wrong trees, and `emacsUpcased`).
+    /// `_`, `.` and `:` all END the name, measured, while `$`, `%` and `'` CONTINUE it,
+    /// because org-mode's syntax table gives those three ASCII scalars word syntax. It is also
+    /// Unicode-aware and WIDE -- `café`, `漢字`, `한글`, `αβ`, `ß` are names, and so are `Ⅷ`,
+    /// `٣`, `²` and `ʰ`, exactly the scalars where Swift's `isLetterScalar` / `isNumberScalar`
+    /// and Emacs's word syntax have diverged twice before in this parser (see `plainLinkEnd`'s
+    /// boundary table, 16 silent wrong trees, and `emacsUpcased`).
     ///
-    /// So the name run here is ASCII-only and the function THROWS rather than guessing the
-    /// moment a non-ASCII scalar sits where the name could continue. Both directions of a wrong
-    /// class produce a wrong `blockName`, and neither is a safe over-throw -- a narrower class
-    /// truncates the name, a wider one over-runs it. Declining is the only safe answer until the
-    /// class is enumerated the way `upcaseDeclined` was.
+    /// So the name run consults the enumerated `[:word:]` table (`isEmacsWord`, measured over
+    /// the full scalar space in a live org-mode buffer, drift-gated). This site used to be
+    /// ASCII-alnum and THREW on any non-ASCII scalar where the name could continue; the table
+    /// retires the refusal and fixes the `$ % '` truncation the ASCII class could not see.
     ///
     /// ARGS is `\(?:[\t ]+\(.+\)\)?` and is NOT trimmed. The `.+` matches a space too, which is
     /// the whole reason the boundary is odd and had to be measured rather than assumed:
@@ -225,7 +225,7 @@ extension OrgParser {
     ///     #+BEGIN: n<sp><sp>   args `" "`    `[\t ]+` backtracks to one, `.+` takes the other
     ///     #+BEGIN: n   :a   b  args `":a   b"`   leading run stripped, INNER runs kept
     ///     #+BEGIN: n a<tab>    args `"a\t"`      trailing whitespace KEPT
-    static func dynamicBlockBeginLine(_ line: Line) throws -> (name: String, arguments: String?)? {
+    static func dynamicBlockBeginLine(_ line: Line) -> (name: String, arguments: String?)? {
         let text = line.text
         let prefix = Array("#+begin:".unicodeScalars)
         var i = line.contentStart
@@ -240,11 +240,7 @@ extension OrgParser {
         while i < text.count, text[i] == " " || text[i] == "\t" { i += 1 }
 
         let nameStart = i
-        while i < text.count, text[i].isASCII,
-              isLetterScalar(text[i]) || isNumberScalar(text[i]) { i += 1 }
-        // A non-ASCII scalar sitting where the name could continue -- including at its very
-        // first position -- is the undecidable case above, never a name boundary.
-        if i < text.count, !text[i].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a block-name boundary") }
+        while i < text.count, isEmacsWord(text[i]) { i += 1 }
         // No name at all. `#+BEGIN:` and `#+BEGIN: ` are ordinary `keyword` elements in org
         // (key `BEGIN`, value ""), measured, so declining here is what lets them reach the
         // keyword branch rather than being claimed as a malformed block.

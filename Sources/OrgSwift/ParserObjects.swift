@@ -581,7 +581,7 @@ extension OrgParser {
                 // ENTITY, before both fragment forms: the command form below would otherwise
                 // claim every `\alpha`. Like `latex-fragment`, `entity` sits in all 19
                 // restriction rows, so there is no container gate.
-                if let match = try entityMatch(in: chars, at: i) {
+                if let match = entityMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     var postBlank = 0
                     var k = match.end
@@ -647,7 +647,7 @@ extension OrgParser {
                 // plain text. Without this gate increment 4 would have added a wrong tree of
                 // exactly the class ORG-23 closed.
                 if container.permits(.footnoteReference),
-                   let match = try footnoteMatch(in: chars, at: i) {
+                   let match = footnoteMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     var postBlank = 0
                     var k = match.end
@@ -693,7 +693,7 @@ extension OrgParser {
                 // `citationMatch` for the four regions and why the common suffix needs a
                 // forward re-check to exist at all.
                 if container.permits(.citation),
-                   let match = try citationMatch(in: chars, at: i) {
+                   let match = citationMatch(in: chars, at: i) {
                     flushText(upTo: i)
                     let node = try citationNode(match, in: chars, at: base)
                     nodes.append(node)
@@ -810,7 +810,7 @@ extension OrgParser {
                 }
                 if let before = charBefore(i), !isBorderWhitespace(before) {
                     let kind: ObjectKind = c == "_" ? .subscript : .superscript
-                    if container.permits(kind), let match = try scriptMatch(in: chars, at: i) {
+                    if container.permits(kind), let match = scriptMatch(in: chars, at: i) {
                         flushText(upTo: i)
                         var postBlank = 0
                         var k = match.end
@@ -1041,8 +1041,8 @@ extension OrgParser {
     /// The style class is `[/_-alnum]+` with Emacs's UNICODE-aware `alnum`, so a non-ASCII
     /// scalar where the style could continue is undecidable and THROWS -- the same shape as the
     /// dynamic-block name, the footnote label and the sub/superscript body.
-    func citationMatch(in chars: ScalarSlice, at i: Int) throws -> CitationMatch? {
-        guard let afterPrefix = try citationPrefixEnd(in: chars, at: i) else { return nil }
+    func citationMatch(in chars: ScalarSlice, at i: Int) -> CitationMatch? {
+        guard let afterPrefix = citationPrefixEnd(in: chars, at: i) else { return nil }
         guard let closing = balancedEnd(
             in: chars, openAt: i, opener: "[", closer: "]", maxDepth: Int.max)
         else { return nil }
@@ -1082,7 +1082,7 @@ extension OrgParser {
     /// `[cite`, org accepts exactly `:` or `/`, so any other scalar means no citation.
     private func citationPrefixEnd(
         in chars: ScalarSlice, at i: Int
-    ) throws -> (style: String?, end: Int)? {
+    ) -> (style: String?, end: Int)? {
         var j = i + 1
         for expected in "cite".unicodeScalars {
             guard j < chars.count, chars[j] == expected else { return nil }
@@ -1095,15 +1095,9 @@ extension OrgParser {
             let styleStart = j
             while j < chars.count {
                 let s = chars[j]
-                if (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
-                    || s == "/" || s == "_" || s == "-" {
+                if OrgParser.isEmacsAlnum(s) || s == "/" || s == "_" || s == "-" {
                     j += 1
                     continue
-                }
-                // Emacs's `alnum` is Unicode-aware, so a non-ASCII scalar here could be part of
-                // the style or could end it, and this parser cannot tell which.
-                if !s.isASCII {
-                    throw OrgError.unimplemented("non-ASCII scalar in a possible citation style")
                 }
                 break
             }
@@ -1603,25 +1597,25 @@ extension OrgParser {
     ///
     /// so a definition parser that scans to the first `]` swallows both inline forms. Measured.
     ///
-    /// The label class is `[-_[:word:]]+`, and `[:word:]` is Unicode-aware -- `[fn:café]` is a
-    /// real definition. That is the same undecidable class as the dynamic-block name and the
-    /// sub/superscript body, so it is ASCII-only here and a non-ASCII scalar where the label
-    /// could continue THROWS rather than guessing. Fourth construct with that shape; all four
-    /// narrow together when the class is enumerated once.
+    /// The label class is `[-_[:word:]]+` with Emacs's Unicode-aware `[:word:]`, consulted from
+    /// the enumerated table -- `[fn:café]` is a real definition, and so is `[fn:a$b]`, because
+    /// org-mode's syntax table gives `$` word syntax that no ASCII-alnum reading ever saw. This
+    /// site used to THROW on a non-ASCII scalar where the label could continue (sweep
+    /// `i4-label-uni`); with the class measured (`isEmacsWord`, drift-gated), the label
+    /// boundary is decidable everywhere and the refusal is retired.
     struct FootnoteMatch {
         let end: Int
         let label: String?
         let body: Range<Int>?
     }
 
-    /// `[-_[:word:]]`, ASCII half only. See `FootnoteMatch`.
+    /// `[-_[:word:]]`. See `FootnoteMatch`.
     private static func isFootnoteLabelScalar(_ s: Unicode.Scalar) -> Bool {
-        (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
-            || s == "-" || s == "_"
+        s == "-" || s == "_" || isEmacsWord(s)
     }
 
     /// Matches a `[fn:` construct at `i`, or nil when there is none.
-    func footnoteMatch(in chars: ScalarSlice, at i: Int) throws -> FootnoteMatch? {
+    func footnoteMatch(in chars: ScalarSlice, at i: Int) -> FootnoteMatch? {
         let prefix = Array("[fn:".unicodeScalars)
         guard i + prefix.count <= chars.count else { return nil }
         for (offset, expected) in prefix.enumerated() where chars[i + offset] != expected {
@@ -1630,9 +1624,6 @@ extension OrgParser {
         var j = i + prefix.count
         let labelStart = j
         while j < chars.count, OrgParser.isFootnoteLabelScalar(chars[j]) { j += 1 }
-        // A non-ASCII scalar sitting where the label could continue is undecidable, exactly as
-        // in `dynamicBlockBeginLine`. Declining is the only safe answer.
-        if j < chars.count, !chars[j].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a footnote-label boundary") }
         let label = j > labelStart ? String(scalars: chars[labelStart..<j]) : nil
 
         guard j < chars.count else { return nil }
@@ -1706,15 +1697,15 @@ extension OrgParser {
     /// That last requirement is what stops `a_b.` swallowing the sentence's full stop, and it is
     /// why `a^-` alone is plain text.
     ///
-    /// **The alnum class is ASCII-only here and a non-ASCII scalar THROWS.** `[[:alnum:]]` is
-    /// Unicode-aware in Emacs -- `a_éx` and `a_漢x` really are subscripts -- and this is the same
-    /// undecidable shape as the dynamic-block name: too narrow a class truncates the body, too
-    /// wide a class over-runs it, and NEITHER direction is a safe over-throw. Declining is the
-    /// only honest answer until the class is enumerated the way `upcaseDeclined` was.
-    private func scriptMatch(in chars: ScalarSlice, at i: Int) throws -> ScriptMatch? {
-        func isASCIIAlnum(_ s: Unicode.Scalar) -> Bool {
-            (s >= "0" && s <= "9") || (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
-        }
+    /// The alnum class is Emacs's Unicode-aware `[[:alnum:]]`, consulted from the enumerated
+    /// table -- `a_éx` and `a_漢x` really are subscripts, and `a_b²` really is NOT one scalar
+    /// longer, because SUPERSCRIPT TWO is a word constituent but not alphanumeric. This site
+    /// used to THROW on any non-ASCII scalar at the body boundary (the sweep's `i3-*` refusal
+    /// group): too narrow a class truncates the body, too wide a class over-runs it, and
+    /// neither direction is a safe over-throw. With the class measured over the full scalar
+    /// space (`isEmacsAlnum`, drift-gated), the boundary is decidable everywhere and the
+    /// refusal is retired.
+    private func scriptMatch(in chars: ScalarSlice, at i: Int) -> ScriptMatch? {
         guard i + 1 < chars.count else { return nil }
         // The CANDIDATE gate, from `org-element--object-regexp`, and it applies to `^` ONLY:
         // a script position is handed to this parser when the next scalar is one of `-{(*+.,`
@@ -1722,15 +1713,11 @@ extension OrgParser {
         // candidate (`[*~=+_/]` + non-space), whose lexer branch still falls through to the
         // subscript parser with the FULL body grammar. So `a_\z` is a subscript while `a^\z`
         // is no candidate at all and its `\z` parses as a latex fragment -- the measured pair
-        // is sweep i3-bs-sub / i3-bs-sup. Emacs's `[:alnum:]` here is Unicode, so a non-ASCII
-        // scalar after `^` is undecidable and throws.
+        // is sweep i3-bs-sub / i3-bs-sup.
         if chars[i] == "^" {
             let gate = chars[i + 1]
-            if !(isASCIIAlnum(gate) || gate == "-" || gate == "{" || gate == "(" || gate == "*"
-                 || gate == "+" || gate == "." || gate == ",") {
-                guard gate.isASCII else {
-                    throw OrgError.unimplemented("non-ASCII scalar after a superscript marker")
-                }
+            if !(OrgParser.isEmacsAlnum(gate) || gate == "-" || gate == "{" || gate == "("
+                 || gate == "*" || gate == "+" || gate == "." || gate == ",") {
                 return nil
             }
         }
@@ -1757,13 +1744,11 @@ extension OrgParser {
         if chars[j] == "+" || chars[j] == "-" { j += 1 }
         var lastAlnum: Int?
         while j < chars.count,
-              isASCIIAlnum(chars[j]) || chars[j] == "." || chars[j] == "," || chars[j] == "\\" {
-            if isASCIIAlnum(chars[j]) { lastAlnum = j }
+              OrgParser.isEmacsAlnum(chars[j]) || chars[j] == "." || chars[j] == ","
+              || chars[j] == "\\" {
+            if OrgParser.isEmacsAlnum(chars[j]) { lastAlnum = j }
             j += 1
         }
-        // The scalar that ENDED the run decides whether this answer can be trusted. An ASCII one
-        // is a real boundary; a non-ASCII one might be an `[[:alnum:]]` org would have consumed.
-        if j < chars.count, !chars[j].isASCII { throw OrgError.unimplemented("non-ASCII scalar at a script-body boundary") }
         guard let last = lastAlnum else { return nil }
         return ScriptMatch(end: last + 1, body: (i + 1)..<(last + 1), useBrackets: false)
     }
@@ -1824,7 +1809,7 @@ extension OrgParser {
     /// (Emacs's `(not letter)` is a Unicode category test) and throws.
     private func entityMatch(
         in chars: ScalarSlice, at i: Int
-    ) throws -> (name: String, useBrackets: Bool, end: Int)? {
+    ) -> (name: String, useBrackets: Bool, end: Int)? {
         let j = i + 1
         guard j < chars.count else { return nil }
         if chars[j] == "_" {
@@ -1838,16 +1823,15 @@ extension OrgParser {
             (s >= "a" && s <= "z") || (s >= "A" && s <= "Z")
         }
         // Boundary after a candidate name ending at `k`: nil when the boundary REJECTS,
-        // otherwise (useBrackets, end).
-        func boundary(_ k: Int) throws -> (useBrackets: Bool, end: Int)? {
+        // otherwise (useBrackets, end). org's `(not letter)` is Emacs `[:alpha:]` complemented,
+        // consulted from the enumerated table -- `\pié` finds no entity because é IS a letter,
+        // while `\pi²` finds one because SUPERSCRIPT TWO is not.
+        func boundary(_ k: Int) -> (useBrackets: Bool, end: Int)? {
             if k == chars.count { return (false, k) }
             let s = chars[k]
             if s == "{", k + 1 < chars.count, chars[k + 1] == "}" { return (true, k + 2) }
             if s == "\n" { return (false, k) }
-            if isASCIILetter(s) { return nil }
-            guard s.isASCII else {
-                throw OrgError.unimplemented("non-ASCII scalar at an entity-name boundary")
-            }
+            if OrgParser.isEmacsAlpha(s) { return nil }
             return (false, k)
         }
         func candidate(_ name: String) -> Bool {
@@ -1858,7 +1842,7 @@ extension OrgParser {
         }
         for special in ["there4", "sup1", "sup2", "sup3", "frac12", "frac14", "frac32", "frac34"]
         where candidate(special) {
-            if let b = try boundary(j + special.count) {
+            if let b = boundary(j + special.count) {
                 // The digit-bearing names are all in the table except `frac32`, and the lookup
                 // is what says so -- same single-lookup rule as the run below.
                 return OrgParser.entityNames.contains(special)
@@ -1867,7 +1851,7 @@ extension OrgParser {
         }
         var k = j
         while k < chars.count, isASCIILetter(chars[k]) { k += 1 }
-        guard k > j, let b = try boundary(k) else { return nil }
+        guard k > j, let b = boundary(k) else { return nil }
         let name = String(scalars: chars[j..<k])
         return OrgParser.entityNames.contains(name) ? (name, b.useBrackets, b.end) : nil
     }

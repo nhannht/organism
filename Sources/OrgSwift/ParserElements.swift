@@ -47,8 +47,8 @@ extension OrgParser {
     ///
     /// No space is required after the bracket: `[fn:1]x` and `[fn:1]: x` are both definitions,
     /// with bodies `x` and `: x`.
-    func footnoteDefinitionMatch(_ line: Line) throws -> (label: String, end: Int)? {
-        guard let match = try footnoteMatch(in: line.text, at: 0),
+    func footnoteDefinitionMatch(_ line: Line) -> (label: String, end: Int)? {
+        guard let match = footnoteMatch(in: line.text, at: 0),
               match.body == nil, let label = match.label else { return nil }
         return (label, match.end)
     }
@@ -80,7 +80,7 @@ extension OrgParser {
                 if blankRun == 2 { break }
             } else {
                 if lines[i].contentStart == 0,
-                   (try? footnoteDefinitionMatch(lines[i])) ?? nil != nil { break }
+                   footnoteDefinitionMatch(lines[i]) != nil { break }
                 blankRun = 0
                 contentEnd = i + 1
             }
@@ -446,7 +446,7 @@ extension OrgParser {
 
         // FOOTNOTE DEFINITIONS. Column 0 only, and the label line may carry the first content.
         if line.contentStart == 0, !(i == range.lowerBound && firstLineIsSliced && i == 0),
-           let match = try footnoteDefinitionMatch(line) {
+           let match = footnoteDefinitionMatch(line) {
             let contentEnd = footnoteDefinitionEnd(openedAt: i, in: range)
 
             var bodyLines: [Line] = []
@@ -503,11 +503,7 @@ extension OrgParser {
         // branch below. Two calls would be two chances to disagree about what an opener is, and
         // the two uses sit on OPPOSITE sides of the same answer: a paired opener builds the
         // block here, an unpaired one must fall past the keyword branch to the paragraph path.
-        //
-        // Deliberately evaluated at this point rather than at the top of the function, so the
-        // non-ASCII-name refusal `dynamicBlockBeginLine` carries keeps throwing exactly where it
-        // used to.
-        let dynamicOpener = try OrgParser.dynamicBlockBeginLine(line)
+        let dynamicOpener = OrgParser.dynamicBlockBeginLine(line)
 
         // Dynamic blocks. An opener that PAIRS builds the block; one that does not falls through,
         // and org's answer for it is ordinary paragraph text -- the same rule `#+begin_example`,
@@ -736,7 +732,7 @@ extension OrgParser {
                 // A column-0 footnote definition INTERRUPTS an open paragraph with no blank line
                 // between them, measured: `text` then `[fn:1] a` is a paragraph AND a definition.
                 || (candidate.contentStart == 0
-                    && ((try? footnoteDefinitionMatch(candidate)) ?? nil) != nil)
+                    && footnoteDefinitionMatch(candidate) != nil)
                 // ORG-27. A PAIRED drawer opener ends the paragraph before it, exactly as a
                 // table or a fixed-width line does. Without this the drawer and everything the
                 // element run would have built after it are swallowed into the paragraph's text

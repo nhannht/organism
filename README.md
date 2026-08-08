@@ -38,16 +38,21 @@ over every org-element type its oracle can reach.
   `conformance/headline-inlinetask-depth`. Both facts are mechanised: one test reads org's live
   type list and fails if anything but `inlinetask` is unmapped, another fails if a mapped type
   has no fixture.
-- **Refusals that remain are narrow and named**, not whole constructs, and that is now a counted
-  claim rather than an assertion. Across the 1,355-case differential sweep, **9 cases refuse**,
-  in two groups: 8 an undecidable non-ASCII scalar at a subscript/superscript body boundary, 1
-  the same at a footnote-label boundary. Everything else parses. Each refusal throws rather than
-  guessing.
+- **Zero construct refusals remain**, and that is a counted claim rather than an assertion:
+  across the 1,355-case differential sweep, every case parses and `SweepTests.knownRefusals`
+  is the empty set, re-counted on every run.
 
-  It was 18 in three groups until 2026-08-08. The nine that left were the malformed `#+BEGIN`
-  shapes, and they did not leave by being implemented -- org had an ordinary answer for every one
-  of them all along (a keyword, or a paragraph), and they were held up by a predicate listing
-  three literal spellings where org consults a grammar. Deleting the list retired all nine.
+  It was 18 in three groups until 2026-08-08, then 9, then none, and each retirement was a
+  measurement rather than an implementation push. The nine malformed `#+BEGIN` shapes left
+  when a predicate listing three literal spellings was replaced by the opener grammar org
+  actually consults -- org had an ordinary answer (a keyword, or a paragraph) all along. The
+  last nine were an undecidable non-ASCII scalar at a subscript/superscript body or
+  footnote-label boundary: org's answer there depends on Emacs's `[:alnum:]` and `[:word:]`
+  classes, so the parser refused rather than guessed until those classes were enumerated over
+  the full Unicode scalar space in a live org-mode buffer (`UnicodeClasses.generated.swift`,
+  drift-gated like every other pinned Emacs table). With the classes measured, the boundaries
+  became decidable everywhere and the throwing guards came out entirely -- the functions that
+  carried them are no longer `throws` at all.
 
   One refusal is about DEPTH rather than any construct, and it is the only one no corpus here
   triggers: input nesting past `OrgParser.nestingLimit` throws `OrgError.nestingTooDeep`. It
@@ -66,12 +71,12 @@ over every org-element type its oracle can reach.
   boundaries" while two more had landed in the same campaign, because a site count is not
   behavioural and no gate can hold it honest.
 
-  That second number used to be unknowable. The sweep accepts a refusal silently by design -- it
-  guards against wrong trees, and from inside a `catch` an over-throw looks exactly like a case
-  that was never exercised. ORG-30 is the worked example: five over-throws sat at 0 of 1,181 with
-  the suite green. So the 9 are now pinned by NAME in `SweepTests.knownRefusals`, which fails in
-  both directions: a tenth refusal is red, and a listed case that starts parsing is also red.
-  That second direction is what retired the `#+BEGIN` group: the names had to come out, and they
+  The zero used to be unknowable. The sweep accepts a refusal silently by design -- it guards
+  against wrong trees, and from inside a `catch` an over-throw looks exactly like a case that
+  was never exercised. ORG-30 is the worked example: five over-throws sat at 0 of 1,181 with
+  the suite green. So refusals are pinned by NAME in `SweepTests.knownRefusals`, which fails
+  in both directions: a first refusal is red, and a listed case that starts parsing is also
+  red. That second direction is what retired both groups: the names had to come out, and they
   could only come out once the cases matched org's trees.
 - `swift test` reports green, and the reason still matters. 53 known issues remain and NONE of
   them is parser-shaped: 5 are the permanent renderer losses above, and 48 belong to the

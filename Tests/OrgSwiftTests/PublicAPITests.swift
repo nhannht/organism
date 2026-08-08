@@ -80,23 +80,25 @@ struct PublicAPITests {
     /// instruction is only true if the case is public AND the payload names the construct, so
     /// this asserts both rather than trusting the doc comment.
     ///
-    /// **The probe used to be `#+BEGIN: myblock` / `unterminated`, and this test caught its own
-    /// obsolescence when that started parsing.** An unpaired dynamic-block opener is a paragraph
-    /// in org, so the refusal it stood on was never a property of org -- it was a property of a
-    /// list of `#+begin` spellings this parser used to carry, and it retired with that list.
+    /// **This probe has now decayed TWICE, and both retirements are the story.** It began as
+    /// `#+BEGIN: myblock` / `unterminated`; an unpaired dynamic-block opener is a paragraph in
+    /// org, so that refusal was a property of a spelling list this parser used to carry, and it
+    /// retired with the list. The replacement, `[fn:café]` (a non-ASCII scalar at a
+    /// footnote-label boundary), stood on the character-class refusal policy -- and retired
+    /// when Emacs's `[:word:]` class was enumerated over the full scalar space
+    /// (`UnicodeClasses.generated.swift`) and `[fn:café]` became an ordinary definition.
     ///
-    /// The replacement is chosen to be DURABLE rather than convenient. A non-ASCII scalar at a
-    /// footnote-label boundary is one of the nine deliberate policy refusals: org's answer there
-    /// depends on character classes this project has not measured, so it declines rather than
-    /// guessing, and widening it is real work rather than a list edit. It is also `i4-label-uni`
-    /// in the sweep, named in `SweepTests.knownRefusals` -- so the day it does start parsing,
-    /// `refusalsAreExactlyTheNamedSet` goes red in the same run and whoever is holding that
-    /// change finds this test with it, instead of discovering it later out of context.
+    /// The current probe is a CR byte in the source, and it is durable for a different KIND of
+    /// reason than either predecessor: not "unmeasured yet" but a recorded scope decision.
+    /// org-element parses buffers after newline conversion, so a raw CR is data no org file
+    /// contains, and the parser refuses it by policy rather than by gap. No enumeration
+    /// retires it; only a deliberate API decision to accept CRLF input would, and whoever
+    /// makes that decision finds this test in the same run.
     @Test("a refusal surfaces as a catchable OrgError with a named reason")
     func refusalIsCatchable() throws {
         do {
-            _ = try parseOrg("[fn:café] y\n")
-            Issue.record("expected a refusal for a non-ASCII footnote label")
+            _ = try parseOrg("a\rb\n")
+            Issue.record("expected a refusal for a CR byte in the source")
         } catch let error as OrgError {
             guard case .notImplemented(let reason) = error else {
                 Issue.record("expected .notImplemented, got \(error)")

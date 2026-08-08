@@ -129,36 +129,30 @@ struct SweepTests {
     ///     a MISSING name here    a case that used to refuse now parses -- good news, and the
     ///                            correct fix is to delete the name, never to keep the list loose
     ///
-    /// The 9 fall in two groups, and each group is a decision rather than an accident:
+    /// **The set is EMPTY: the parser currently refuses nothing in the sweep.** The list stays,
+    /// as the census that proves it -- an empty set nothing re-counts is exactly the claim
+    /// ORG-30 caught being false.
     ///
-    ///     i3-*   (8)   a non-ASCII scalar at a subscript/superscript body boundary.
-    ///     i4-*   (1)   a non-ASCII scalar at a footnote-label boundary.
+    /// How the last two groups left matters more than that they did:
     ///
-    /// Both are the same deliberate policy: org's answer there depends on character classes this
-    /// project has not measured over the non-ASCII space, so it refuses instead of guessing.
-    /// Widening one is real work, not a list edit.
+    /// **`i3-*` and `i4-*` (the last 9)** were "a non-ASCII scalar at a subscript/superscript
+    /// body or footnote-label boundary": org's answer there depends on Emacs's `[:alnum:]` and
+    /// `[:word:]` classes, which this project had not measured over the non-ASCII space, so it
+    /// refused instead of guessing. The classes are now enumerated over the FULL scalar space
+    /// in a live org-mode buffer (`UnicodeClasses.generated.swift`, drift-gated), the guards
+    /// consult the tables, and the refusing functions are no longer `throws` at all -- the
+    /// compiler now states what this list used to: those sites cannot refuse.
     ///
-    /// **The `i1-*` group is GONE, and how it left matters more than that it did.** Those nine
-    /// were the malformed `#+BEGIN` shapes, and this docstring twice described them wrongly --
-    /// first as "dynamic blocks are unimplemented", corrected once, and then as a gate "on the
-    /// malformed tail only", which was also wrong. Both readings came from
-    /// `isUnimplementedHashPlusElement`'s NAME. Read from org instead, there was no malformed
-    /// tail: `#+BEGIN:` is an ordinary keyword, `#+BEGIN` and `#+BEGIN foo` are paragraphs, and
-    /// an UNPAIRED `#+BEGIN: n` is a paragraph exactly as an unterminated `#+begin_example` is.
-    /// Nine refusals for constructs org had a plain answer for, held up by a list of three
-    /// spellings. Deleting the predicate and asking the opener GRAMMAR instead retired all nine
-    /// at once and moved nothing else.
-    static let knownRefusals: Set<String> = [
-        "i3-accent",
-        "i3-cjk",
-        "i3-mix-digit",
-        "i3-mix-greek",
-        "i3-mix-mid",
-        "i3-mix-tail",
-        "i3-mix-tail2",
-        "i3-mix-tail3",
-        "i4-label-uni",
-    ]
+    /// **The `i1-*` group before them** was the malformed `#+BEGIN` shapes, and this docstring
+    /// twice described them wrongly -- first as "dynamic blocks are unimplemented", corrected
+    /// once, and then as a gate "on the malformed tail only", which was also wrong. Both
+    /// readings came from `isUnimplementedHashPlusElement`'s NAME. Read from org instead, there
+    /// was no malformed tail: `#+BEGIN:` is an ordinary keyword, `#+BEGIN` and `#+BEGIN foo`
+    /// are paragraphs, and an UNPAIRED `#+BEGIN: n` is a paragraph exactly as an unterminated
+    /// `#+begin_example` is. Nine refusals for constructs org had a plain answer for, held up
+    /// by a list of three spellings. Deleting the predicate and asking the opener GRAMMAR
+    /// instead retired all nine at once and moved nothing else.
+    static let knownRefusals: Set<String> = []
 
     @Test("the corpus is present and loaded")
     func corpusLoads() throws {

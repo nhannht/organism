@@ -313,7 +313,7 @@ extension OrgParser {
         if let (type, _) = OrgParser.blockBeginLine(line) {
             return blockEndIndex(openedAt: at, type: type, in: range)
         }
-        if try OrgParser.dynamicBlockBeginLine(line) != nil {
+        if OrgParser.dynamicBlockBeginLine(line) != nil {
             return pairedCloseIndex(
                 openedAt: at, upperBound: range.upperBound,
                 isCloser: OrgParser.isDynamicBlockEndLine)
