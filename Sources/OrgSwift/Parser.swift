@@ -3,43 +3,38 @@
 ///
 /// - Parameter source: the raw org-mode text.
 /// - Parameter todoKeywords: an explicit TODO keyword sequence to use instead of scanning
-///   `source` for an in-file `#+TODO:` line. When `nil` (the default), the parser must run its
-///   own two-pass scan: pass 1 collects `#+TODO:` settings from `source` itself (falling back to
-///   the org-mode default `TODO` / `DONE` when none are declared), pass 2 parses headlines
-///   against that keyword set. See SCHEMA.md, "Runtime TODO keywords". (Keywords are still
-///   outside the implemented subset: a `#+` line is rejected where it is DISPATCHED as an
-///   element, so no document containing one can produce a tree, and the active set is always
-///   `todoKeywords ?? ["TODO", "DONE"]`. That rejection used to be a document-wide pre-scan
-///   instead; see `isUnimplementedElementStart` for why it moved and what has to change when
-///   blocks land.)
-/// - Throws: `OrgError.notImplemented` for every org construct outside the implemented subset.
+///   `source` for an in-file `#+TODO:` line. When `nil` (the default), the file's own settings
+///   are read from the whole line list BEFORE any headline is parsed, because they apply to the
+///   entire file including the lines above the one that declares them (measured), falling back
+///   to org's own `TODO` / `DONE` when none are declared. See SCHEMA.md, "Runtime TODO
+///   keywords", and `init(source:todoKeywords:radioTargets:radioCollector:nesting:)`.
+/// - Throws: `OrgError.notImplemented` for a construct outside the implemented subset, and
+///   `OrgError.nestingTooDeep` for input nesting past `OrgParser.nestingLimit` -- which is a
+///   refusal about DEPTH rather than about any construct, and is the alternative to a stack
+///   overflow no caller could catch.
 ///
-/// ## Implemented subset (everything else throws, deliberately)
+/// ## What is implemented, and where to read the answer
 ///
-/// This parser is being grown case-by-case against the Layer 1 conformance corpus
-/// (`ConformanceTests.implementedCases`). The rule from the corpus's own contract: for input the
-/// parser does not support yet it must THROW, never emit a tree it is not confident is correct
-/// -- a wrong tree that happens to look plausible is worse than an honest error. Currently
-/// implemented:
+/// The rule, from the corpus's own contract: for input this parser does not support it must
+/// THROW, never emit a tree it is not confident is correct. A wrong tree that happens to look
+/// plausible is worse than an honest error.
 ///
-/// - Document / headline / section skeleton (SCHEMA.md section 3), with plain-text-plus-emphasis
-///   headline titles and TODO keyword extraction against the active set (default `TODO`/`DONE`;
-///   an unrecognized first word stays in the title with `todo: null`). Headlines carrying
-///   `COMMENT`, a `[#X]` priority cookie, or trailing `:tags:` throw. An empty or all-blank
-///   document is `{"type": "document", "children": [], "postBlank": 0}` (oracle-confirmed).
-/// - Paragraphs, horizontal rules, comment lines (consecutive `# ` lines merge, values joined
-///   by `"\n"` -- verified against the oracle).
-/// - Inline emphasis: `bold`, `italic` (containers) and `code`, `verbatim` (literal leaves),
-///   under the full SCHEMA.md section 7 border rule. `_` (underline/subscript) and a matched
-///   `+` (strikethrough) throw; so does every other object trigger (`[`, `<`, `\`, `$`, `^`,
-///   `{{{`, `@@`, plain-link schemes), so unsupported objects can never silently flatten into
-///   plain text.
-/// - Blank-line attribution (`postBlank` / `preBlank`), verified against `harness/oracle-dump.el`
-///   probes rather than guessed: blanks trailing an element belong to that element's `postBlank`;
-///   blanks between a headline line and its first content or child are the headline's `preBlank`;
-///   an all-blank headline body whose next headline is same-or-shallower (or EOF) is the
-///   headline's own `postBlank`; blank lines at the very start of the document are dropped
-///   (recorded nowhere, whether a paragraph or a headline follows -- oracle-confirmed).
+/// This comment deliberately does NOT enumerate the supported subset, and the enumeration it
+/// used to carry is why. It described a parser that refused priority cookies, tags, links,
+/// timestamps and every `#+` line, and it went on describing that parser for months after all of
+/// them landed -- because prose is not a gate, and nothing failed when it went stale. The
+/// authoritative answers are the ones a test re-derives on every run:
+///
+/// - **Which inputs refuse**: `SweepTests.knownRefusals` names them, and fails in BOTH
+///   directions -- a new refusal is red, and a listed case that starts parsing is red too.
+/// - **What is graded, case by case**: `ConformanceTests.implementedCases` against the fixtures
+///   in `conformance/`.
+/// - **Which types exist at all, and the one that never can**: SCHEMA.md section 9, mechanised
+///   by a test that reads org's live type list and fails if anything else is unmapped.
+/// - **What a render cannot give back**: SCHEMA.md section 10 and
+///   `RendererConformanceTests.schemaLossCases`.
+/// - **How deep an input may nest**: `OrgParser.nestingLimit`, with the stack measurements that
+///   chose the number.
 ///
 /// ## Scope boundary: only what the schema maps
 ///

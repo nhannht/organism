@@ -44,6 +44,16 @@ over every org-element type its oracle can reach.
   subscript/superscript body boundary, 1 the same at a footnote-label boundary. Everything else
   parses. Each refusal throws rather than guessing.
 
+  One refusal is about DEPTH rather than any construct, and it is the only one no corpus here
+  triggers: input nesting past `OrgParser.nestingLimit` throws `OrgError.nestingTooDeep`. It
+  exists because the alternative was measured and is worse. A 250-level nested list used to kill
+  the process with SIGBUS on a 512 KB stack -- the stack a background thread gets, which is where
+  an editor parses -- and a document 618 headline levels deep died releasing its tree, in the
+  caller, after `parseOrg` had already returned successfully. A crash is the one outcome a
+  `throws` signature cannot express, so it is now a refusal, at a limit sitting between two
+  measured numbers: 9, what the deepest of these 1,427 inputs needs, and 41, where a debug build
+  dies. `DepthLimitTests` holds both sides of it.
+
   For the throw SITES rather than the cases, read them off the source -- `grep -rn
   'OrgError.unimplemented(' Sources/OrgSwift/` -- and do not trust a number written here for
   them. A prose count of sites is exactly what went stale: this bullet claimed "four class
