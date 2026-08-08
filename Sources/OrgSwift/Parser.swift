@@ -202,6 +202,44 @@ final class RadioTargetCollector: @unchecked Sendable {
     }
 }
 
+/// The parse's live recursion depth, and the only thing standing between a hostile input and a
+/// stack overflow that no `catch` can see.
+///
+/// A CLASS, threaded into sub-parsers exactly like `RadioTargetCollector` above and for the
+/// identical reason it gives: depth accumulates ACROSS the two sub-parser boundaries (a list
+/// item body, a footnote definition body), and it changes on every recursive descent inside
+/// `parseElementRun` and `parseObjects`. Neither a `let` on `OrgParser` nor a `var` would work
+/// -- `OrgParser` is a struct, so a sub-parser would get a COPY of the count and reset the
+/// budget at every list item, which is precisely the input that overflows. One object, one
+/// count, no second copy to keep in sync.
+///
+/// `@unchecked Sendable` on the same grounds as the collector: one guard is created per
+/// `parseOrg` pass and never escapes it, so the mutation is unshared.
+final class NestingGuard: @unchecked Sendable {
+    private var depth = 0
+    private let limit: Int
+
+    init(limit: Int = OrgParser.nestingLimit) {
+        self.limit = limit
+    }
+
+    /// Enters one level. Throws `OrgError.nestingTooDeep` INSTEAD of descending when the limit
+    /// is reached, so the refusal happens before the frame is pushed rather than after.
+    ///
+    /// Callers pair this with `defer { leave() }`. When this throws it has NOT incremented, so a
+    /// `defer` installed on the line below never runs against a level that was never entered.
+    func enter(file: StaticString = #fileID, line: UInt = #line) throws {
+        guard depth < limit else {
+            throw OrgError.tooDeep(depth: depth + 1, limit: limit, file: file, line: line)
+        }
+        depth += 1
+    }
+
+    func leave() {
+        depth -= 1
+    }
+}
+
 // MARK: - Parser
 
 /// The parser's own state: the source, its line tokenization, and the active TODO keyword set.
@@ -220,6 +258,52 @@ final class RadioTargetCollector: @unchecked Sendable {
 /// two layers in separate files makes "this construct holds elements, that one holds objects" a
 /// property of where the code lives rather than a comment that can drift.
 struct OrgParser {
+
+    /// How deep an input may nest before `parseOrg` refuses it with `OrgError.nestingTooDeep`.
+    ///
+    /// **Every number below was measured on this machine** (Swift 6.3.3, arm64) against a build
+    /// with this limit removed, on a `Thread` with `stackSize = 512 * 1024` -- the stack a
+    /// non-main `Thread` and a libdispatch worker get, which is where a consumer parses. Each
+    /// figure is the last INPUT nesting depth that returned; one more killed the process with
+    /// SIGBUS, catching nothing:
+    ///
+    ///     vector                                   release   debug
+    ///     nested list items                            249      42
+    ///     footnote definition over a nested list       249      41
+    ///     nested inline footnote refs (objects)        495      42
+    ///     nested greater blocks, distinct names        467      60
+    ///     nested headline sections                     667     617
+    ///
+    /// Debug frames are roughly six times a release build's, so DEBUG is the binding constraint
+    /// at 41, not the release column. `swift test` builds debug, so `DepthLimitTests` exercises
+    /// that worst case rather than the comfortable one.
+    ///
+    /// Each figure covers the parse AND the tree's release, which is not a detail: the headline
+    /// row is there because headline nesting is the one axis this parser builds ITERATIVELY, via
+    /// the stack in `parseDocument`. It never recursed, and it still died at 617 -- tearing down
+    /// a tree that deep overflows the stack on its own, in the consumer, after `parseOrg` has
+    /// already returned successfully. That is why `parseDocument` enters this same guard when it
+    /// pushes a builder: what has to be bounded is the depth of the TREE, and every axis that
+    /// deepens it counts toward one budget.
+    ///
+    /// Three vectors that look like they belong in that table and do NOT nest at all, each
+    /// dropped after the produced tree stopped deepening while the input kept growing: nested
+    /// emphasis (org runs out of markers -- `*` inside `*` does not nest, so depth caps around
+    /// 4), `a_{a_{...}}` (`org-match-substring-regexp` caps brace depth at 3, org's own limit),
+    /// and drawers (org has no nested drawer). A probe input that does not nest measures nothing.
+    ///
+    /// **What real documents need is 9**, measured the same way rather than reasoned about: with
+    /// this constant set to 9 every corpus gate is green, and at 8 three of them fail on
+    /// `real/doomemacs-docs/getting_started.org`, deepest of the 1,427 inputs across
+    /// `conformance/`, `real/` and `sweep/`.
+    ///
+    /// So the constraints are 9 below and 41 above, and 24 sits between them: 2.7x headroom over
+    /// the deepest real document, 1.7x margin under the debug floor. Neither margin is
+    /// decoration. The lower one absorbs a document deeper than anything in the corpus, and the
+    /// upper one absorbs a toolchain whose frames grow. If frames ever do grow past it,
+    /// `DepthLimitTests` is what says so, because it parses on a 512 KB debug thread -- so the
+    /// crash lands there rather than in a consumer's app.
+    static let nestingLimit = 24
 
     /// One physical line of the source, without its terminating `"\n"`. `hasNewline` records
     /// whether a `"\n"` followed it in `source` -- false only for the final line of a file that
@@ -298,13 +382,18 @@ struct OrgParser {
     /// Where this parse REPORTS the `<<<target>>>` nodes it builds. See `parseOrg`.
     let radioCollector: RadioTargetCollector
 
+    /// This parse's live recursion depth. Shared with every sub-parser, never copied.
+    let nesting: NestingGuard
+
     init(
         source: String, todoKeywords: [String]?,
-        radioTargets: [RadioTarget], radioCollector: RadioTargetCollector
+        radioTargets: [RadioTarget], radioCollector: RadioTargetCollector,
+        nesting: NestingGuard = NestingGuard()
     ) {
         self.firstLineIsSliced = false
         self.radioTargets = radioTargets
         self.radioCollector = radioCollector
+        self.nesting = nesting
         self.source = source
 
         var built: [Line] = []
@@ -349,9 +438,16 @@ struct OrgParser {
     /// collector in particular is the SAME object rather than a fresh one -- a `<<<target>>>`
     /// inside an item body or a footnote definition is a document-level target, and a sub-parser
     /// given its own collector would drop it on the floor with nothing going red.
+    ///
+    /// `nesting` is inherited on the same terms and it matters MORE here than the collector does:
+    /// a sub-parser handed a fresh guard would restart the depth budget at every list item, so an
+    /// input nesting a thousand items deep would pass a limit of 32 one level at a time and
+    /// overflow the stack anyway. It has no default for that reason -- a new sub-parser call site
+    /// has to say which parse it belongs to.
     init(
         lines: [Line], todoSet: Set<String>, oddLevels: Bool,
         radioTargets: [RadioTarget], radioCollector: RadioTargetCollector,
+        nesting: NestingGuard,
         firstLineIsSliced: Bool = false
     ) {
         self.source = ""
@@ -360,6 +456,7 @@ struct OrgParser {
         self.oddLevels = oddLevels
         self.radioTargets = radioTargets
         self.radioCollector = radioCollector
+        self.nesting = nesting
         self.firstLineIsSliced = firstLineIsSliced
     }
 }

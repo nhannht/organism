@@ -138,6 +138,14 @@ extension OrgParser {
         mayOpenWithPlanning: Bool = false,
         propertyDrawerMode initialPropertyDrawerMode: PropertyDrawerMode = .none
     ) throws -> [OrgJSON] {
+        // Every ELEMENT nesting level in this parser passes through here -- a quote or center
+        // block body, a drawer body, a headline's section, a list item body and a footnote
+        // definition body (the last two via a sub-parser that shares this guard). Counting the
+        // funnel rather than its call sites means a nesting vector added later is covered by
+        // construction instead of by remembering to wrap it.
+        try nesting.enter()
+        defer { nesting.leave() }
+
         var elements: [OrgJSON] = []
         var i = range.lowerBound
 
@@ -455,6 +463,7 @@ extension OrgParser {
             let children = bodyLines.isEmpty ? [] : try OrgParser(
                 lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,
                 radioTargets: radioTargets, radioCollector: radioCollector,
+                nesting: nesting,
                 firstLineIsSliced: !firstRest.isEmpty
             ).parseElementRun(in: 0..<bodyLines.count)
 

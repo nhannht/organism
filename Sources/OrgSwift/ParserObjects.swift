@@ -329,6 +329,13 @@ extension OrgParser {
     ///   to have. Naming the container at every call site is what makes the wrong answer
     ///   something a person has to type on purpose.
     func parseObjects(_ s: String, in container: ObjectContainer) throws -> [OrgJSON] {
+        // The OBJECT-layer half of the same funnel `parseElementRun` guards: every nested object
+        // -- an emphasis body, a link description, an inline footnote's contents, a citation's
+        // prefix -- re-enters here. The deep vector on this side is the inline footnote
+        // reference, which unlike emphasis has no marker alphabet to run out of.
+        try nesting.enter()
+        defer { nesting.leave() }
+
         let chars = Array(s.unicodeScalars)
 
         // The up-front plain-link rejection scan that used to stand here is GONE, and its removal

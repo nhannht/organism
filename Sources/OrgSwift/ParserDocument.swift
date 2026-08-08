@@ -70,8 +70,21 @@ extension OrgParser {
         // Headlines, attached by level via a stack.
         var stack: [HeadlineBuilder] = []
 
+        // Headline nesting is the ONE nesting axis in this parser that is not recursive: the
+        // builders below are attached by level through an explicit stack, so a document 618
+        // headline levels deep parsed without the guard ever seeing a descent -- and then died
+        // anyway, on a 512 KB stack, releasing the tree it had just built. A tree that deep
+        // cannot be torn down iteratively either, and teardown happens in the CONSUMER, after
+        // `parseOrg` has returned successfully. So the stack's own depth enters the same guard as
+        // the recursive axes.
+        //
+        // Sharing the guard rather than counting headlines separately is what makes the number
+        // mean something: `parseSection` runs while a builder is on this stack, so element and
+        // object nesting inside a headline accumulate on top of the headline depth, and it is
+        // their SUM that the tree's depth -- and its teardown -- actually follows.
         func closeTop() {
             let finished = stack.removeLast().build()
+            nesting.leave()
             if let parent = stack.last {
                 parent.children.append(finished)
             } else {
@@ -120,6 +133,10 @@ extension OrgParser {
                 builder.postBlank = leadingBlanks
             }
 
+            // Paired with the `leave()` in `closeTop`, which is the only place a builder comes
+            // off the stack -- including the unwind below, so the count returns to zero on every
+            // path out of a successful parse.
+            try nesting.enter()
             stack.append(builder)
         }
         while !stack.isEmpty { closeTop() }
