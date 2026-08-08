@@ -8,6 +8,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 [semantic](https://semver.org/), with the pre-1.0 caveat that the API is still being shaped: a
 breaking change moves the MINOR number while the major is 0.
 
+## [0.3.1] - 2026-08-08
+
+### Fixed
+
+- A half-typed org document no longer fails to parse. Ten of the parser's eighteen refusals were
+  not constructs it could not read: org had an ordinary answer for every one of them, and they
+  were held up by two predicates that tested a line's PREFIX where org consults a grammar.
+
+  - **Nine `#+BEGIN` shapes.** A predicate listed three literal spellings - `#+begin:`,
+    `#+begin ` and `#+begin` - and was wrong in both directions. `#+BEGIN:` and `#+BEGIN: ` are
+    ordinary keywords to org (key `BEGIN`, value `""`); `#+BEGIN` and `#+BEGIN foo` carry no
+    colon, so they were never keywords to be confused with, only paragraph text; and an UNPAIRED
+    `#+BEGIN: name` is a paragraph exactly as an unterminated `#+begin_example` already was.
+    `dynamicBlockBeginLine` already transcribes `org-element-dynamic-block-open-re`, whose
+    `[[:word:]]` name requirement is the real discriminator, so the dispatch now asks it and the
+    list is deleted.
+  - **`#` followed by a TAB.** Refused as "a comment per spec" whose value the schema could not
+    carry. Org builds no comment there at all, just a paragraph - `org-element-comment-parser`
+    wants a space or end of line after the `#`.
+
+  This is what an editor needs, and it is why it was worth doing: the parser runs after every
+  keystroke, and a refusal is not scoped to the offending line - pass 1 reads the whole document,
+  so one half-typed block left the entire file with no tree. Measured with 26 org constructs
+  typed one character at a time, 455 buffer states: **throws fell from 30 to 1**. The one that
+  remains is a deliberate plain-link over-throw, one keystroke wide, that heals on the next
+  character. The 26 that previously threw for the whole time it takes to type a dynamic block are
+  gone.
+
+- `isUnimplementedElementStart` is deleted. `#\t` was its last branch, and nothing refuses at
+  element start any more. Two doc comments it left behind were asserting behaviour that had been
+  false for some time - that an indented `: a` or an indented table START throws - and both parse.
+
+### Changed
+
+- `SweepTests.knownRefusals` drops from 18 names to 9, in two groups rather than three. Both
+  remaining groups are the same deliberate policy: a non-ASCII scalar at a subscript/superscript
+  body boundary (8) or a footnote-label boundary (1), where org's answer depends on character
+  classes this project has not measured.
+- The sweep corpus gains 5 cases (1,312 to 1,317), pinning `#` against space, TAB, TAB-TAB, bare,
+  and after text. The `# ` control is included deliberately: it builds a `comment` where the
+  others build paragraphs, so the group can fail rather than merely agree.
+- `PublicAPITests` demonstrated a catchable refusal using `#+BEGIN: myblock`, which now parses, so
+  it caught its own obsolescence. It uses a non-ASCII footnote label instead - one of the nine
+  policy refusals, and `i4-label-uni` in the sweep, so the day it parses two tests go red in the
+  same run. Its assertion no longer pins a filename; the contract is that the payload names its
+  throw site, not which file that is.
+
+### Notes for consumers
+
+- No API change and no new error case, and nothing that parsed before parses differently. Inputs
+  that used to throw now return org's tree. Hence a patch release: this repo moves the MINOR for
+  a breaking change while the major is 0.
+- Two README figures were stale before this release and are corrected rather than carried
+  forward: `swift test` read 57 tests / 14 suites against an actual 60 / 15, and the depth
+  bullet's "1,427 inputs" matched neither the corpus (1,445 then, 1,450 now) nor anything else
+  derivable. The v0.3.0 entry below repeats that 1,427 and is left as written, since a changelog
+  records what was believed at the time.
+
 ## [0.3.0] - 2026-08-08
 
 ### Added
@@ -92,6 +150,7 @@ installable by version.
   so it is portable everywhere Swift runs; the minimums come from the test target's
   swift-testing floor.
 
+[0.3.1]: https://github.com/nhannht/organism/releases/tag/v0.3.1
 [0.3.0]: https://github.com/nhannht/organism/releases/tag/v0.3.0
 [0.2.0]: https://github.com/nhannht/organism/releases/tag/v0.2.0
 [0.1.1]: https://github.com/nhannht/organism/releases/tag/v0.1.1
