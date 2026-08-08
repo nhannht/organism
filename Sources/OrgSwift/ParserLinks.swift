@@ -351,7 +351,8 @@ extension OrgParser {
         if chars[j + 1] == "]" {
             return LinkMatch(
                 end: j + 2, linkType: .regular,
-                rawTarget: collapsingNewlineIndentation(target), description: nil)
+                rawTarget: expandingLinkAbbrev(collapsingNewlineIndentation(target)),
+                description: nil)
         }
         guard chars[j + 1] == "[" else { return nil }
 
@@ -368,7 +369,94 @@ extension OrgParser {
 
         return LinkMatch(
             end: k + 2, linkType: .regular,
-            rawTarget: collapsingNewlineIndentation(target), description: description)
+            rawTarget: expandingLinkAbbrev(collapsingNewlineIndentation(target)),
+            description: description)
+    }
+
+    /// `org-link-expand-abbrev`, applied where org applies it: to a BRACKET link's target,
+    /// after newline collapsing, before any type derivation. Angle and plain links never
+    /// expand (`org-element-link-parser` only calls it on the bracket branch).
+    ///
+    /// The shape regexp is `^\([^:]*\)\(::?\(.*\)\)?$`: the KEY is everything before the FIRST
+    /// colon -- or the whole target, so `[[example]]` with a declared `example` expands too --
+    /// and the TAG is the rest after one or two colons (`[[ex:a]]` and `[[ex::a]]` carry the
+    /// same tag `a`, measured, lab-dcolon). A matched template rewrites the target BEFORE the
+    /// path type is derived, which is why an abbreviation can shadow a registered link type
+    /// (lab-type). Template semantics, all measured against the oracle:
+    ///
+    ///     %(fn)  present        NO expansion -- org's code-evaluation guard declines the
+    ///                           whole abbreviation and the link stays raw (lab-fn)
+    ///     first `%s`            the raw tag, or "" without one          (inline.org, lab-s-mid)
+    ///     first `%h`            the tag url-hexified: UTF-8 bytes, RFC 3986 unreserved
+    ///                           `A-Za-z0-9-_.~` kept, everything else `%XX` (lab-h-uni)
+    ///     none of those         template + tag concatenated             (lab-basic)
+    ///
+    /// `%s` is checked before `%h`, and only the FIRST occurrence is replaced, both org's
+    /// `string-match` + `replace-match` behaviour.
+    private func expandingLinkAbbrev(_ target: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        guard !linkAbbrevs.isEmpty else { return target }
+        let colon = target.firstIndex(of: ":")
+        let key = String(scalars: target[0..<(colon ?? target.count)])
+        guard let template = linkAbbrevs[key] else { return target }
+
+        var tag: [Unicode.Scalar]?
+        if let colon {
+            var t = colon + 1
+            if t < target.count, target[t] == ":" { t += 1 }
+            tag = Array(target[t...])
+        }
+
+        let templateScalars = Array(template.unicodeScalars)
+        // `%(\([^)]+\))`: a function template. org refuses to evaluate code from an in-buffer
+        // `#+LINK` keyword, and the measured net effect is no expansion at all.
+        var p = 0
+        while p + 1 < templateScalars.count {
+            if templateScalars[p] == "%", templateScalars[p + 1] == "(" {
+                var q = p + 2
+                while q < templateScalars.count, templateScalars[q] != ")" { q += 1 }
+                if q < templateScalars.count, q > p + 2 { return target }
+            }
+            p += 1
+        }
+
+        func firstOccurrence(_ marker: Unicode.Scalar) -> Int? {
+            var i = 0
+            while i + 1 < templateScalars.count {
+                if templateScalars[i] == "%", templateScalars[i + 1] == marker { return i }
+                i += 1
+            }
+            return nil
+        }
+        if let at = firstOccurrence("s") {
+            return Array(templateScalars[0..<at]) + (tag ?? []) + templateScalars[(at + 2)...]
+        }
+        if let at = firstOccurrence("h") {
+            return Array(templateScalars[0..<at]) + urlHexified(tag ?? [])
+                + templateScalars[(at + 2)...]
+        }
+        return templateScalars + (tag ?? [])
+    }
+
+    /// Emacs `url-hexify-string`: UTF-8 bytes, RFC 3986 unreserved characters kept
+    /// (alphanumerics and `-_.~` -- probed, the RFC 2396 marks `!*'()` are all encoded),
+    /// everything else `%XX` with uppercase hex.
+    private func urlHexified(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        var utf8 = String(scalars: scalars).utf8.makeIterator()
+        let hex = Array("0123456789ABCDEF".unicodeScalars)
+        while let byte = utf8.next() {
+            let keep = (byte >= 0x41 && byte <= 0x5A) || (byte >= 0x61 && byte <= 0x7A)
+                || (byte >= 0x30 && byte <= 0x39)
+                || byte == 0x2D || byte == 0x5F || byte == 0x2E || byte == 0x7E
+            if keep {
+                out.append(Unicode.Scalar(byte))
+            } else {
+                out.append("%")
+                out.append(hex[Int(byte >> 4)])
+                out.append(hex[Int(byte & 0xF)])
+            }
+        }
+        return out
     }
 
     /// A bracket-link TARGET with each `[ \t]*\n[ \t]*` run collapsed to ONE space --

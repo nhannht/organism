@@ -1,0 +1,2 @@
+#+LINK: ex https://e.com/
+[[ex::a]]

@@ -1,0 +1,2 @@
+#+LINK: https //hijack/
+[[https:x]]

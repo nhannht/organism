@@ -490,6 +490,41 @@ extension OrgParser {
         return sawDeclaration ? declared : nil
     }
 
+    /// Every `#+LINK: KEY TEMPLATE` abbreviation the file declares, KEY -> TEMPLATE.
+    ///
+    /// A document-wide setting scanned in pass 1 exactly like `scanTodoKeywords` -- an
+    /// abbreviation applies to bracket links ABOVE its declaration too (measured, sweep
+    /// lab-after) -- and masked by `literalBodyLines` the same way (a `#+LINK:` inside an
+    /// example block declares nothing, lab-inblock).
+    ///
+    /// The value splits as org splits it (`\S-+` key, whitespace, `.+` template), so a
+    /// `#+LINK:` with no template declares nothing. Three measured rules that are easy to
+    /// guess wrong: the key match at USE time is case-SENSITIVE (`#+LINK: Ex` does not expand
+    /// `[[eX:a]]`, lab-case), the LAST declaration of a repeated key wins (lab-dup), and an
+    /// abbreviation shadows even a registered link type (`#+LINK: https ...` hijacks
+    /// `[[https:x]]`, lab-type).
+    static func scanLinkAbbrevs(in lines: [Line]) -> [String: String] {
+        var abbrevs: [String: String] = [:]
+        let literal = literalBodyLines(in: lines)
+        for (i, line) in lines.enumerated() where !literal[i] {
+            guard let (key, value) = keywordParts(of: line), key == "LINK" else { continue }
+            let scalars = Array(value.unicodeScalars)
+            var split = 0
+            while split < scalars.count, scalars[split] != " ", scalars[split] != "\t" {
+                split += 1
+            }
+            var templateStart = split
+            while templateStart < scalars.count,
+                  scalars[templateStart] == " " || scalars[templateStart] == "\t" {
+                templateStart += 1
+            }
+            guard split > 0, templateStart < scalars.count else { continue }
+            abbrevs[String(scalars: scalars[0..<split])] =
+                String(scalars: scalars[templateStart...])
+        }
+        return abbrevs
+    }
+
     /// Whether the file activates `org-odd-levels-only` via `#+STARTUP: odd`, which makes
     /// `org-element` report a REDUCED `:level` while `:true-level` keeps the raw star count
     /// (SCHEMA.md section 4, headline).

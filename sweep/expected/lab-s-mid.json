@@ -1,0 +1,1 @@
+{"type":"document","children":[{"type":"section","children":[{"type":"keyword","key":"LINK","value":"q https://e.com?x=%s&y=1","postBlank":0},{"type":"paragraph","children":[{"type":"link","linkType":"regular","pathType":"https","path":"https://e.com?x=tag&y=1","description":null,"postBlank":0},{"type":"text","value":"\n"}],"postBlank":0}],"postBlank":0}],"postBlank":0}

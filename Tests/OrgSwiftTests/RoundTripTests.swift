@@ -92,6 +92,15 @@ struct RoundTripTests {
         "real/org-mode-samples/keywords.org",
         "real/org-mode-samples/pathological.org",
         "real/org-mode-samples/text.org",
+        // The five go-org testdata files that round-trip byte-exact as vendored. The other
+        // ten hit section 10 losses (block-delimiter case, tag-column padding, ...) and stay
+        // wrapped until each gets its loss annotation; their PARSE accuracy is already
+        // asserted unwrapped in OracleDiffTests.
+        "real/go-org-testdata/east_asian_line_breaks.org",
+        "real/go-org-testdata/footnotes_in_headline.org",
+        "real/go-org-testdata/hl-lines.org",
+        "real/go-org-testdata/latex.org",
+        "real/go-org-testdata/paragraphs.org",
     ]
 
     /// The section 10 Reason-A losses that real vendored files actually hit, one normalizer

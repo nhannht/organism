@@ -420,6 +420,8 @@ struct OrgParser {
     let todoSet: Set<String>
     /// `org-odd-levels-only`, from a `#+STARTUP: odd` line. See `OrgParser.scanOddLevels`.
     let oddLevels: Bool
+    /// `#+LINK:` abbreviations, KEY -> TEMPLATE. See `OrgParser.scanLinkAbbrevs`.
+    let linkAbbrevs: [String: String]
 
     /// Whether line 0 of `lines` was SLICED out of the middle of a source line, as an item's
     /// first body line and a footnote definition's are.
@@ -485,6 +487,7 @@ struct OrgParser {
             ?? OrgParser.scanTodoKeywords(in: built)
             ?? ["TODO", "DONE"]
         self.oddLevels = OrgParser.scanOddLevels(in: built)
+        self.linkAbbrevs = OrgParser.scanLinkAbbrevs(in: built)
     }
 
     /// A sub-parser over an already-tokenized, NARROWED line list.
@@ -512,6 +515,7 @@ struct OrgParser {
     /// has to say which parse it belongs to.
     init(
         lines: [Line], todoSet: Set<String>, oddLevels: Bool,
+        linkAbbrevs: [String: String],
         radioTargets: [RadioTarget], radioCollector: RadioTargetCollector,
         nesting: NestingGuard,
         firstLineIsSliced: Bool = false
@@ -520,6 +524,7 @@ struct OrgParser {
         self.lines = lines
         self.todoSet = todoSet
         self.oddLevels = oddLevels
+        self.linkAbbrevs = linkAbbrevs
         self.radioTargets = radioTargets
         self.radioCollector = radioCollector
         self.nesting = nesting

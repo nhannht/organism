@@ -78,6 +78,26 @@ struct OracleDiffTests {
         // escape rule, so the `\` just needed an object-level answer, which entities and
         // command fragments provided. With this entry the set is 13 of 13.
         "real/doomemacs-docs/faq.org",
+        // go-org's own MIT test corpus, vendored 2026-08-08 (Phase 4.3). Fourteen of the
+        // fifteen matched org's tree on the FIRST table-backed run; inline.org needed one real
+        // feature, `#+LINK:` abbreviation expansion, whose measured semantics live on
+        // `expandingLinkAbbrev` and in the sweep's `lab-*` cases. A competitor's own corpus
+        // parsing oracle-perfectly is itself a benchmark receipt.
+        "real/go-org-testdata/blocks.org",
+        "real/go-org-testdata/captions.org",
+        "real/go-org-testdata/east_asian_line_breaks.org",
+        "real/go-org-testdata/footnotes_in_headline.org",
+        "real/go-org-testdata/footnotes.org",
+        "real/go-org-testdata/headlines.org",
+        "real/go-org-testdata/hl-lines.org",
+        "real/go-org-testdata/inline.org",
+        "real/go-org-testdata/keywords.org",
+        "real/go-org-testdata/latex.org",
+        "real/go-org-testdata/lists.org",
+        "real/go-org-testdata/misc.org",
+        "real/go-org-testdata/options.org",
+        "real/go-org-testdata/paragraphs.org",
+        "real/go-org-testdata/tables.org",
     ]
 
     @Test("parseOrg(text) matches Emacs's own org-element parse", arguments: realFiles)

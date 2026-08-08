@@ -36,6 +36,24 @@ round-trip fidelity - a re-encoded or reformatted copy would defeat the test it 
   BOM) was found in this source; a single trailing-whitespace line each in `blocks.org` and
   `headings.org` is likewise preserved as-is.
 
+### `go-org-testdata/`
+
+- Source: https://github.com/niklasfasching/go-org
+- Commit: `2f088a12697ba4dad46c2c2084db3ae1707830fb`
+- License: MIT, copyright (c) 2018 Niklas Fasching (see `LICENSE` in this directory)
+- Files (copied from the repo's `org/testdata/` directory, whole files, unmodified):
+  `blocks.org`, `captions.org`, `east_asian_line_breaks.org`, `footnotes.org`,
+  `footnotes_in_headline.org`, `headlines.org`, `hl-lines.org`, `inline.org`,
+  `keywords.org`, `latex.org`, `lists.org`, `misc.org`, `options.org`, `paragraphs.org`,
+  `tables.org`
+- No embedded NUL bytes, no CRLF, no BOM; every file ends with a trailing LF.
+- These are the test corpus of go-org, one of the parsers this project benchmarks against
+  (`bench/competitors/go-org/`). Vendoring a competitor's own test corpus and grading this
+  parser node-for-node against `org-element` on it is deliberate: it exercises exactly the
+  grammar corners another implementer considered worth testing, with no selection bias from
+  this project. `inline.org` is the file that forced `#+LINK:` abbreviation expansion to be
+  implemented (see `expandingLinkAbbrev` and the sweep's `lab-*` cases).
+
 ### `doomemacs-docs/`
 
 - Source: https://github.com/doomemacs/core (repository was renamed from

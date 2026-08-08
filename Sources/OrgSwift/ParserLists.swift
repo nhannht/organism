@@ -396,6 +396,7 @@ extension OrgParser {
 
         let children = bodyLines.isEmpty ? [] : try OrgParser(
             lines: bodyLines, todoSet: todoSet, oddLevels: oddLevels,
+                linkAbbrevs: linkAbbrevs,
             radioTargets: radioTargets, radioCollector: radioCollector,
             nesting: nesting,
             firstLineIsSliced: !firstRest.isEmpty

@@ -1,0 +1,1 @@
+{"type":"document","children":[{"type":"section","children":[{"type":"example-block","switches":null,"value":"#+LINK: inb https://e.com/\n","postBlank":0},{"type":"paragraph","children":[{"type":"link","linkType":"regular","pathType":"fuzzy","path":"inb:a","description":null,"postBlank":0},{"type":"text","value":"\n"}],"postBlank":0}],"postBlank":0}],"postBlank":0}

@@ -1,0 +1,4 @@
+#+begin_example
+#+LINK: inb https://e.com/
+#+end_example
+[[inb:a]]

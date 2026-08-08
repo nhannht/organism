@@ -63,7 +63,8 @@ import OrgSwift
 ///
 /// `knownReformattingDivergences` below is a hand-verified BASELINE SNAPSHOT, not a correctness
 /// gate: `org-element-interpret-data` cannot itself distinguish "reformatted" from "genuinely
-/// lost," a human inspecting the diff did that, once, for these 31 files. Treat this suite as a
+/// lost," a human inspecting the diff did that, once per file - 31 files at the first snapshot,
+/// 13 more when the go-org corpus was vendored (2026-08-08). Treat this suite as a
 /// change-detector against that baseline - a file leaving the set (starts matching) or a new file
 /// entering it (starts diverging) is a signal to re-inspect, not to silently update the set.
 ///
@@ -148,6 +149,25 @@ struct InterpretDataRoundTripTests {
         "conformance/affiliated-caption-forms", "conformance/dynamic-block-simple",
         "real/doomemacs-docs/contributing.org", "real/doomemacs-docs/getting_started.org",
         "real/doomemacs-docs/index.org", "real/org-mode-samples/keywords.org",
+        // The go-org testdata files (vendored 2026-08-08), first divergence inspected per file
+        // on Emacs 30.2, every one landing in a convention already named in this set. Eight are
+        // the keyword case-fold above at their first divergence (`#+RESULTS:`, `#+CAPTION:`,
+        // `#+OPTIONS:`, `#+SETUPFILE:`, `#+TITLE:`, `#+begin_src`):
+        "real/go-org-testdata/blocks.org", "real/go-org-testdata/captions.org",
+        "real/go-org-testdata/east_asian_line_breaks.org", "real/go-org-testdata/footnotes.org",
+        "real/go-org-testdata/headlines.org", "real/go-org-testdata/keywords.org",
+        "real/go-org-testdata/misc.org", "real/go-org-testdata/options.org",
+        "real/go-org-testdata/tables.org",
+        // ...two are the literal-body reindentation convention at the top of this set
+        // (`(+ 1 2)` gains two leading spaces; a list-nested example body gains four):
+        "real/go-org-testdata/hl-lines.org", "real/go-org-testdata/inline.org",
+        // ...one is org's serializer re-emitting an EMPTY bullet with a trailing space
+        // (`-\n` -> `- \n`, 1658 bytes in / 1636 out, first difference at offset 29) -- the
+        // same "serializer rebuilds from properties" family as lists.org's counter renumbering:
+        "real/go-org-testdata/lists.org",
+        // ...and one is the file's final blank line dropped whole (262 in / 261 out, the only
+        // difference): interpret-data does not reproduce a trailing blank line at buffer end.
+        "real/go-org-testdata/paragraphs.org",
         // The SAME case-folding convention on an affiliated ATTR key, and nothing else. Full
         // before/after text inspected on Emacs 30.2 (35 bytes in, 35 out, first difference at
         // offset 2): `#+ATTR_MY-BACKEND: :width 100` re-emits as `#+attr_my-backend: :width 100`

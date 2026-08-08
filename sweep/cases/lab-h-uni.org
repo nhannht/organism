@@ -1,0 +1,2 @@
+#+LINK: hu https://e.com?v=%h
+[[hu:café ~x]]

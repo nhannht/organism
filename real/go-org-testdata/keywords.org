@@ -1,0 +1,34 @@
+#+OPTIONS: toc:nil
+* captions, custom attributes and more
+#+CAPTION: and _multiple_
+#+CAPTION: lines of *captions*!
+#+ATTR_HTML: :class a b
+#+ATTR_HTML: :id it :class c d
+#+BEGIN_SRC sh
+echo "a bash source block with custom html attributes"
+#+END_SRC
+
+and an image with custom html attributes and a caption
+#+CAPTION: kittens!
+#+ATTR_HTML: :style height: 100%; :id overwritten
+#+ATTR_HTML: :style border: 10px solid black; :id kittens
+[[https://placekitten.com/200/200#.png]]
+
+#+NAME: foo
+named paragraph
+
+#+NAME: bar
+#+begin_src
+named block
+#+end_src
+
+# comments must have whitespace after the hashtag
+#not a comment because there's no space after the hashtag
+
+* table of contents
+A table of contents can be rendered anywhere in the document by using
+#+begin_src org
+,#+TOC: headlines $n
+#+end_src
+Where =$n= is the max headline lvl that will be included. You can use =headlines 0= to include all headlines.
+#+TOC: headlines 0

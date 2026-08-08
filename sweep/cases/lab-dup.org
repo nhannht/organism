@@ -1,0 +1,3 @@
+#+LINK: ex https://one.com/
+#+LINK: ex https://two.com/
+[[ex:a]]

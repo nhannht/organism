@@ -21,14 +21,16 @@ This suite is real and usable today. The Swift parser is real and, as of 2026-08
 over every org-element type its oracle can reach.
 
 - `parseOrg` matches `org-element`'s own tree, node for node, on **121 of 121** conformance
-  cases and **13 of 13** vendored real-world files. There are no parser-shaped `withKnownIssue`
-  wrappers left anywhere in the suite.
+  cases and **28 of 28** vendored real-world files - including the entire test corpus of
+  go-org, one of the parsers this project benchmarks against. There are no parser-shaped
+  `withKnownIssue` wrappers left anywhere in the suite.
 - `renderOrg` re-emits `input.org` byte-for-byte from the checked-in tree on **116 of 121**
   cases. The other 5 are PERMANENT and measured, not pending: each pins bytes that no tree built
   on `org-element` can carry, so its render is correct AND can never equal its input
   (`RendererConformanceTests.schemaLossCases`, SCHEMA.md section 10). Full-file round-trip
-  `renderOrg(parseOrg(text))` stands at **13 of 13**: 4 files byte-exact, 9 byte-exact modulo
-  the section 10 losses they demonstrably hit.
+  `renderOrg(parseOrg(text))` stands at 9 files byte-exact and 9 byte-exact modulo the
+  section 10 losses they demonstrably hit; the 10 loss-hitting go-org files vendored on
+  2026-08-08 await their per-file annotations and stay wrapped until then.
 - **Types:** 55 of org's 56 element and object types are mapped and every one of the 55 carries
   a conformance fixture. The single exception is `inlinetask`, which is UNREACHABLE under the
   oracle's own `emacs -Q` -- `org-inlinetask` is not loaded there, so `*************** Task`
@@ -39,7 +41,7 @@ over every org-element type its oracle can reach.
   type list and fails if anything but `inlinetask` is unmapped, another fails if a mapped type
   has no fixture.
 - **Zero construct refusals remain**, and that is a counted claim rather than an assertion:
-  across the 1,355-case differential sweep, every case parses and `SweepTests.knownRefusals`
+  across the 1,505-case differential sweep, every case parses and `SweepTests.knownRefusals`
   is the empty set, re-counted on every run.
 
   It was 18 in three groups until 2026-08-08, then 9, then none, and each retirement was a
@@ -78,10 +80,11 @@ over every org-element type its oracle can reach.
   in both directions: a first refusal is red, and a listed case that starts parsing is also
   red. That second direction is what retired both groups: the names had to come out, and they
   could only come out once the cases matched org's trees.
-- `swift test` reports green, and the reason still matters. 53 known issues remain and NONE of
-  them is parser-shaped: 5 are the permanent renderer losses above, and 48 belong to the
+- `swift test` reports green, and the reason still matters. 76 known issues remain and NONE of
+  them is parser-shaped: 5 are the permanent renderer losses above, 61 belong to the
   `org-element-interpret-data` suite, which measures org-mode's own round-trip behaviour on its
-  own parser. Writing a perfect Swift parser moves neither number.
+  own parser, and 10 are freshly vendored go-org files whose round-trip loss annotations are
+  pending. Writing a perfect Swift parser moves none of those numbers.
 - The answer key this suite grades against has its own open risk: see "The oracle's answer key:
   the circularity remains, but it has now been audited" below before you adopt
   `conformance/*/expected.json` as ground truth.
@@ -94,45 +97,47 @@ the whole verification story - run them yourself rather than taking this table's
 | What | Result |
 |---|---|
 | `harness/verify-corpus.sh` | 121 of 121 cases pass, 0 fail |
-| `harness/validate-schema.sh` | 1,443 of 1,443 stored answers valid against the published schema |
-| `swift test` | 66 tests, 17 suites, 0 failures, 53 known issues |
+| `harness/validate-schema.sh` | 1,626 of 1,626 stored answers valid against the published schema |
+| `swift test` | 72 tests, 19 suites, 0 failures, 76 known issues |
 | Layer 1 conformance cases | 120 pairs of `input.org` + `expected.json` |
-| Layer 2 real-world files | 13 vendored MIT files, from 2 sources |
-| `sweep/` differential corpus | 1,355 inputs, 0 wrong trees - see `sweep/README.md` |
+| Layer 2 real-world files | 28 vendored MIT files, from 3 sources |
+| `sweep/` differential corpus | 1,505 inputs, 0 wrong trees - see `sweep/README.md` |
 | `parseOrg` matches the oracle tree, conformance | 121 of 121 |
-| `parseOrg` matches the oracle tree, real-world | 13 of 13 |
+| `parseOrg` matches the oracle tree, real-world | 28 of 28 |
 | `renderOrg` re-emits `input.org` from the tree | 116 of 121, the other 5 permanent by measurement |
-| `renderOrg(parseOrg(text))` round-trip | 13 of 13 (4 byte-exact, 9 modulo annotated losses) |
+| `renderOrg(parseOrg(text))` round-trip | 18 of 28 (9 byte-exact, 9 modulo annotated losses, 10 pending annotation) |
 | `org-element` types mapped by the oracle | 55 of 56, the 56th unreachable under `-Q` |
 | Mapped types that also have a fixture | 55 of 55 |
-| Byte-exact round-trip through `org-element` itself | 85 of 133 files |
+| Byte-exact round-trip through `org-element` itself | 87 of 148 files |
 | Documented round-trip losses | 19 - see SCHEMA.md section 10 |
 | Pinned Emacs tables re-measured by `swift test` | 5 of 5 - see ORG-17 |
 
 Three of those numbers are easy to misread, so they are stated plainly here.
 
-**53 known issues are not 53 passes, and NONE of them is parser-shaped any more.** A case the
+**76 known issues are not 76 passes, and NONE of them is parser-shaped.** A case the
 parser cannot handle is wrapped in `withKnownIssue`, so a green run means those failures are
 expected rather than absent. That count used to be the honest measure of how much parser was
 missing; it is not any more, and the split is what says so. **5 are renderer-shaped and
 permanent by measurement**: each pins bytes `org-element` itself does not store, so the render
-is correct AND can never equal its input (`RendererConformanceTests.schemaLossCases`). The other
-**48 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
-round-trip losses on its own parser -- writing a perfect Swift parser does not move that 48 at
-all. **Zero are parser-shaped**, in any of the three suites that used to carry them.
+is correct AND can never equal its input (`RendererConformanceTests.schemaLossCases`).
+**61 belong to the `org-element-interpret-data` suite**, which measures org-mode's own
+round-trip losses on its own parser -- writing a perfect Swift parser does not move that 61 at
+all. **10 are round-trip cases on the go-org files vendored 2026-08-08** that hit section 10
+losses and await their per-file loss annotations -- their PARSE accuracy is already asserted
+unwrapped. **Zero are parser-shaped**, in any of the suites that used to carry them.
 
 The number still goes UP whenever a fixture lands ahead of the code, and that is correct. It is
 how `todo-hidden-by-unterminated-example` behaved for months before unpaired block openers
 parsed, and how the next such fixture will behave.
 
 **`sweep/` is the only gate here that can fail on a WRONG TREE, and it is the one that keeps
-earning its place.** 1,355 generated inputs, each with org's own answer stored beside it,
+earning its place.** 1,505 generated inputs, each with org's own answer stored beside it,
 reporting four states where the rest of the repository reports two: MATCH, MISMATCH (a wrong
 tree, right now), an EXPECTED throw, and an unexpected one. A MISMATCH fails the build and a
 throw does not, because over-throwing costs a construct while a wrong tree costs trust in every
 tree - but WHICH cases throw is pinned by name in `SweepTests.knownRefusals`, so a new refusal is
-red too. That second half was missing until 2026-08-08 and is why `9 of 1,355` above is a gated
-number rather than a sentence. Nine defects have been found this way, five of them live
+red too. That second half was missing until 2026-08-08 and is why the empty refusal set is a
+gated result rather than a sentence. Nine defects have been found this way, five of them live
 in this repository at the time and none visible to `swift test`, `verify-corpus.sh` or the
 fixtures. The most recent was found by a GENERATED group of cases on its first run, four wrong
 trees in code that had landed an hour earlier and passed every other gate. Its count is NOT a
@@ -278,10 +283,12 @@ That is deliberately the shape of the published cross-language contract rather t
 AST, so the tree you get in Swift is the same tree a Rust or Python adapter gets. A typed layer
 over it is planned.
 
-**`parseOrg` throws rather than guessing.** It refuses 9 of the 1,355 differential-sweep inputs
-(see "Current state" for the two groups), and `SweepTests.knownRefusals` names every one. A
-refusal is always `OrgError.notImplemented` carrying the construct and the throw site, so handle
-it explicitly if you feed the parser files you do not control:
+**`parseOrg` throws rather than guessing.** Today it refuses NO construct in the 1,505-input
+differential sweep (`SweepTests.knownRefusals` is empty), but the refusal channel itself is
+load-bearing: a CR byte in the source and nesting past the depth limit both throw, and any
+future guard would surface here first. A refusal is always `OrgError.notImplemented` carrying
+the construct and the throw site, so handle it explicitly if you feed the parser files you do
+not control:
 
 ```swift
 do { tree = try parseOrg(source) }
@@ -350,24 +357,25 @@ Every number below was checked directly in this repository, on this commit, not 
 
 - 120 Layer 1 conformance cases in `conformance/`, each a matched `input.org` + `expected.json`
   pair.
-- 13 vendored real-world `.org` files in `real/`, across 2 sources
-  (`org-mode-samples/`, `doomemacs-docs/`), each with its own `LICENSE` file copied alongside it.
-- `swift test` on this commit: 66 tests, 17 suites, 0 real failures, 53 known issues: ZERO
-  parser-shaped, 5 renderer pins that are permanent by measurement, and 48 org-mode
-  `interpret-data` losses.
-- 1,355 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,
+- 28 vendored real-world `.org` files in `real/`, across 3 sources
+  (`org-mode-samples/`, `doomemacs-docs/`, `go-org-testdata/`), each with its own `LICENSE`
+  file copied alongside it.
+- `swift test` on this commit: 72 tests, 19 suites, 0 real failures, 76 known issues: ZERO
+  parser-shaped, 5 renderer pins that are permanent by measurement, 61 org-mode
+  `interpret-data` losses, and 10 pending round-trip loss annotations.
+- 1,505 `sweep/` inputs on this commit: 0 wrong trees. `SweepTests.knownWrongTrees` is EMPTY,
   and that is a measured result rather than a starting state -- it held 30 names, all ORG-28,
   until 2026-08-07. A new entry means a wrong tree was introduced. Read `sweep/README.md` before
   quoting that zero anywhere.
 - `parseOrg` on this commit: 121 of 121 conformance cases produce a tree matching the oracle's,
-  and 13 of 13 real-world files. `renderOrg` on this commit: 116 of 121 conformance cases
-  re-emitted byte-for-byte from the checked-in tree, and full round-trip on 13 of 13 real files
-  (4 byte-exact, 9 modulo their annotated section 10 losses). Measured by reading the per-suite
-  known-issue counts off the run, not inferred from the total.
+  and 28 of 28 real-world files. `renderOrg` on this commit: 116 of 121 conformance cases
+  re-emitted byte-for-byte from the checked-in tree, and full round-trip on 18 of 28 real files
+  (9 byte-exact, 9 modulo their annotated section 10 losses, 10 pending annotation). Measured
+  by reading the per-suite known-issue counts off the run, not inferred from the total.
 - `harness/verify-corpus.sh` on this commit: 121/121 conformance cases pass (a runnable
   reference adapter that uses the Emacs oracle itself as the stand-in parser).
-- Every stored answer validates against `schema/org-node.schema.json`: 1,443/1,443 valid, 0
-  invalid -- 120 conformance plus all 1,355 sweep answers, which went unchecked until 2026-08-07
+- Every stored answer validates against `schema/org-node.schema.json`: 1,626/1,626 valid, 0
+  invalid -- 121 conformance plus all 1,505 sweep answers, which went unchecked until 2026-08-07
   and were the half holding degenerate trees (see `schema/README.md` for how to run this
   yourself). The
   rewritten `affiliated` def was also shown able to fail: the old object container, a
@@ -653,7 +661,7 @@ swift build      # compiles OrgSwift + the test target
 swift test        # runs all three layers
 ```
 
-This reports green with 53 known issues alongside the real passes - see "Current state" above
+This reports green with 76 known issues alongside the real passes - see "Current state" above
 for the split.
 
 ## Regenerating the oracle answers (Layer 3)
