@@ -55,6 +55,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `PinnedTableDriftTests` compares Swift's own Unicode case tables against Emacs's, and the
+      # shipped difference sets are therefore a function of BOTH toolchains -- which the test's
+      # doc comment does not say, because until this workflow existed the suite had only ever run
+      # on one machine. The runner's default /usr/bin/swift is 6.1.2 against 6.3.3 locally, and
+      # the older Unicode data is missing case mappings for 28 recent scalars (U+A7CE, U+A7D2,
+      # the U+16EA0 Medefaidrin block), so both difference-set tests failed with all 28 "in the
+      # shipped table but not the regenerated data". Emacs was identical, 30.2 / org 9.7.11.
+      #
+      # So this selects the newest Xcode rather than editing the tables. The repository already
+      # pins its reference Emacs; the Swift toolchain is the same kind of pinned input, and the
+      # tables' own failure message says not to edit the expectation to make a run green.
+      - name: Use the newest Xcode, so the Unicode data matches the pinned reference
+        run: |
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "available: $(ls -d /Applications/Xcode*.app | tr '\n' ' ')"
+          echo "selecting: $latest"
+          sudo xcode-select -s "$latest"
+
       - name: Install the oracle's dependencies
         run: |
           brew install emacs jq
