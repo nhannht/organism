@@ -11,8 +11,16 @@ Both live here on purpose. The suite grades any parser in any language against `
 org-mode's own reference parser; `OrgSwift` is one implementation that passes it. If you came for
 the Swift package, jump to [Using the Swift library](#using-the-swift-library).
 
+There is also a published benchmark, speed and accuracy together on identical bytes: organism
+against orgize (Rust), go-org (Go), uniorg (JavaScript) and org-element itself. organism is the
+fastest full-fidelity org parser - the only one measured, other than org-element, that
+reproduces org-element's tree node for node (121/121 conformance, 28/28 real files,
+1,505/1,505 sweep; the nearest competitor stands at 81/121), at 9 times org-element's speed
+at the real-corpus median. Tables, protocol, fairness rules and receipts:
+[BENCHMARKS.md](BENCHMARKS.md).
+
 ```swift
-.package(url: "https://github.com/nhannht/organism.git", from: "0.3.1")
+.package(url: "https://github.com/nhannht/organism.git", from: "0.4.0")
 ```
 
 ## Current state (read this first)
@@ -111,6 +119,8 @@ the whole verification story - run them yourself rather than taking this table's
 | Byte-exact round-trip through `org-element` itself | 87 of 148 files |
 | Documented round-trip losses | 19 - see SCHEMA.md section 10 |
 | Pinned Emacs tables re-measured by `swift test` | 5 of 5 - see ORG-17 |
+| `bench/accuracy/grade.py` - accuracy leaderboard | organism 121 + 28 + 1,505 strict, all three corpora; uniorg 81/121, orgize 67/121, go-org 59/121 |
+| `bench/run-all.sh` - speed on identical bytes | fastest full-fidelity parser - see BENCHMARKS.md |
 
 Three of those numbers are easy to misread, so they are stated plainly here.
 
@@ -186,7 +196,7 @@ Add the package:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/nhannht/organism.git", from: "0.3.1")
+    .package(url: "https://github.com/nhannht/organism.git", from: "0.4.0")
 ],
 targets: [
     .target(name: "YourTarget", dependencies: [

@@ -8,7 +8,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 [semantic](https://semver.org/), with the pre-1.0 caveat that the API is still being shaped: a
 breaking change moves the MINOR number while the major is 0.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-09
+
+### Added
+
+- **Zero construct refusals.** The last nine refusals - a non-ASCII scalar at a
+  subscript/superscript body or footnote-label boundary - existed because org's answer there
+  depends on Emacs's `[:alnum:]` and `[:word:]` character classes, and the parser refused rather
+  than guess. Those classes are now enumerated over the full Unicode scalar space in a live
+  org-mode buffer (`UnicodeClasses.generated.swift`, drift-gated like every pinned Emacs table),
+  the boundaries became decidable everywhere, and the throwing guards came out entirely - the
+  functions that carried them are no longer `throws` at all. `SweepTests.knownRefusals` is the
+  empty set, re-counted on every run. The depth limit (`OrgError.nestingTooDeep`) remains; it
+  refuses pathological nesting, not a construct.
+- **`#+LINK:` abbreviation expansion.** Link abbreviations defined in the buffer are collected
+  in pass 1 and expanded the way org expands them, including the `%s`/`%h` placeholder forms.
+- **Spans on the typed tree.** `OrgSpan` (begin/end plus optional contents range), a `span` slot
+  on every generated node, and the patch helpers `settingSpan`/`settingPostBlank`/
+  `settingAffiliated`. Span RECORDING is landed for 6 of the 55 construction sites (ORG-32, in
+  progress); the type and the slot are stable API.
+- **A published benchmark** (repo-level, not API): `bench/` measures parse throughput for
+  organism and for orgize, go-org, uniorg and org-element on identical bytes, under a written
+  protocol; `bench/accuracy/` grades all five against org-element's own answers on the three
+  corpora, through per-competitor adapters bound by written fairness rules. Results and
+  interpretation: `BENCHMARKS.md`. Receipts: `bench/results/`.
+
+### Changed
+
+- **Roughly an order of magnitude faster.** One campaign, landed as per-commit measured steps
+  (each with its before/after in `bench/results/deltas.md`): the second parse pass is skipped
+  when a document defines no radio target; the document is tokenized once into a flat scalar
+  buffer and every line is a zero-copy view into it; the object layer parses slices of that
+  buffer instead of detached `String`s; the four ICU-backed scalar predicates got ASCII lanes;
+  container permission checks test a derived bitmask instead of hashing a `Set`; and the parser
+  now builds the generated typed AST natively - `parseOrg` is that parse emitted once through
+  `toJSON()`, and the old full-tree span-stripping rebuild is deleted. `OrgDocument(parsing:)`
+  is the zero-JSON path. Absolute numbers and the competitor context are in `BENCHMARKS.md`.
+- Two optimization attempts were measured as regressions and NOT shipped (a generic
+  `String(scalars:)` that ran unspecialized, a UTF-8 transcode buffer that cost more than the
+  appends it replaced); they are recorded in `bench/results/deltas.md` so the negative results
+  are receipts too.
 
 ### Fixed
 
@@ -28,6 +67,31 @@ breaking change moves the MINOR number while the major is 0.
   divergence from an idiom the codebase had settled. Five `w4-*` sweep cases cover it, shown able
   to fail rather than merely added: with the old line restored the sweep goes red on
   `w4-latexenv-eof-nonl` and on nothing else.
+
+- The plain-link word boundary is a measured table rather than a heuristic: for every valid
+  scalar, does `org-link-plain-re` match right after it in a live org buffer - 3,559 suppressing
+  scalars in 366 ranges. The old ASCII-only test linked after dollar, percent and apostrophe
+  where org does not, and a guard that predated the real predicate invented refusals on
+  org-manual.org's own prose; both are gone.
+- Literal block values (`example`, `export`, `src`) comma-unescape their `,#+` and `,*` lines
+  the way org does, and the renderer restores the escape exactly.
+- An item's extent no longer leaks into a paired block, dynamic-block or drawer body that opens
+  inside the item and closes outside it.
+- Three class predicates that silently approximated Emacs behaviour with Swift Unicode
+  predicates - headline tags, drawer names, citation keys - now consult the measured tables; the
+  enumeration showed all three wrong, drawer names on ~960,000 scalars.
+- The timestamp matcher transcribes org's actual algorithm - a lax envelope plus independent
+  field scrapes - instead of validating a stricter token grammar of its own. A `]` in free text
+  closes an active timestamp, junk is tolerated rather than parsed, and repeater/delay are
+  scraped from the whole raw value, because that is what org does.
+
+### Notes for consumers
+
+- API is additive only: `OrgSpan`, the `span` slot and the patch helpers are new; nothing
+  published in 0.3.1 changed shape. Inputs that used to throw the nine class refusals now return
+  org's tree. Minor bump for the API addition, as with 0.2.0.
+- `parseOrg` still throws: a CR byte, nesting past the depth limit, and any future guard all
+  surface through `OrgError` exactly as before.
 
 ## [0.3.1] - 2026-08-08
 
@@ -171,6 +235,7 @@ installable by version.
   so it is portable everywhere Swift runs; the minimums come from the test target's
   swift-testing floor.
 
+[0.4.0]: https://github.com/nhannht/organism/releases/tag/v0.4.0
 [0.3.1]: https://github.com/nhannht/organism/releases/tag/v0.3.1
 [0.3.0]: https://github.com/nhannht/organism/releases/tag/v0.3.0
 [0.2.0]: https://github.com/nhannht/organism/releases/tag/v0.2.0
